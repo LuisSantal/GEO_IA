@@ -3,3 +3,4 @@ pandas
 plotly
 requests
 python-dateutil
+h5py

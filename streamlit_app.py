@@ -7,6 +7,8 @@ import tempfile
 import plotly.express as px
 from datetime import datetime
 from utils.drive_loader import extract_id_from_share_url, download_public_file, list_folder_files
+import h5py
+import numpy as np
 
 
 st.set_page_config(page_title="GEO_IA Dashboard", layout="wide")
@@ -143,6 +145,57 @@ def main():
     st.sidebar.header("Arquivos carregados")
     sel = st.sidebar.selectbox("Escolha um arquivo", list(files.keys()))
     content = files[sel]
+
+    # If HDF5 file selected, handle separately
+    if sel.lower().endswith('.h5') or sel.lower().endswith('.hdf5'):
+        # write bytes to temp file
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as tmp:
+            if isinstance(content, bytes):
+                tmp.write(content)
+            else:
+                # content may be a stream-like
+                try:
+                    tmp.write(content.read())
+                except Exception:
+                    tmp.write(bytes(content))
+            tmp_path = tmp.name
+
+        st.header(f"HDF5 file: {sel}")
+
+        def list_datasets(h5file):
+            datasets = []
+            def visitor(name, obj):
+                if isinstance(obj, h5py.Dataset):
+                    datasets.append(name)
+            h5file.visititems(visitor)
+            return datasets
+
+        try:
+            with h5py.File(tmp_path, 'r') as f:
+                ds = list_datasets(f)
+                st.write('Grupos / datasets encontrados:')
+                st.write(ds)
+                if ds:
+                    pick = st.selectbox('Escolha dataset para visualizar', ds)
+                    arr = f[pick][()]
+                    st.write('Shape:', getattr(arr, 'shape', None), 'dtype:', getattr(arr, 'dtype', None))
+                    # If 1D or 2D numeric array, show head as table
+                    if isinstance(arr, (np.ndarray,)):
+                        if arr.ndim == 1:
+                            df = pd.DataFrame(arr, columns=[pick.split('/')[-1]])
+                            st.dataframe(df.head(100))
+                        elif arr.ndim == 2:
+                            df = pd.DataFrame(arr)
+                            st.dataframe(df.head(100))
+                        else:
+                            st.write('Dataset with more than 2 dimensions; showing a small slice:')
+                            sample = arr.reshape(arr.shape[0], -1)[:100]
+                            st.dataframe(pd.DataFrame(sample))
+                    else:
+                        st.write('Tipo de dataset não suportado para preview.')
+        except Exception as e:
+            st.error(f'Erro lendo HDF5: {e}')
+        return
 
     try:
         df = load_json_bytes(content)
