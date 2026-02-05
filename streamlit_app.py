@@ -130,8 +130,9 @@ def main():
                 fid = extract_id_from_share_url(folder_url)
                 try:
                     items = list_folder_files(fid, api_key)
-                    choices = {f['name']: f['id'] for f in items if f['name'].lower().endswith('.json')}
-                    pick = st.sidebar.multiselect("Escolha arquivos JSON", list(choices.keys()))
+                    # include JSON and HDF5 files
+                    choices = {f['name']: f['id'] for f in items if f['name'].lower().endswith(('.json', '.h5', '.hdf5'))}
+                    pick = st.sidebar.multiselect("Escolha arquivos (JSON / HDF5)", list(choices.keys()))
                     for name in pick:
                         b = download_public_file(choices[name])
                         files[name] = b
