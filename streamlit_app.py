@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import json
 import io
+import os
+import tempfile
 import plotly.express as px
 from datetime import datetime
 from utils.drive_loader import extract_id_from_share_url, download_public_file, list_folder_files
@@ -51,6 +53,44 @@ def detect_latlon(df: pd.DataFrame):
 def main():
     st.title("GEO_IA — Demo Dashboard")
 
+    # Load secrets (Streamlit Cloud) or env vars
+    api_key_secret = None
+    try:
+        api_key_secret = st.secrets.get("GDRIVE_API_KEY")
+    except Exception:
+        api_key_secret = None
+
+    sa_json = None
+    try:
+        sa_json = st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    except Exception:
+        sa_json = None
+
+    # support base64-encoded JSON secret
+    sa_b64 = None
+    try:
+        sa_b64 = st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64")
+    except Exception:
+        sa_b64 = None
+
+    # If service account JSON provided as secret (raw JSON or base64), write to temp file and set env var
+    if sa_b64:
+        try:
+            import base64
+
+            decoded = base64.b64decode(sa_b64)
+            sa_text = decoded.decode("utf-8")
+        except Exception:
+            sa_text = None
+    else:
+        sa_text = sa_json
+
+    if sa_text:
+        sa_path = os.path.join(tempfile.gettempdir(), "service_account.json")
+        with open(sa_path, "w", encoding="utf-8") as f:
+            f.write(sa_text)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
+
     st.sidebar.header("Source")
     mode = st.sidebar.selectbox("Carregar a partir de", ["Upload local", "Links (Drive share)", "Pasta do Drive (API key)"])
 
@@ -78,7 +118,9 @@ def main():
 
     else:
         folder_url = st.sidebar.text_input("Cole a URL da pasta do Drive")
-        api_key = st.sidebar.text_input("(Opcional) API Key do Google", type="password")
+        # prefer secret if present
+        api_key_input = st.sidebar.text_input("(Opcional) API Key do Google", type="password", value=api_key_secret or "")
+        api_key = api_key_input if api_key_input else api_key_secret
         if st.sidebar.button("Listar arquivos na pasta"):
             if not folder_url:
                 st.sidebar.error("Cole a URL da pasta do Drive")
