@@ -126,6 +126,8 @@ def main():
         if st.sidebar.button("Listar arquivos na pasta"):
             if not folder_url:
                 st.sidebar.error("Cole a URL da pasta do Drive")
+            elif not api_key:
+                st.sidebar.error("Forneça uma API Key do Google")
             else:
                 fid = extract_id_from_share_url(folder_url)
                 try:
@@ -145,6 +147,10 @@ def main():
 
     st.sidebar.header("Arquivos carregados")
     sel = st.sidebar.selectbox("Escolha um arquivo", list(files.keys()))
+    
+    if not sel:
+        return
+    
     content = files[sel]
 
     # If HDF5 file selected, handle separately
@@ -178,7 +184,16 @@ def main():
                 st.write(ds)
                 if ds:
                     pick = st.selectbox('Escolha dataset para visualizar', ds)
-                    arr = f[pick][()]
+                    if pick and pick in f:
+                        dataset = f[pick]
+                        if isinstance(dataset, h5py.Dataset):
+                            arr = dataset[()]
+                        else:
+                            st.error("Item selecionado não é um dataset")
+                            return
+                    else:
+                        st.error("Dataset não encontrado")
+                        return
                     st.write('Shape:', getattr(arr, 'shape', None), 'dtype:', getattr(arr, 'dtype', None))
                     # If 1D or 2D numeric array, show head as table
                     if isinstance(arr, (np.ndarray,)):
