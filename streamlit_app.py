@@ -166,8 +166,8 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     
     m.get_root().html.add_child(folium.Element(north_html))
     
-    # 3. Adicionar escala (zoom scale)
-    folium.ScaleControl(position='bottomleft', metric=True, imperial=False).add_to(m)
+    # Nota: Folium adiciona automaticamente a escala do mapa
+    # ScaleControl não está disponível em folium 0.14.0
     
     return m
 
