@@ -11,8 +11,12 @@ O erro "Invalid control character" foi causado por caracteres de controle no JSO
 cd /workspaces/GEO_IA
 python3 -c "
 import json
+import re
 with open('sa_decoded.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
+# Escapar quebras de linha na chave privada
+if 'private_key' in data:
+    data['private_key'] = data['private_key'].replace('\n', '\\\\n')
 print(json.dumps(data, separators=(',', ':')))
 "
 ```
