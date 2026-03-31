@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+import folium
+from streamlit_folium import st_folium
+import colorsys
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
@@ -45,6 +48,128 @@ def extract_folder_id(folder_url):
     if match:
         return match.group(1)
     return folder_url  # Retorna como está se não for URL
+
+# --- FUNÇÕES DE PALETA DE CORES ---
+
+def get_color_from_gradient(value, min_val=0, max_val=100, reverse=False):
+    """
+    Gera cor na paleta Verde → Amarelo → Vermelho baseado em valor percentual.
+    
+    Args:
+        value: Valor entre min_val e max_val
+        min_val: Valor mínimo (verde)
+        max_val: Valor máximo (vermelho)
+        reverse: Se True, inverte a escala (verde = perigoso)
+    
+    Returns:
+        Código de cor em hexadecimal (#RRGGBB)
+    """
+    # Normalizar valor entre 0 e 1
+    if max_val == min_val:
+        normalized = 0.5
+    else:
+        normalized = (value - min_val) / (max_val - min_val)
+    
+    normalized = max(0, min(1, normalized))  # Limitar entre 0 e 1
+    
+    if reverse:
+        normalized = 1 - normalized
+    
+    # Criar gradiente verde → amarelo → vermelho
+    if normalized < 0.5:
+        # Verde → Amarelo
+        r = int(255 * (normalized * 2))
+        g = 255
+        b = 0
+    else:
+        # Amarelo → Vermelho
+        r = 255
+        g = int(255 * (2 - normalized * 2))
+        b = 0
+    
+    return f'#{r:02x}{g:02x}{b:02x}'
+
+def get_congestion_color(speed_kmh):
+    """
+    Retorna cor baseada na velocidade de congestionamento.
+    Verde (livre) → Vermelho (trânsito parado)
+    """
+    # Escala: 0 km/h = Vermelho (parado), 80+ km/h = Verde (livre)
+    if speed_kmh >= 80:
+        return '#00AA00'  # Verde
+    elif speed_kmh >= 60:
+        return '#55DD00'  # Verde-amarelo
+    elif speed_kmh >= 40:
+        return '#DDDD00'  # Amarelo
+    elif speed_kmh >= 20:
+        return '#FF8800'  # Laranja
+    else:
+        return '#FF0000'  # Vermelho
+
+def get_danger_color(incident_type):
+    """
+    Retorna cor baseada no tipo de incidente (perigo).
+    """
+    danger_colors = {
+        'ACIDENTE': '#FF0000',        # Vermelho - Mais perigoso
+        'VIA FECHADA': '#FF4400',      # Vermelho-laranja
+        'CONGESTIONAMENTO': '#FFAA00',  # Laranja
+        'PERIGO': '#FF6600',            # Laranja-vermelho
+        'ALERTA': '#FFDD00',            # Amarelo
+        'OBRAS': '#AAAAAA',             # Cinza
+    }
+    return danger_colors.get(str(incident_type).upper(), '#0099FF')  # Azul padrão
+
+def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
+    """
+    Cria um mapa Folium com:
+    - Controle de zoom (escala)
+    - Seta do norte (compass)
+    - Zoom inicial configurável
+    
+    Args:
+        lat: Latitude central
+        lon: Longitude central
+        zoom_level: Nível de zoom inicial
+        title: Título do mapa
+    
+    Returns:
+        Objeto folium.Map configurado
+    """
+    m = folium.Map(
+        location=[lat, lon],
+        zoom_start=zoom_level,
+        tiles="OpenStreetMap",
+        max_bounds=True
+    )
+    
+    # Adicionar controles
+    # 1. Zoom control (padrão já vem, mas explícito)
+    folium.LayerControl(position='topright', collapsed=False).add_to(m)
+    
+    # 2. Nord Arrow (Bússola/Seta do Norte)
+    # Criar HTML para a seta do norte
+    north_html = '''
+    <div style="position: fixed; 
+        top: 50px; right: 50px; width: 70px; height: 70px; 
+        background-color: white; border:2px solid grey; z-index:9999; 
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 5px;">
+        <div style="font-size: 40px; color: red;">↑</div>
+    </div>
+    <div style="position: fixed; 
+        top: 65px; right: 50px; width: 700px; height: 40px;
+        text-align: center; z-index:9999; font-weight: bold; color: #333;">
+        <small>N</small>
+    </div>
+    '''
+    
+    m.get_root().html.add_child(folium.Element(north_html))
+    
+    # 3. Adicionar escala (zoom scale)
+    folium.ScaleControl(position='bottomleft', metric=True, imperial=False).add_to(m)
+    
+    return m
 
 # --- FUNÇÕES DE CONEXÃO E DADOS ---
 
@@ -466,7 +591,7 @@ if df_alerts is not None:
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.subheader("Mapa de Incidentes")
+        st.subheader("🗺️ Mapa de Incidentes - Nível de Perigo")
         
         if df_filtered.empty:
             st.info(f"📅 Nenhum incidente registrado para {selected_date.strftime('%d/%m/%Y')}, mas há dados de congestionamento disponíveis.")
@@ -481,33 +606,47 @@ if df_alerts is not None:
             # Remover duplicatas baseadas em coordenadas e timestamp para evitar pontos repetidos
             df_filtered = df_filtered.drop_duplicates(subset=['lat', 'lon', 'pubMillis'])
             
-            # Criar dados customizados para o hover ANTES de criar o gráfico
-            hover_data = []
+            # Calcular centro do mapa
+            center_lat = df_filtered['lat'].mean()
+            center_lon = df_filtered['lon'].mean()
+            
+            # Criar mapa Folium com compass e zoom
+            m = create_folium_map_with_compass(center_lat, center_lon, zoom_level=12)
+            
+            # Adicionar marcadores com cores dinâmicas baseadas em tipo de incidente
             for idx, row in df_filtered.iterrows():
                 maps_link = create_google_maps_link(row['lat'], row['lon'])
-                coords = f"{row['lat']:.6f}, {row['lon']:.6f}"
-                hover_data.append(f"<b>{row['subtype']}</b><br>Coordenadas: {coords}<br><a href='{maps_link}' target='_blank' style='color: blue; text-decoration: underline;'>Ver no Google Maps</a>")
+                color = get_danger_color(row['type'])
+                
+                # Determinar ícone baseado no tipo
+                icon_type = 'exclamation-triangle' if row['type'] == 'ACIDENTE' else 'info-sign'
+                
+                folium.CircleMarker(
+                    location=[row['lat'], row['lon']],
+                    radius=8,
+                    popup=f"""
+                    <div style='font-size: 12px; width: 250px;'>
+                        <b>{row['subtype']}</b><br>
+                        <b>Tipo:</b> {row['type']}<br>
+                        <b>Rua:</b> {row.get('street', 'N/A')}<br>
+                        <b>Hora:</b> {row['timestamp'].strftime('%H:%M:%S') if hasattr(row['timestamp'], 'strftime') else row['timestamp']}<br>
+                        <a href='{maps_link}' target='_blank' style='color: blue; text-decoration: underline;'>Ver no Google Maps</a>
+                    </div>
+                    """,
+                    color=color,
+                    fill=True,
+                    fillColor=color,
+                    fillOpacity=0.7,
+                    weight=2,
+                    tooltip=f"{row['subtype']} - {row['type']}"
+                ).add_to(m)
             
-            # Adicionar coluna de customdata ao dataframe
-            df_filtered = df_filtered.copy()
-            df_filtered['custom_hover'] = hover_data
-            
-            # Criar gráfico Mapbox com customdata
-            fig_map = px.scatter_map(df_filtered, lat='lat', lon='lon', color='type', 
-                                       hover_name='subtype', zoom=12, height=600,
-                                       custom_data=['custom_hover'])
-            fig_map.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
-            
-            # Atualizar traces com hovertemplate correto
-            fig_map.update_traces(
-                hovertemplate="%{customdata[0]}<extra></extra>"
-            )
-            
-            st.plotly_chart(fig_map, width='stretch')
+            # Exibir mapa
+            st_folium(m, width=700, height=600)
 
     # --- MAPA DE CONGESTIONAMENTOS ---
     if not df_jams_filtered.empty:
-        st.subheader("Mapa de Congestionamentos - Largura dos Atascos")
+        st.subheader("🗺️ Mapa de Congestionamentos - Paleta Verde (Livre) → Vermelho (Parado)")
 
         # Processar coordenadas dos jams
         if 'line' in df_jams_filtered.columns:
@@ -533,52 +672,58 @@ if df_alerts is not None:
                 'Moderado': '🟡 Moderado'
             }
             df_jams_valid['severidade_label'] = df_jams_valid['severidade'].map(severidade_map)
-
-            # Criar mapa de congestionamentos
-            fig_jams = px.scatter_map(
-                df_jams_valid,
-                lat='lat',
-                lon='lon',
-                color='severidade_label',
-                size='length' if 'length' in df_jams_valid.columns else None,
-                hover_name='street' if 'street' in df_jams_valid.columns else 'Congestionamento',
-                zoom=12,
-                height=400,
-                color_discrete_map={
-                    '🔴 Crítico': 'red',
-                    '🟠 Alto': 'orange',
-                    '🟡 Moderado': 'yellow'
-                }
+            
+            # Converter velocidade para km/h se necessário
+            df_jams_valid['speed_kmh'] = df_jams_valid['speed'].apply(
+                lambda x: (x * 3.6) if x < 50 else x
             )
-
-            # Personalizar hover para mostrar informações do congestionamento
-            hover_template = "<b>%{hovertext}</b><br>"
-            if 'speed' in df_jams_valid.columns:
-                hover_template += "Velocidade: %{customdata[0]:.1f} km/h<br>"
-            if 'length' in df_jams_valid.columns:
-                hover_template += "Comprimento: %{customdata[1]:.0f} metros<br>"
-            hover_template += "Severidade: %{customdata[2]}<extra></extra>"
-
-            customdata = []
-            for _, row in df_jams_valid.iterrows():
-                speed_val = row.get('speed', 0) * 3.6 if row.get('speed', 0) < 50 else row.get('speed', 0)
-                length_val = row.get('length', 0)
-                sev_val = row['severidade_label']
-                customdata.append([speed_val, length_val, sev_val])
-
-            fig_jams.update_traces(
-                hovertemplate=hover_template,
-                customdata=customdata
-            )
-
-            fig_jams.update_layout(
-                mapbox_style="open-street-map",
-                margin={"r":0,"t":0,"l":0,"b":0},
-                showlegend=True,
-                legend_title="Severidade do Congestionamento"
-            )
-
-            st.plotly_chart(fig_jams, width='stretch')
+            
+            # Calcular centro do mapa
+            center_lat = df_jams_valid['lat'].mean()
+            center_lon = df_jams_valid['lon'].mean()
+            
+            # Criar mapa Folium com compass e zoom
+            m_jams = create_folium_map_with_compass(center_lat, center_lon, zoom_level=12)
+            
+            # Adicionar marcadores com cores dinâmicas baseadas em velocidade
+            for idx, row in df_jams_valid.iterrows():
+                color = get_congestion_color(row.get('speed_kmh', 0))
+                
+                # Tamanho do círculo baseado no comprimento
+                size = min(10, max(3, row.get('length', 100) / 100)) if 'length' in row else 5
+                
+                folium.CircleMarker(
+                    location=[row['lat'], row['lon']],
+                    radius=size,
+                    popup=f"""
+                    <div style='font-size: 12px; width: 250px;'>
+                        <b>{row.get('street', 'Congestionamento')}</b><br>
+                        <b>Velocidade:</b> {row.get('speed_kmh', 0):.1f} km/h<br>
+                        <b>Comprimento:</b> {row.get('length', 0):.0f} metros<br>
+                        <b>Severidade:</b> {row['severidade_label']}<br>
+                        <b>Hora:</b> {row.get('timestamp', 'N/A').strftime('%H:%M:%S') if hasattr(row.get('timestamp', 'N/A'), 'strftime') else str(row.get('timestamp', 'N/A'))}
+                    </div>
+                    """,
+                    color=color,
+                    fill=True,
+                    fillColor=color,
+                    fillOpacity=0.6,
+                    weight=2,
+                    tooltip=f"Velocidade: {row.get('speed_kmh', 0):.1f} km/h"
+                ).add_to(m_jams)
+            
+            # Exibir mapa
+            st_folium(m_jams, width=700, height=500)
+            
+            # Legenda de cores
+            st.markdown("""
+            **Legenda de Cores:**
+            - 🟢 **Verde**: Livre (≥80 km/h)
+            - 🟡 **Amarelo-verde**: Boa fluidez (60-80 km/h)
+            - 🟠 **Amarelo**: Fluxo moderado (40-60 km/h)
+            - 🟠 **Laranja**: Fluxo reduzido (20-40 km/h)
+            - 🔴 **Vermelho**: Parado/Crítico (<20 km/h)
+            """)
 
             # Estatísticas dos congestionamentos
             col_stats1, col_stats2, col_stats3 = st.columns(3)
@@ -587,7 +732,7 @@ if df_alerts is not None:
                 st.metric("Total de Congestionamentos", total_jams)
 
             with col_stats2:
-                avg_speed = (df_jams_valid['speed'] * 3.6 if df_jams_valid['speed'].mean() < 50 else df_jams_valid['speed']).mean()
+                avg_speed = df_jams_valid['speed_kmh'].mean()
                 st.metric("Velocidade Média", f"{avg_speed:.1f} km/h")
 
             with col_stats3:
