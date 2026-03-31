@@ -7,4 +7,4 @@ debug_output.txt
 final_check.txt
 docs/relatorios/*.json
 sa_*.json
-sa_*.txt
+sa_decoded.json
