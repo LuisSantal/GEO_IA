@@ -4,6 +4,7 @@ import plotly.express as px
 import io
 import re
 import tempfile
+import json
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -50,9 +51,25 @@ def extract_folder_id(folder_url):
 @st.cache_resource
 def get_drive_service():
     """Autentica na Service Account usando os Secrets do Streamlit."""
-    creds_info = st.secrets["gcp_service_account"]
-    creds = service_account.Credentials.from_service_account_info(creds_info)
-    return build('drive', 'v3', credentials=creds)
+    try:
+        creds_info = st.secrets["gcp_service_account"]
+        
+        # Se for string JSON, fazer o parsing
+        if isinstance(creds_info, str):
+            creds_info = json.loads(creds_info)
+        
+        creds = service_account.Credentials.from_service_account_info(creds_info)
+        return build('drive', 'v3', credentials=creds)
+    except KeyError:
+        st.error("❌ Secret 'gcp_service_account' não encontrada!")
+        st.error("Adicione as credenciais GCP em Settings → Secrets da sua app no Streamlit Cloud")
+        st.stop()
+    except json.JSONDecodeError as e:
+        st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ Erro ao autenticar com GCP: {str(e)}")
+        st.stop()
 
 def get_all_h5_files(folder_id):
     """Encontra todos os arquivos .h5 na pasta ordenados por timestamp."""
