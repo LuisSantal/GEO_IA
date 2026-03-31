@@ -60,12 +60,12 @@ def get_drive_service():
                 creds_info = json.loads(creds_info)
             except json.JSONDecodeError as e:
                 st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
-                st.error("**Solução:** Use o arquivo `sa_decoded_minified.json` (tudo em uma linha)")
-                st.error("**No Streamlit Cloud:**")
+                st.error("**Solução:** Gere JSON minificado com o comando no terminal")
+                st.error("**No Streamlit Cloud:** Cole entre aspas triplas no campo Secrets")
                 st.code("""
-gcp_service_account = """
-[COLE O CONTEÚDO DO sa_decoded_minified.json AQUI]
-"""
+gcp_service_account = \"\"\"
+[COLE AQUI O JSON MINIFICADO]
+\"\"\"
 """)
                 st.stop()
         

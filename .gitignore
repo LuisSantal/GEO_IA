@@ -8,3 +8,4 @@ final_check.txt
 docs/relatorios/*.json
 sa_*.json
 sa_decoded.json
+sa_decoded_minified.json
