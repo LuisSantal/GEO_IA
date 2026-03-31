@@ -258,10 +258,12 @@ def load_historical_data(folder_id, selected_date=None):
     st.info("📊 Usando dados de demonstração realistas para Foz do Iguaçu")
 
     # Retornar dados mockados baseados no tipo de pasta
+    df_alerts, df_jams = create_mock_data()
+
     if "alerts" in folder_id.lower():
-        return create_mock_data()[0]  # Dados de alertas
+        return df_alerts  # Dados de alertas
     else:
-        return create_mock_data()[1]  # Dados de jams
+        return df_jams  # Dados de jams
 
 def normalize_timestamps_local(df):
     """Converte timestamps de pubMillis para horário local de Foz do Iguaçu."""
@@ -302,6 +304,7 @@ if df_alerts is not None:
     df_alerts['day_of_week'] = df_alerts['timestamp'].dt.day_name()
     
     # Traduções [cite: 308-312, 1012-1016]
+    # Nota: Dados mockados já vêm em português, então só aplicamos se for dados reais
     type_map = {
         'ROAD_CLOSED': 'VIA FECHADA',
         'HAZARD': 'PERIGO',
@@ -309,7 +312,9 @@ if df_alerts is not None:
         'JAM': 'CONGESTIONAMENTO',
         'WEATHERHAZARD': 'PERIGO CLIMÁTICO'
     }
-    df_alerts['type'] = df_alerts['type'].replace(type_map)
+    # Só aplicar tradução se a coluna 'type' existir e não estiver vazia
+    if 'type' in df_alerts.columns and not df_alerts.empty:
+        df_alerts['type'] = df_alerts['type'].replace(type_map)
     
     # Traduções para subtipos - mapa mais completo
     subtype_map = {
@@ -334,7 +339,9 @@ if df_alerts is not None:
         'JAM_MODERATE_TRAFFIC': 'TRÂNSITO MODERADO',
         'JAM_STAND_STILL_TRAFFIC': 'TRÂNSITO PARADO'
     }
-    df_alerts['subtype'] = df_alerts['subtype'].replace(subtype_map)
+    # Só aplicar tradução se a coluna 'subtype' existir e não estiver vazia
+    if 'subtype' in df_alerts.columns and not df_alerts.empty:
+        df_alerts['subtype'] = df_alerts['subtype'].replace(subtype_map)
 
     # 2. Carregar Dados de Jams (para velocidade média)
     df_jams = load_historical_data(FOLDER_JAMS_ID)
