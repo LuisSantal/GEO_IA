@@ -246,15 +246,43 @@ if df_alerts is not None:
         min_date = max_date = date.today()
     
     # Selector de Data
-    selected_date = st.sidebar.date_input("Selecionar Data", value=max_date, min_value=min_date, max_value=max_date)
+    selected_date = st.sidebar.date_input("📅 Selecionar Data", value=max_date, min_value=min_date, max_value=max_date)
     
     # Atualizar título com a data selecionada
     st.title(f"🚗 Monitoramento de Tráfego - Foz do Iguaçu - {selected_date.strftime('%d/%m/%Y')}")
     st.markdown("Dados extraídos em tempo real do Waze via Google Drive.")
 
     # Sidebar - Filtros Dinâmicos
-    filtro_tipo = st.sidebar.multiselect("Filtrar por Tipo", options=df_alerts['type'].unique() if df_alerts is not None else [])
-    filtro_rua = st.sidebar.text_input("Buscar Rua", placeholder="Ex: Avenida Brasil")
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Avançados")
+    
+    # 1. Filtro por Tipo de Alerta
+    tipos_disponiveis = sorted(df_alerts['type'].unique().tolist()) if df_alerts is not None else []
+    filtro_tipo = st.sidebar.multiselect(
+        "🚨 Tipo de Alerta",
+        options=tipos_disponiveis,
+        default=tipos_disponiveis,
+        help="Selecione os tipos de alerta que deseja visualizar"
+    )
+    
+    # 2. Filtro por Rua
+    filtro_rua = st.sidebar.text_input(
+        "🛣️ Buscar Rua",
+        placeholder="Ex: Avenida Brasil",
+        help="Digite parte do nome da rua para filtrar"
+    )
+    
+    # 3. Filtro por Horário (range de horas)
+    st.sidebar.markdown("**⏰ Horário**")
+    col_hora_from, col_hora_to = st.sidebar.columns(2)
+    with col_hora_from:
+        hora_inicio = st.number_input("De:", min_value=0, max_value=23, value=0, step=1, label_visibility="collapsed")
+    with col_hora_to:
+        hora_fim = st.number_input("Até:", min_value=0, max_value=23, value=23, step=1, label_visibility="collapsed")
+    
+    # Garantir que hora_inicio <= hora_fim
+    if hora_inicio > hora_fim:
+        hora_inicio, hora_fim = hora_fim, hora_inicio
 
     # CARREGAR DADOS PARA A DATA SELECIONADA DE AMBOS TIPOS
     df_filtered = pd.DataFrame()
@@ -264,16 +292,55 @@ if df_alerts is not None:
         # Filtrar alerts pela data selecionada
         df_alerts_date = df_alerts[df_alerts['timestamp'].dt.date == selected_date].copy()
         if not df_alerts_date.empty:
-            # Aplicar filtros de tipo e rua
+            # Aplicar filtros
+            # 1. Filtro de Tipo de Alerta
             if filtro_tipo:
                 df_alerts_date = df_alerts_date[df_alerts_date['type'].isin(filtro_tipo)]
+            
+            # 2. Filtro de Rua
             if filtro_rua:
                 df_alerts_date = df_alerts_date[df_alerts_date['street'].str.contains(filtro_rua, case=False, na=False)]
+            
+            # 3. Filtro de Horário
+            df_alerts_date = df_alerts_date[
+                (df_alerts_date['hour'] >= hora_inicio) & 
+                (df_alerts_date['hour'] <= hora_fim)
+            ]
+            
             df_filtered = df_alerts_date
     
     if df_jams is not None:
         # Filtrar jams pela data selecionada
         df_jams_filtered = df_jams[df_jams['timestamp'].dt.date == selected_date].copy()
+        # Aplicar filtro de horário também em jams
+        df_jams_filtered = df_jams_filtered[
+            (df_jams_filtered['timestamp'].dt.hour >= hora_inicio) & 
+            (df_jams_filtered['timestamp'].dt.hour <= hora_fim)
+        ]
+
+    # --- RESUMO DOS FILTROS APLICADOS ---
+    st.markdown("---")
+    col_filtros = st.columns([1, 1, 1, 1])
+    
+    with col_filtros[0]:
+        st.metric("📅 Data", selected_date.strftime("%d/%m/%Y"))
+    
+    with col_filtros[1]:
+        if filtro_tipo:
+            st.metric("🚨 Alertas", f"{len(filtro_tipo)}")
+        else:
+            st.metric("🚨 Alertas", "Todos")
+    
+    with col_filtros[2]:
+        if filtro_rua:
+            st.metric("🛣️ Rua", f"'{filtro_rua}'")
+        else:
+            st.metric("🛣️ Rua", "Todas")
+    
+    with col_filtros[3]:
+        st.metric("⏰ Horário", f"{hora_inicio:02d}:00 - {hora_fim:02d}:59")
+    
+    st.markdown("---")
 
     # --- INDICADORES DE GRAVIDADE E TEMPERATURA ---
     st.subheader("📊 Indicadores de Gravidade")
