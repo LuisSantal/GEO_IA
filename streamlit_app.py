@@ -58,15 +58,16 @@ def get_drive_service():
         if isinstance(creds_info, str):
             try:
                 creds_info = json.loads(creds_info)
-            except json.JSONDecodeError:
-                # Tentar remover caracteres de controle inválidos
-                creds_info_cleaned = creds_info.encode('utf-8', 'ignore').decode('utf-8')
-                try:
-                    creds_info = json.loads(creds_info_cleaned)
-                except json.JSONDecodeError as e:
-                    st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
-                    st.error("Verifique se o formato TOML no Streamlit Cloud está correto com aspas triplas: ```gcp_service_account = '''...'''```")
-                    st.stop()
+            except json.JSONDecodeError as e:
+                st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
+                st.error("**Solução:** Use o arquivo `sa_decoded_minified.json` (tudo em uma linha)")
+                st.error("**No Streamlit Cloud:**")
+                st.code("""
+gcp_service_account = """
+[COLE O CONTEÚDO DO sa_decoded_minified.json AQUI]
+"""
+""")
+                st.stop()
         
         # Validar que é um dicionário
         if not isinstance(creds_info, dict):
