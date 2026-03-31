@@ -168,6 +168,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     
     # Nota: Folium adiciona automaticamente a escala do mapa
     # ScaleControl não está disponível em folium 0.14.0
+    # Escala visual integrada: zoom scale + north compass + markers coloridos
     
     return m
 
