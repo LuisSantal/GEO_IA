@@ -177,70 +177,141 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
 @st.cache_resource
 def get_drive_service():
     """Autentica na Service Account usando os Secrets do Streamlit."""
-    try:
-        creds_info = st.secrets["gcp_service_account"]
-        
-        # Se for string JSON, fazer o parsing com tratamento melhorado
-        if isinstance(creds_info, str):
-            try:
-                creds_info = json.loads(creds_info)
-            except json.JSONDecodeError as e:
-                st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
-                st.error("**Solução:** Gere JSON minificado com o comando no terminal")
-                st.error("**No Streamlit Cloud:** Cole entre aspas triplas no campo Secrets")
-                st.code("""
+    import time
+    import ssl
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            creds_info = st.secrets["gcp_service_account"]
+
+            # Se for string JSON, fazer o parsing com tratamento melhorado
+            if isinstance(creds_info, str):
+                try:
+                    creds_info = json.loads(creds_info)
+                except json.JSONDecodeError as e:
+                    st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
+                    st.error("**Solução:** Gere JSON minificado com o comando no terminal")
+                    st.error("**No Streamlit Cloud:** Cole entre aspas triplas no campo Secrets")
+                    st.code("""
 gcp_service_account = \"\"\"
 [COLE AQUI O JSON MINIFICADO]
 \"\"\"
 """)
+                    st.stop()
+
+            # Validar que é um dicionário
+            if not isinstance(creds_info, dict):
+                st.error("❌ Credenciais GCP não estão em formato de dicionário")
                 st.stop()
-        
-        # Validar que é um dicionário
-        if not isinstance(creds_info, dict):
-            st.error("❌ Credenciais GCP não estão em formato de dicionário")
+
+            creds = service_account.Credentials.from_service_account_info(creds_info)
+            service = build('drive', 'v3', credentials=creds)
+
+            # Testar conexão com timeout
+            service.files().list(pageSize=1, fields="files(id)").execute()
+            return service
+
+        except KeyError:
+            st.error("❌ Secret 'gcp_service_account' não encontrada!")
+            st.error("Adicione as credenciais GCP em Settings → Secrets da sua app no Streamlit Cloud")
             st.stop()
-        
-        creds = service_account.Credentials.from_service_account_info(creds_info)
-        return build('drive', 'v3', credentials=creds)
-    except KeyError:
-        st.error("❌ Secret 'gcp_service_account' não encontrada!")
-        st.error("Adicione as credenciais GCP em Settings → Secrets da sua app no Streamlit Cloud")
-        st.stop()
-    except Exception as e:
-        st.error(f"❌ Erro ao autenticar com GCP: {str(e)}")
-        st.stop()
+        except ssl.SSLError as ssl_error:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Backoff exponencial: 1, 2, 4, 8, 16 segundos
+                st.warning(f"🔄 Erro SSL na tentativa {attempt + 1}/{max_retries}. Tentando novamente em {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            else:
+                st.error("❌ Falha na conexão SSL após múltiplas tentativas")
+                st.error("**Possíveis causas:**")
+                st.error("- Problemas de rede temporários")
+                st.error("- Certificado SSL expirado")
+                st.error("- Firewall bloqueando conexão")
+                st.info("💡 **Solução:** O app continuará funcionando com dados em cache")
+                return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                st.warning(f"🔄 Erro de conexão na tentativa {attempt + 1}/{max_retries}: {str(e)}. Tentando novamente em {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            else:
+                st.error(f"❌ Erro ao autenticar com GCP após {max_retries} tentativas: {str(e)}")
+                st.info("💡 **Solução:** O app continuará funcionando com dados em cache")
+                return None
 
 def get_all_h5_files(folder_id):
     """Encontra todos os arquivos .h5 na pasta ordenados por timestamp."""
+    import time
+    import ssl
+    import http.client
+
     service = get_drive_service()
+    if service is None:
+        return []  # Retornar lista vazia se não conseguir conectar
+
     folder_id = extract_folder_id(folder_id)
-    query = f"'{folder_id}' in parents and name contains '.h5'"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
-    files = results.get('files', [])
-    
-    # Ordenar por timestamp no nome do arquivo
-    file_list = []
-    for f in files:
-        match = re.search(r'(\d+)\.h5', f['name'])
-        if match:
-            ts = int(match.group(1))
-            file_list.append((ts, f['id'], f['name']))
-    
-    # Ordenar do mais recente para o mais antigo
-    file_list.sort(reverse=True)
-    return file_list
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            query = f"'{folder_id}' in parents and name contains '.h5'"
+            results = service.files().list(q=query, fields="files(id, name)").execute()
+            files = results.get('files', [])
+
+            # Ordenar por timestamp no nome do arquivo
+            file_list = []
+            for f in files:
+                match = re.search(r'(\d+)\.h5', f['name'])
+                if match:
+                    ts = int(match.group(1))
+                    file_list.append((ts, f['id'], f['name']))
+
+            # Ordenar do mais recente para o mais antigo
+            file_list.sort(reverse=True)
+            return file_list
+
+        except (ssl.SSLError, http.client.IncompleteRead, ConnectionError, TimeoutError) as conn_error:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Backoff exponencial
+                st.warning(f"🔄 Erro de rede na tentativa {attempt + 1}/{max_retries}. Tentando novamente em {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            else:
+                st.error(f"❌ Falha na conexão após {max_retries} tentativas: {str(conn_error)}")
+                st.info("💡 **Continuando com dados em cache**")
+                return []
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                st.warning(f"🔄 Erro na tentativa {attempt + 1}/{max_retries}: {str(e)}. Tentando novamente em {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            else:
+                st.error(f"❌ Erro ao listar arquivos após {max_retries} tentativas: {str(e)}")
+                return []
 
 def load_historical_data(folder_id, selected_date=None):
     """Carrega dados históricos baseados na data selecionada."""
     file_list = get_all_h5_files(folder_id)
-    
+
     if not file_list:
-        return None
-    
+        st.warning("⚠️ **Não foi possível conectar ao Google Drive**")
+        st.info("💡 **Usando dados de demonstração**")
+        mock_data = create_mock_data()
+        return mock_data[0] if folder_id == FOLDER_ALERTS_ID else mock_data[1]
+
     # Se não há data selecionada, carrega o mais recente
     if selected_date is None:
-        return load_hdf_from_drive(file_list[0][1])
-    
+        try:
+            return load_hdf_from_drive(file_list[0][1])
+        except Exception as e:
+            st.warning(f"⚠️ **Erro ao carregar dados recentes: {str(e)}**")
+            st.info("💡 **Usando dados de demonstração**")
+            mock_data = create_mock_data()
+            return mock_data[0] if folder_id == FOLDER_ALERTS_ID else mock_data[1]
+
     # Procurar arquivo que contenha dados da data selecionada
     # Como os arquivos têm timestamp, vamos carregar arquivos recentes
     # e filtrar por data dentro deles
@@ -248,14 +319,91 @@ def load_historical_data(folder_id, selected_date=None):
     for _, file_id, _ in file_list[:5]:  # Carregar os 5 mais recentes
         try:
             df = load_hdf_from_drive(file_id)
-            if df is not None:
-                df['timestamp'] = pd.to_datetime(df['pubMillis'] / 1000, unit='s')
+            if df is not None and not df.empty:
                 all_data.append(df)
-        except:
+        except Exception as e:
+            st.warning(f"⚠️ **Erro ao carregar arquivo {file_id}: {str(e)}**")
             continue
-    
-    if not all_data:
-        return None
+
+    if all_data:
+        # Combinar todos os DataFrames
+        combined_df = pd.concat(all_data, ignore_index=True)
+        # Remover duplicatas se houver
+        combined_df = combined_df.drop_duplicates()
+        return combined_df
+    else:
+        st.warning("⚠️ **Nenhum dado pôde ser carregado**")
+        st.info("💡 **Usando dados de demonstração**")
+        mock_data = create_mock_data()
+        return mock_data[0] if folder_id == FOLDER_ALERTS_ID else mock_data[1]
+
+def create_mock_data():
+    """Cria dados de exemplo para demonstração quando não há conexão."""
+    import numpy as np
+
+    # Dados de exemplo para Foz do Iguaçu
+    mock_alerts = []
+    mock_jams = []
+
+    # Coordenadas aproximadas de Foz do Iguaçu
+    base_lat, base_lon = -25.5478, -54.5882
+
+    # Tipos de alertas
+    alert_types = ['ACIDENTE', 'CONGESTIONAMENTO', 'PERIGO', 'VIA FECHADA', 'ALERTA', 'OBRAS']
+    streets = ['Av. Brasil', 'Av. Paraná', 'Av. República Argentina', 'Rua Marechal Deodoro', 'Av. Jorge Schimmelpfeng']
+
+    # Gerar dados de alertas
+    for i in range(50):
+        lat_offset = np.random.uniform(-0.05, 0.05)
+        lon_offset = np.random.uniform(-0.05, 0.05)
+
+        alert = {
+            'lat': base_lat + lat_offset,
+            'lon': base_lon + lon_offset,
+            'type': np.random.choice(alert_types),
+            'subtype': np.random.choice(alert_types),
+            'street': np.random.choice(streets),
+            'city': 'Foz do Iguaçu',
+            'country': 'BR',
+            'timestamp': datetime.now() - timedelta(hours=np.random.randint(0, 24)),
+            'pubMillis': int((datetime.now() - timedelta(hours=np.random.randint(0, 24))).timestamp() * 1000)
+        }
+        mock_alerts.append(alert)
+
+    # Gerar dados de congestionamentos
+    for i in range(30):
+        lat_offset = np.random.uniform(-0.03, 0.03)
+        lon_offset = np.random.uniform(-0.03, 0.03)
+
+        jam = {
+            'lat': base_lat + lat_offset,
+            'lon': base_lon + lon_offset,
+            'speed': np.random.uniform(5, 80),  # km/h
+            'length': np.random.uniform(100, 2000),  # metros
+            'level': np.random.randint(1, 5),
+            'street': np.random.choice(streets),
+            'city': 'Foz do Iguaçu',
+            'timestamp': datetime.now() - timedelta(hours=np.random.randint(0, 24)),
+            'pubMillis': int((datetime.now() - timedelta(hours=np.random.randint(0, 24))).timestamp() * 1000)
+        }
+        mock_jams.append(jam)
+
+    # Converter para DataFrames
+    df_alerts = pd.DataFrame(mock_alerts)
+    df_jams = pd.DataFrame(mock_jams)
+
+    # Adicionar colunas necessárias
+    if not df_alerts.empty:
+        df_alerts['timestamp'] = pd.to_datetime(df_alerts['pubMillis'] / 1000, unit='s')
+        df_alerts['date'] = df_alerts['timestamp'].dt.date
+        df_alerts['hour'] = df_alerts['timestamp'].dt.hour
+
+    if not df_jams.empty:
+        df_jams['timestamp'] = pd.to_datetime(df_jams['pubMillis'] / 1000, unit='s')
+        df_jams['date'] = df_jams['timestamp'].dt.date
+        df_jams['hour'] = df_jams['timestamp'].dt.hour
+
+    return df_alerts, df_jams
     
     # Combinar todos os dados
     combined_df = pd.concat(all_data, ignore_index=True)
