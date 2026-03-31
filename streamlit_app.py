@@ -1,275 +1,537 @@
 import streamlit as st
 import pandas as pd
-import json
-import io
-import os
-import tempfile
 import plotly.express as px
-from datetime import datetime
-from utils.drive_loader import extract_id_from_share_url, download_public_file, list_folder_files
-import h5py
-import numpy as np
+import io
+import re
+import tempfile
+from datetime import datetime, timedelta
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 
-st.set_page_config(page_title="GEO_IA Dashboard", layout="wide")
+# --- CONFIGURAÇÃO DE AUTO-REFRESH A CADA 10 MINUTOS ---
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = datetime.now()
 
+# Verificar se passou 10 minutos desde o último refresh
+tempo_desde_refresh = datetime.now() - st.session_state.last_refresh
+if tempo_desde_refresh.total_seconds() >= 600:  # 600 segundos = 10 minutos
+    st.session_state.last_refresh = datetime.now()
+    st.cache_data.clear()  # Limpar cache para forçar recarregamento dos dados
+    st.rerun()
 
-def load_json_bytes(content: bytes) -> pd.DataFrame:
-    try:
-        j = json.loads(content)
-    except Exception:
-        # try as text
-        j = json.loads(content.decode('utf-8'))
-    # if top-level is list of records
-    if isinstance(j, list):
-        return pd.json_normalize(j)
-    if isinstance(j, dict):
-        # try to find first list value
-        for v in j.values():
-            if isinstance(v, list):
-                return pd.json_normalize(v)
-        # otherwise normalize dict
-        return pd.json_normalize(j)
-    raise ValueError("Unsupported JSON structure")
+# Exibir indicador de quando foi o último refresh
+minutos_restantes = 10 - int(tempo_desde_refresh.total_seconds() // 60)
+segundos_restantes = int(tempo_desde_refresh.total_seconds() % 60)
+st.sidebar.markdown(f"""
+**⏰ Próximo Refresh**  
+Em {minutos_restantes}:{segundos_restantes:02d} minutos  
+Último: {st.session_state.last_refresh.strftime('%H:%M:%S')}
+""")
 
+# --- CONSTANTES ---
+# Substitua pelos IDs reais das suas pastas no Google Drive
+FOLDER_ALERTS_ID = "https://drive.google.com/drive/folders/1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
+FOLDER_JAMS_ID = "https://drive.google.com/drive/folders/192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 
-def show_basic_analysis(df: pd.DataFrame):
-    st.write("**Preview**")
-    st.dataframe(df.head(200))
-    st.write("**Summary**")
-    col1, col2 = st.columns(2)
+def extract_folder_id(folder_url):
+    """Extrai o ID da pasta do URL completo do Google Drive."""
+    import re
+    match = re.search(r'/folders/([a-zA-Z0-9_-]+)', folder_url)
+    if match:
+        return match.group(1)
+    return folder_url  # Retorna como está se não for URL
+
+# --- FUNÇÕES DE CONEXÃO E DADOS ---
+
+@st.cache_resource
+def get_drive_service():
+    """Autentica na Service Account usando os Secrets do Streamlit."""
+    creds_info = st.secrets["gcp_service_account"]
+    creds = service_account.Credentials.from_service_account_info(creds_info)
+    return build('drive', 'v3', credentials=creds)
+
+def get_all_h5_files(folder_id):
+    """Encontra todos os arquivos .h5 na pasta ordenados por timestamp."""
+    service = get_drive_service()
+    folder_id = extract_folder_id(folder_id)
+    query = f"'{folder_id}' in parents and name contains '.h5'"
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    files = results.get('files', [])
+    
+    # Ordenar por timestamp no nome do arquivo
+    file_list = []
+    for f in files:
+        match = re.search(r'(\d+)\.h5', f['name'])
+        if match:
+            ts = int(match.group(1))
+            file_list.append((ts, f['id'], f['name']))
+    
+    # Ordenar do mais recente para o mais antigo
+    file_list.sort(reverse=True)
+    return file_list
+
+def load_historical_data(folder_id, selected_date=None):
+    """Carrega dados históricos baseados na data selecionada."""
+    file_list = get_all_h5_files(folder_id)
+    
+    if not file_list:
+        return None
+    
+    # Se não há data selecionada, carrega o mais recente
+    if selected_date is None:
+        return load_hdf_from_drive(file_list[0][1])
+    
+    # Procurar arquivo que contenha dados da data selecionada
+    # Como os arquivos têm timestamp, vamos carregar arquivos recentes
+    # e filtrar por data dentro deles
+    all_data = []
+    for _, file_id, _ in file_list[:5]:  # Carregar os 5 mais recentes
+        try:
+            df = load_hdf_from_drive(file_id)
+            if df is not None:
+                df['timestamp'] = pd.to_datetime(df['pubMillis'] / 1000, unit='s')
+                all_data.append(df)
+        except:
+            continue
+    
+    if not all_data:
+        return None
+    
+    # Combinar todos os dados
+    combined_df = pd.concat(all_data, ignore_index=True)
+    
+    # Remover duplicatas baseadas em pubMillis E location para evitar coordenadas conflitantes
+    if 'location' in combined_df.columns:
+        # Criar uma coluna temporária com coordenadas extraídas para deduplicação
+        combined_df['temp_coords'] = combined_df['location'].apply(
+            lambda x: f"{eval(x)['y']:.6f}_{eval(x)['x']:.6f}" if isinstance(x, str) else f"{x['y']:.6f}_{x['x']:.6f}"
+        )
+        combined_df = combined_df.drop_duplicates(subset=['pubMillis', 'temp_coords'])
+        combined_df = combined_df.drop('temp_coords', axis=1)
+    else:
+        # Fallback para deduplicação apenas por pubMillis
+        combined_df = combined_df.drop_duplicates(subset=['pubMillis'])
+    
+    return combined_df
+
+def load_hdf_from_drive(file_id):
+    """Baixa o arquivo do Drive e carrega no Pandas."""
+    if not file_id: return None
+    service = get_drive_service()
+    request = service.files().get_media(fileId=file_id)
+    
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    
+    fh.seek(0)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.h5') as tmp:
+        tmp.write(fh.getvalue())
+        tmp_path = tmp.name
+        
+    return pd.read_hdf(tmp_path, key='s')
+
+def create_google_maps_link(lat, lon):
+    """Cria um link do Google Maps para as coordenadas especificadas."""
+    return f"https://www.google.com/maps?q={lat},{lon}"
+
+# --- LÓGICA DO DASHBOARD ---
+
+st.title("🚗 Monitoramento de Tráfego - Foz do Iguaçu")
+st.markdown("Dados extraídos em tempo real do Waze via Google Drive.")
+
+# Sidebar de Filtros [cite: 63-91]
+st.sidebar.header("Filtros e Configurações")
+if st.sidebar.button("Atualizar Dados"):
+    st.cache_data.clear()
+
+# 1. Carregar Alertas (dados históricos)
+df_alerts = load_historical_data(FOLDER_ALERTS_ID)
+if df_alerts is not None:
+    
+    # Processamento de Dados [cite: 258, 982]
+    df_alerts['timestamp'] = pd.to_datetime(df_alerts['pubMillis'] / 1000, unit='s')
+    df_alerts['hour'] = df_alerts['timestamp'].dt.hour
+    df_alerts['day_of_week'] = df_alerts['timestamp'].dt.day_name()
+    
+    # Traduções [cite: 308-312, 1012-1016]
+    type_map = {
+        'ROAD_CLOSED': 'VIA FECHADA',
+        'HAZARD': 'PERIGO',
+        'ACCIDENT': 'ACIDENTE',
+        'JAM': 'CONGESTIONAMENTO',
+        'WEATHERHAZARD': 'PERIGO CLIMÁTICO'
+    }
+    df_alerts['type'] = df_alerts['type'].replace(type_map)
+    
+    # Traduções para subtipos - mapa mais completo
+    subtype_map = {
+        'ROAD_CLOSED_CONSTRUCTION': 'OBRAS',
+        'ROAD_CLOSED_EVENT': 'EVENTO',
+        'HAZARD_ON_ROAD': 'PERIGO NA VIA',
+        'HAZARD_ON_SHOULDER': 'PERIGO NO ACOSTAMENTO',
+        'HAZARD_WEATHER': 'CONDIÇÕES CLIMÁTICAS',
+        'HAZARD_ON_ROAD_POT_HOLE': 'BURACO NA VIA',
+        'HAZARD_ON_ROAD_ROAD_KILL': 'ANIMAL NA VIA',
+        'HAZARD_ON_ROAD_CAR_STOPPED': 'VEÍCULO PARADO',
+        'HAZARD_ON_ROAD_CONSTRUCTION': 'OBRAS NA VIA',
+        'HAZARD_ON_ROAD_OBJECT': 'OBJETO NA VIA',
+        'HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT': 'SEMÁFORO QUEBRADO',
+        'HAZARD_WEATHER_FOG': 'NEBLINA',
+        'HAZARD_WEATHER_HAIL': 'GRANIZO',
+        'HAZARD_WEATHER_HEAVY_RAIN': 'CHUVA FORTE',
+        'HAZARD_WEATHER_FLOOD': 'INUNDAÇÃO',
+        'ACCIDENT_MAJOR': 'ACIDENTE GRAVE',
+        'ACCIDENT_MINOR': 'ACIDENTE LEVE',
+        'JAM_HEAVY_TRAFFIC': 'TRÂNSITO PESADO',
+        'JAM_MODERATE_TRAFFIC': 'TRÂNSITO MODERADO',
+        'JAM_STAND_STILL_TRAFFIC': 'TRÂNSITO PARADO'
+    }
+    df_alerts['subtype'] = df_alerts['subtype'].replace(subtype_map)
+
+    # 2. Carregar Dados de Jams (para velocidade média)
+    df_jams = load_historical_data(FOLDER_JAMS_ID)
+    if df_jams is not None:
+        df_jams['timestamp'] = pd.to_datetime(df_jams['pubMillis'] / 1000, unit='s')
+
+    # Determinar datas disponíveis COM BASE EM TODOS OS DADOS CARREGADOS
+    all_dates = set()
+    if df_alerts is not None:
+        all_dates.update(df_alerts['timestamp'].dt.date.unique())
+    if df_jams is not None:
+        all_dates.update(df_jams['timestamp'].dt.date.unique())
+    
+    if all_dates:
+        min_date = min(all_dates)
+        max_date = max(all_dates)
+    else:
+        # Fallback para hoje se não houver dados
+        from datetime import date
+        min_date = max_date = date.today()
+    
+    # Selector de Data
+    selected_date = st.sidebar.date_input("Selecionar Data", value=max_date, min_value=min_date, max_value=max_date)
+    
+    # Atualizar título com a data selecionada
+    st.title(f"🚗 Monitoramento de Tráfego - Foz do Iguaçu - {selected_date.strftime('%d/%m/%Y')}")
+    st.markdown("Dados extraídos em tempo real do Waze via Google Drive.")
+
+    # Sidebar - Filtros Dinâmicos
+    filtro_tipo = st.sidebar.multiselect("Filtrar por Tipo", options=df_alerts['type'].unique() if df_alerts is not None else [])
+    filtro_rua = st.sidebar.text_input("Buscar Rua", placeholder="Ex: Avenida Brasil")
+
+    # CARREGAR DADOS PARA A DATA SELECIONADA DE AMBOS TIPOS
+    df_filtered = pd.DataFrame()
+    df_jams_filtered = pd.DataFrame()
+    
+    if df_alerts is not None:
+        # Filtrar alerts pela data selecionada
+        df_alerts_date = df_alerts[df_alerts['timestamp'].dt.date == selected_date].copy()
+        if not df_alerts_date.empty:
+            # Aplicar filtros de tipo e rua
+            if filtro_tipo:
+                df_alerts_date = df_alerts_date[df_alerts_date['type'].isin(filtro_tipo)]
+            if filtro_rua:
+                df_alerts_date = df_alerts_date[df_alerts_date['street'].str.contains(filtro_rua, case=False, na=False)]
+            df_filtered = df_alerts_date
+    
+    if df_jams is not None:
+        # Filtrar jams pela data selecionada
+        df_jams_filtered = df_jams[df_jams['timestamp'].dt.date == selected_date].copy()
+
+    # --- INDICADORES DE GRAVIDADE E TEMPERATURA ---
+    st.subheader("📊 Indicadores de Gravidade")
+
+    # Calcular gravidade baseada nos incidentes do dia (apenas alerts)
+    incidentes_dia = len(df_filtered) if not df_filtered.empty else 0
+    acidentes_graves = len(df_filtered[df_filtered['type'] == 'ACIDENTE']) if not df_filtered.empty else 0
+    vias_fechadas = len(df_filtered[df_filtered['type'] == 'VIA FECHADA']) if not df_filtered.empty else 0
+
+    # Lógica de gravidade: mais incidentes = mais grave
+    if incidentes_dia == 0:
+        gravidade = 0
+        cor_gravidade = 'green'
+        status_gravidade = "✅ Situação Normal"
+    elif incidentes_dia < 5:
+        gravidade = 25
+        cor_gravidade = 'yellow'
+        status_gravidade = "⚠️ Atenção Moderada"
+    elif incidentes_dia < 15:
+        gravidade = 50
+        cor_gravidade = 'orange'
+        status_gravidade = "🚨 Alerta Elevado"
+    else:
+        gravidade = 75
+        cor_gravidade = 'red'
+        status_gravidade = "🚫 Situação Crítica"
+
+    # Calcular velocidade média
+    velocidade_media = 0
+    if not df_jams_filtered.empty and 'speed' in df_jams_filtered.columns:
+        velocidade_media = df_jams_filtered['speed'].mean()
+        # Converter de m/s para km/h se necessário
+        if velocidade_media < 50:  # Assume que está em m/s se for menor que 50
+            velocidade_media = velocidade_media * 3.6
+
+    # Temperatura simulada (substitua por API real se disponível)
+    temperatura_atual = 25.5  # Simulado - em graus Celsius
+
+    # Layout dos indicadores
+    col_grav, col_vel, col_temp = st.columns(3)
+
+    with col_grav:
+        # Indicador de Gravidade dos Incidentes
+        fig_grav = px.bar_polar(
+            r=[gravidade],
+            theta=[0],
+            range_r=[0, 100],
+            color_discrete_sequence=[cor_gravidade]
+        )
+        fig_grav.update_layout(
+            title=f"🚨 Gravidade: {incidentes_dia} incidentes",
+            polar=dict(
+                radialaxis=dict(range=[0, 100], showticklabels=False),
+                angularaxis=dict(showticklabels=False)
+            ),
+            showlegend=False,
+            height=200
+        )
+        st.plotly_chart(fig_grav, width='stretch')
+        st.markdown(f"**{status_gravidade}**")
+        if acidentes_graves > 0:
+            st.warning(f"🚑 {acidentes_graves} acidente(s) grave(s)")
+        if vias_fechadas > 0:
+            st.error(f"🚧 {vias_fechadas} via(s) fechada(s)")
+
+    with col_vel:
+        # Indicador de Velocidade Média
+        fig_vel = px.bar_polar(
+            r=[velocidade_media],
+            theta=[0],
+            range_r=[0, 80],
+            color_discrete_sequence=['green' if velocidade_media > 40 else 'yellow' if velocidade_media > 20 else 'red']
+        )
+        fig_vel.update_layout(
+            title=f"🚗 Velocidade Média: {velocidade_media:.1f} km/h",
+            polar=dict(
+                radialaxis=dict(range=[0, 80], showticklabels=False),
+                angularaxis=dict(showticklabels=False)
+            ),
+            showlegend=False,
+            height=200
+        )
+        st.plotly_chart(fig_vel, width='stretch')
+
+        # Status da velocidade
+        if velocidade_media > 40:
+            st.success("✅ Tráfego Fluindo Bem")
+        elif velocidade_media > 20:
+            st.warning("⚠️ Tráfego Moderado")
+        else:
+            st.error("🚫 Tráfego Congestionado")
+
+    with col_temp:
+        # Indicador de Temperatura
+        fig_temp = px.bar_polar(
+            r=[temperatura_atual],
+            theta=[0],
+            range_r=[0, 45],
+            color_discrete_sequence=['blue' if temperatura_atual < 15 else 'green' if temperatura_atual < 25 else 'orange' if temperatura_atual < 35 else 'red']
+        )
+        fig_temp.update_layout(
+            title=f"🌡️ Temperatura: {temperatura_atual:.1f}°C",
+            polar=dict(
+                radialaxis=dict(range=[0, 45], showticklabels=False),
+                angularaxis=dict(showticklabels=False)
+            ),
+            showlegend=False,
+            height=200
+        )
+        st.plotly_chart(fig_temp, width='stretch')
+
+        # Status da temperatura
+        if temperatura_atual < 15:
+            st.info("❄️ Frio")
+        elif temperatura_atual < 25:
+            st.success("🌤️ Agradável")
+        elif temperatura_atual < 35:
+            st.warning("☀️ Quente")
+        else:
+            st.error("🔥 Muito Quente")
+
+    # Layout Principal - Colunas
+    col1, col2 = st.columns([2, 1])
+
     with col1:
-        st.write(df.describe(include='all').T)
-    with col2:
-        st.write(pd.DataFrame({"missing": df.isna().sum(), "dtype": df.dtypes.astype(str)}))
+        st.subheader("Mapa de Incidentes")
+        
+        if df_filtered.empty:
+            st.info(f"📅 Nenhum incidente registrado para {selected_date.strftime('%d/%m/%Y')}, mas há dados de congestionamento disponíveis.")
+        else:
+            # Processar coordenadas ANTES de criar o gráfico
+            if 'location' in df_filtered.columns:
+                # Expande a string do dict para colunas reais se necessário
+                df_filtered = df_filtered.copy()  # Criar cópia para evitar warnings
+                df_filtered['lat'] = df_filtered['location'].apply(lambda x: eval(x)['y'] if isinstance(x, str) else x['y'])
+                df_filtered['lon'] = df_filtered['location'].apply(lambda x: eval(x)['x'] if isinstance(x, str) else x['x'])
+            
+            # Remover duplicatas baseadas em coordenadas e timestamp para evitar pontos repetidos
+            df_filtered = df_filtered.drop_duplicates(subset=['lat', 'lon', 'pubMillis'])
+            
+            # Criar dados customizados para o hover ANTES de criar o gráfico
+            hover_data = []
+            for idx, row in df_filtered.iterrows():
+                maps_link = create_google_maps_link(row['lat'], row['lon'])
+                coords = f"{row['lat']:.6f}, {row['lon']:.6f}"
+                hover_data.append(f"<b>{row['subtype']}</b><br>Coordenadas: {coords}<br><a href='{maps_link}' target='_blank' style='color: blue; text-decoration: underline;'>Ver no Google Maps</a>")
+            
+            # Adicionar coluna de customdata ao dataframe
+            df_filtered = df_filtered.copy()
+            df_filtered['custom_hover'] = hover_data
+            
+            # Criar gráfico Mapbox com customdata
+            fig_map = px.scatter_map(df_filtered, lat='lat', lon='lon', color='type', 
+                                       hover_name='subtype', zoom=12, height=600,
+                                       custom_data=['custom_hover'])
+            fig_map.update_layout(mapbox_style="open-street-map", margin={"r":0,"t":0,"l":0,"b":0})
+            
+            # Atualizar traces com hovertemplate correto
+            fig_map.update_traces(
+                hovertemplate="%{customdata[0]}<extra></extra>"
+            )
+            
+            st.plotly_chart(fig_map, width='stretch')
 
+    # --- MAPA DE CONGESTIONAMENTOS ---
+    if not df_jams_filtered.empty:
+        st.subheader("Mapa de Congestionamentos - Largura dos Atascos")
 
-def detect_latlon(df: pd.DataFrame):
-    lat_cols = [c for c in df.columns if c.lower() in ("lat", "latitude")]
-    lon_cols = [c for c in df.columns if c.lower() in ("lon", "lng", "longitude")]
-    if lat_cols and lon_cols:
-        return lat_cols[0], lon_cols[0]
-    return None, None
+        # Processar coordenadas dos jams
+        if 'line' in df_jams_filtered.columns:
+            # Expandir coordenadas da linha do congestionamento
+            df_jams_filtered['lat'] = df_jams_filtered['line'].apply(lambda x: eval(x)[0]['y'] if isinstance(x, str) and eval(x) else None)
+            df_jams_filtered['lon'] = df_jams_filtered['line'].apply(lambda x: eval(x)[0]['x'] if isinstance(x, str) and eval(x) else None)
 
+        # Filtrar apenas jams com coordenadas válidas
+        df_jams_valid = df_jams_filtered.dropna(subset=['lat', 'lon'])
 
-def main():
-    st.title("GEO_IA — Demo Dashboard")
+        if not df_jams_valid.empty:
+            # Calcular severidade baseada na velocidade e comprimento
+            df_jams_valid['severidade'] = 'Moderado'
+            if 'speed' in df_jams_valid.columns:
+                df_jams_valid.loc[df_jams_valid['speed'] < 10, 'severidade'] = 'Crítico'
+                df_jams_valid.loc[(df_jams_valid['speed'] >= 10) & (df_jams_valid['speed'] < 20), 'severidade'] = 'Alto'
+                df_jams_valid.loc[df_jams_valid['speed'] >= 20, 'severidade'] = 'Moderado'
 
-    # Load secrets (Streamlit Cloud) or env vars
-    api_key_secret = None
-    try:
-        api_key_secret = st.secrets.get("GDRIVE_API_KEY")
-    except Exception:
-        api_key_secret = None
+            # Traduzir severidade
+            severidade_map = {
+                'Crítico': '🔴 Crítico',
+                'Alto': '🟠 Alto',
+                'Moderado': '🟡 Moderado'
+            }
+            df_jams_valid['severidade_label'] = df_jams_valid['severidade'].map(severidade_map)
 
-    sa_json = None
-    try:
-        sa_json = st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-    except Exception:
-        sa_json = None
+            # Criar mapa de congestionamentos
+            fig_jams = px.scatter_map(
+                df_jams_valid,
+                lat='lat',
+                lon='lon',
+                color='severidade_label',
+                size='length' if 'length' in df_jams_valid.columns else None,
+                hover_name='street' if 'street' in df_jams_valid.columns else 'Congestionamento',
+                zoom=12,
+                height=400,
+                color_discrete_map={
+                    '🔴 Crítico': 'red',
+                    '🟠 Alto': 'orange',
+                    '🟡 Moderado': 'yellow'
+                }
+            )
 
-    # support base64-encoded JSON secret
-    sa_b64 = None
-    try:
-        sa_b64 = st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64")
-    except Exception:
-        sa_b64 = None
+            # Personalizar hover para mostrar informações do congestionamento
+            hover_template = "<b>%{hovertext}</b><br>"
+            if 'speed' in df_jams_valid.columns:
+                hover_template += "Velocidade: %{customdata[0]:.1f} km/h<br>"
+            if 'length' in df_jams_valid.columns:
+                hover_template += "Comprimento: %{customdata[1]:.0f} metros<br>"
+            hover_template += "Severidade: %{customdata[2]}<extra></extra>"
 
-    # If service account JSON provided as secret (raw JSON or base64), write to temp file and set env var
-    if sa_b64:
-        try:
-            import base64
+            customdata = []
+            for _, row in df_jams_valid.iterrows():
+                speed_val = row.get('speed', 0) * 3.6 if row.get('speed', 0) < 50 else row.get('speed', 0)
+                length_val = row.get('length', 0)
+                sev_val = row['severidade_label']
+                customdata.append([speed_val, length_val, sev_val])
 
-            decoded = base64.b64decode(sa_b64)
-            sa_text = decoded.decode("utf-8")
-        except Exception:
-            sa_text = None
+            fig_jams.update_traces(
+                hovertemplate=hover_template,
+                customdata=customdata
+            )
+
+            fig_jams.update_layout(
+                mapbox_style="open-street-map",
+                margin={"r":0,"t":0,"l":0,"b":0},
+                showlegend=True,
+                legend_title="Severidade do Congestionamento"
+            )
+
+            st.plotly_chart(fig_jams, width='stretch')
+
+            # Estatísticas dos congestionamentos
+            col_stats1, col_stats2, col_stats3 = st.columns(3)
+            with col_stats1:
+                total_jams = len(df_jams_valid)
+                st.metric("Total de Congestionamentos", total_jams)
+
+            with col_stats2:
+                avg_speed = (df_jams_valid['speed'] * 3.6 if df_jams_valid['speed'].mean() < 50 else df_jams_valid['speed']).mean()
+                st.metric("Velocidade Média", f"{avg_speed:.1f} km/h")
+
+            with col_stats3:
+                if 'length' in df_jams_valid.columns:
+                    total_length = df_jams_valid['length'].sum() / 1000  # converter para km
+                    st.metric("Comprimento Total", f"{total_length:.1f} km")
+                else:
+                    st.metric("Comprimento Total", "N/A")
+        else:
+            st.info("Nenhum dado de congestionamento com coordenadas válidas para a data selecionada.")
     else:
-        sa_text = sa_json
+        st.info("Nenhum dado de congestionamento encontrado para a data selecionada.")
 
-    if sa_text:
-        sa_path = os.path.join(tempfile.gettempdir(), "service_account.json")
-        with open(sa_path, "w", encoding="utf-8") as f:
-            f.write(sa_text)
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_path
-
-    st.sidebar.header("Source")
-    mode = st.sidebar.selectbox("Carregar a partir de", ["Upload local", "Links (Drive share)", "Pasta do Drive (API key)"])
-
-    files = {}
-
-    if mode == "Upload local":
-        uploaded = st.sidebar.file_uploader("Envie um ou mais JSON", accept_multiple_files=True, type=['json'])
-        if uploaded:
-            for f in uploaded:
-                files[f.name] = f.read()
-
-    elif mode == "Links (Drive share)":
-        text = st.sidebar.text_area("Cole links de compartilhamento do Drive (um por linha)")
-        if st.sidebar.button("Carregar links"):
-            for line in text.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                fid = extract_id_from_share_url(line)
-                try:
-                    b = download_public_file(fid)
-                    files[f"{fid}.json"] = b
-                except Exception as e:
-                    st.sidebar.error(f"Erro ao baixar {line}: {e}")
-
+    # --- GRÁFICOS ESTATÍSTICOS ---
+    st.subheader("Estatísticas de Alertas")
+    
+    if df_filtered.empty:
+        st.info("📊 Não há dados de incidentes para gerar estatísticas nesta data.")
     else:
-        folder_url = st.sidebar.text_input("Cole a URL da pasta do Drive")
-        # prefer secret if present
-        api_key_input = st.sidebar.text_input("(Opcional) API Key do Google", type="password", value=api_key_secret or "")
-        api_key = api_key_input if api_key_input else api_key_secret
-        if st.sidebar.button("Listar arquivos na pasta"):
-            if not folder_url:
-                st.sidebar.error("Cole a URL da pasta do Drive")
-            elif not api_key:
-                st.sidebar.error("Forneça uma API Key do Google")
-            else:
-                fid = extract_id_from_share_url(folder_url)
-                try:
-                    items = list_folder_files(fid, api_key)
-                    # include JSON and HDF5 files
-                    choices = {f['name']: f['id'] for f in items if f['name'].lower().endswith(('.json', '.h5', '.hdf5'))}
-                    pick = st.sidebar.multiselect("Escolha arquivos (JSON / HDF5)", list(choices.keys()))
-                    for name in pick:
-                        b = download_public_file(choices[name])
-                        files[name] = b
-                except Exception as e:
-                    st.sidebar.error(f"Erro listando pasta: {e}")
+        # Layout em colunas para os gráficos
+        col_graf1, col_graf2 = st.columns(2)
+        
+        with col_graf1:
+            # Gráfico por Hora 
+            fig_hora = px.bar(df_filtered['hour'].value_counts().sort_index(), 
+                             labels={'index': 'Hora', 'value': 'Qtd'},
+                             title="Incidentes por Hora")
+            st.plotly_chart(fig_hora, width='stretch')
 
-    if not files:
-        st.info("Forneça arquivos JSON (upload, links ou pasta) para começar")
-        return
+        with col_graf2:
+            # Gráfico de Subtipos 
+            fig_pie = px.pie(df_filtered, names='type', title="Proporção por Categoria")
+            st.plotly_chart(fig_pie, width='stretch')
 
-    st.sidebar.header("Arquivos carregados")
-    sel = st.sidebar.selectbox("Escolha um arquivo", list(files.keys()))
-    
-    if not sel:
-        return
-    
-    content = files[sel]
+        # Tabela de Detalhes
+        st.subheader("Lista Detalhada de Eventos")
+        # Incluir coluna 'user' se existir nos dados
+        columns_to_show = ['timestamp', 'type', 'subtype', 'street']
+        if 'user' in df_filtered.columns:
+            columns_to_show.append('user')
+        st.dataframe(df_filtered[columns_to_show].sort_values(by='timestamp', ascending=False))
 
-    # If HDF5 file selected, handle separately
-    if sel.lower().endswith('.h5') or sel.lower().endswith('.hdf5'):
-        # write bytes to temp file
-        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as tmp:
-            if isinstance(content, bytes):
-                tmp.write(content)
-            else:
-                # content may be a stream-like
-                try:
-                    tmp.write(content.read())
-                except Exception:
-                    tmp.write(bytes(content))
-            tmp_path = tmp.name
-
-        st.header(f"HDF5 file: {sel}")
-
-        def list_datasets(h5file):
-            datasets = []
-            def visitor(name, obj):
-                if isinstance(obj, h5py.Dataset):
-                    datasets.append(name)
-            h5file.visititems(visitor)
-            return datasets
-
-        try:
-            with h5py.File(tmp_path, 'r') as f:
-                ds = list_datasets(f)
-                st.write('Grupos / datasets encontrados:')
-                st.write(ds)
-                if ds:
-                    pick = st.selectbox('Escolha dataset para visualizar', ds)
-                    if pick and pick in f:
-                        dataset = f[pick]
-                        if isinstance(dataset, h5py.Dataset):
-                            arr = dataset[()]
-                        else:
-                            st.error("Item selecionado não é um dataset")
-                            return
-                    else:
-                        st.error("Dataset não encontrado")
-                        return
-                    st.write('Shape:', getattr(arr, 'shape', None), 'dtype:', getattr(arr, 'dtype', None))
-                    # If 1D or 2D numeric array, show head as table
-                    if isinstance(arr, (np.ndarray,)):
-                        if arr.ndim == 1:
-                            df = pd.DataFrame(arr, columns=[pick.split('/')[-1]])
-                            st.dataframe(df.head(100))
-                        elif arr.ndim == 2:
-                            df = pd.DataFrame(arr)
-                            st.dataframe(df.head(100))
-                        else:
-                            st.write('Dataset with more than 2 dimensions; showing a small slice:')
-                            sample = arr.reshape(arr.shape[0], -1)[:100]
-                            st.dataframe(pd.DataFrame(sample))
-                    else:
-                        st.write('Tipo de dataset não suportado para preview.')
-        except Exception as e:
-            st.error(f'Erro lendo HDF5: {e}')
-        return
-
-    try:
-        df = load_json_bytes(content)
-    except Exception as e:
-        st.error(f"Erro lendo JSON: {e}")
-        return
-
-    st.header(f"Análise: {sel}")
-    show_basic_analysis(df)
-
-    st.subheader("Visualizações")
-    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-
-    if numeric_cols:
-        st.write("**Numéricos**")
-        ncol = st.selectbox("Escolha coluna numérica", numeric_cols, key='num')
-        fig = px.histogram(df, x=ncol, nbins=50, title=f'Histograma — {ncol}')
-        st.plotly_chart(fig, use_container_width=True)
-
-    if cat_cols:
-        st.write("**Categóricos**")
-        ccol = st.selectbox("Escolha coluna categórica", cat_cols, key='cat')
-        vc = df[ccol].value_counts().iloc[:30]
-        fig2 = px.bar(x=vc.index.astype(str), y=vc.values, title=f'Top categorias — {ccol}')
-        st.plotly_chart(fig2, use_container_width=True)
-
-    # time series
-    time_cols = [c for c in df.columns if 'date' in c.lower() or 'time' in c.lower()]
-    if time_cols:
-        tcol = st.selectbox("Coluna de tempo detectada", time_cols, key='time')
-        try:
-            s = pd.to_datetime(df[tcol], errors='coerce')
-            df['_time_'] = s
-            if df['_time_'].notna().any() and numeric_cols:
-                xcol = st.selectbox("Agregue série por", numeric_cols, key='series')
-                res = df.dropna(subset=['_time_', xcol]).set_index('_time_').resample('D')[xcol].count()
-                fig3 = px.line(res.reset_index(), x=res.index, y=res.values, title=f'Série diária — {xcol}')
-                st.plotly_chart(fig3, use_container_width=True)
-        except Exception:
-            pass
-
-    lat, lon = detect_latlon(df)
-    if lat and lon:
-        st.subheader('Mapa (lat / lon detectados)')
-        map_df = df.dropna(subset=[lat, lon])[[lat, lon]].rename(columns={lat: 'lat', lon: 'lon'})
-        st.map(map_df)
-        figmap = px.scatter_geo(df.dropna(subset=[lat, lon]), lat=lat, lon=lon, hover_name=cat_cols[0] if cat_cols else None)
-        st.plotly_chart(figmap, use_container_width=True)
-
-    st.sidebar.header("Exportar")
-    if st.sidebar.button("Baixar CSV do arquivo selecionado"):
-        todownload = df.to_csv(index=False).encode('utf-8')
-        st.sidebar.download_button("Download CSV", data=todownload, file_name=sel.replace('.json', '.csv'))
-
-    st.markdown("---")
-    st.write("**Ajuda / notas**: Use a opção de `Pasta do Drive` com uma API Key se quiser listar automaticamente arquivos no diretório. Para arquivos públicos pequenos, cole o link de compartilhamento e o app tentará baixar direto.")
-
-
-if __name__ == '__main__':
-    main()
+else:
+    st.error("Nenhum arquivo de alertas encontrado na pasta do Google Drive.")

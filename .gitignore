@@ -2,4 +2,7 @@
 __pycache__/
 *.pyc
 .env
+.streamlit/secrets.toml
+debug_output.txt
+final_check.txt
 docs/relatorios/*.json
