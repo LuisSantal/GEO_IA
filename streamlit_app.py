@@ -54,18 +54,30 @@ def get_drive_service():
     try:
         creds_info = st.secrets["gcp_service_account"]
         
-        # Se for string JSON, fazer o parsing
+        # Se for string JSON, fazer o parsing com tratamento melhorado
         if isinstance(creds_info, str):
-            creds_info = json.loads(creds_info)
+            try:
+                creds_info = json.loads(creds_info)
+            except json.JSONDecodeError:
+                # Tentar remover caracteres de controle inválidos
+                creds_info_cleaned = creds_info.encode('utf-8', 'ignore').decode('utf-8')
+                try:
+                    creds_info = json.loads(creds_info_cleaned)
+                except json.JSONDecodeError as e:
+                    st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
+                    st.error("Verifique se o formato TOML no Streamlit Cloud está correto com aspas triplas: ```gcp_service_account = '''...'''```")
+                    st.stop()
+        
+        # Validar que é um dicionário
+        if not isinstance(creds_info, dict):
+            st.error("❌ Credenciais GCP não estão em formato de dicionário")
+            st.stop()
         
         creds = service_account.Credentials.from_service_account_info(creds_info)
         return build('drive', 'v3', credentials=creds)
     except KeyError:
         st.error("❌ Secret 'gcp_service_account' não encontrada!")
         st.error("Adicione as credenciais GCP em Settings → Secrets da sua app no Streamlit Cloud")
-        st.stop()
-    except json.JSONDecodeError as e:
-        st.error(f"❌ Erro ao fazer parse do JSON das credenciais: {str(e)}")
         st.stop()
     except Exception as e:
         st.error(f"❌ Erro ao autenticar com GCP: {str(e)}")
