@@ -643,6 +643,17 @@ if df_alerts is not None:
             
             # Exibir mapa
             st_folium(m, width=700, height=600)
+            
+            # Legenda de cores para incidentes
+            st.markdown("""
+            **Legenda de Cores para Incidentes (Nível de Perigo):**
+            - 🔴 **Vermelho**: ACIDENTE (Mais perigoso)
+            - 🟠 **Vermelho-laranja**: VIA FECHADA
+            - 🟠 **Laranja-vermelho**: PERIGO
+            - 🟠 **Laranja**: CONGESTIONAMENTO
+            - 🟡 **Amarelo**: ALERTA
+            - ⚫ **Cinza**: OBRAS
+            """)
 
     # --- MAPA DE CONGESTIONAMENTOS ---
     if not df_jams_filtered.empty:
