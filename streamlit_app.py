@@ -394,12 +394,12 @@ def create_mock_data():
 
     # Adicionar colunas necessárias
     if not df_alerts.empty:
-        df_alerts['timestamp'] = pd.to_datetime(df_alerts['pubMillis'] / 1000, unit='s')
+        df_alerts['timestamp'] = pd.to_datetime(df_alerts['pubMillis'], unit='ms', utc=True).dt.tz_convert('America/Sao_Paulo')
         df_alerts['date'] = df_alerts['timestamp'].dt.date
         df_alerts['hour'] = df_alerts['timestamp'].dt.hour
 
     if not df_jams.empty:
-        df_jams['timestamp'] = pd.to_datetime(df_jams['pubMillis'] / 1000, unit='s')
+        df_jams['timestamp'] = pd.to_datetime(df_jams['pubMillis'], unit='ms', utc=True).dt.tz_convert('America/Sao_Paulo')
         df_jams['date'] = df_jams['timestamp'].dt.date
         df_jams['hour'] = df_jams['timestamp'].dt.hour
 
@@ -460,9 +460,9 @@ df_alerts = load_historical_data(FOLDER_ALERTS_ID)
 if df_alerts is not None:
     
     # Processamento de Dados [cite: 258, 982]
-    df_alerts['timestamp'] = pd.to_datetime(df_alerts['pubMillis'] / 1000, unit='s')
+    df_alerts['timestamp'] = pd.to_datetime(df_alerts['pubMillis'], unit='ms', utc=True).dt.tz_convert('America/Sao_Paulo')
     df_alerts['hour'] = df_alerts['timestamp'].dt.hour
-    df_alerts['day_of_week'] = df_alerts['timestamp'].dt.day_name()
+    df_alerts['day_of_week'] = df_alerts['timestamp'].dt.tz_localize(None).dt.day_name()
     
     # Traduções [cite: 308-312, 1012-1016]
     type_map = {
@@ -502,7 +502,7 @@ if df_alerts is not None:
     # 2. Carregar Dados de Jams (para velocidade média)
     df_jams = load_historical_data(FOLDER_JAMS_ID)
     if df_jams is not None:
-        df_jams['timestamp'] = pd.to_datetime(df_jams['pubMillis'] / 1000, unit='s')
+        df_jams['timestamp'] = pd.to_datetime(df_jams['pubMillis'], unit='ms', utc=True).dt.tz_convert('America/Sao_Paulo')
 
     # Determinar datas disponíveis COM BASE EM TODOS OS DADOS CARREGADOS
     all_dates = set()
