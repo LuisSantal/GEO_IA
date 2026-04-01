@@ -13,25 +13,32 @@ import colorsys
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 
-# --- CONFIGURAÇÃO DE AUTO-REFRESH A CADA 10 MINUTOS ---
+# --- AUTO-REFRESH CORRIGIDO (SEM LOOP INFINITO) ---
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now()
+    st.session_state.refresh_count = 0
 
-tempo_desde_refresh = datetime.now() - st.session_state.last_refresh
-if tempo_desde_refresh.total_seconds() >= 600:
+# CALCULAR TEMPO DECORRIDO UMA ÚNICA VEZ
+tempo_decorrido = (datetime.now() - st.session_state.last_refresh).total_seconds()
+
+# VERIFICAR SE PASSARAM 10 MINUTOS
+if tempo_decorrido >= 600:
     st.session_state.last_refresh = datetime.now()
+    st.session_state.refresh_count += 1
     st.cache_data.clear()
     st.rerun()
+    st.stop()  # ← PARA A EXECUÇÃO AQUI
 
-# ✅ CÁLCULO CORRETO - TEMPO RESTANTE
-total_segundos_restantes = max(0, 600 - int(tempo_desde_refresh.total_seconds()))
-minutos_restantes = total_segundos_restantes // 60
-segundos_restantes = total_segundos_restantes % 60
+# CONTADOR REGRESSIVO CORRETO
+segundos_restantes = max(0, 600 - int(tempo_decorrido))
+minutos = segundos_restantes // 60
+segundos = segundos_restantes % 60
 
 st.sidebar.markdown(f"""
-**⏰ Auto-Refresh**  
-⏳ **{minutos_restantes}:{segundos_restantes:02d}** restantes  
-🕐 Último: {st.session_state.last_refresh.strftime('%H:%M:%S')}
+**⏰ Auto-Refresh #{st.session_state.refresh_count}**  
+⏳ **{minutos}:{segundos:02d}** restantes  
+🕐 {st.session_state.last_refresh.strftime('%H:%M:%S')}  
+🔄 Próximo em {minutos}:{segundos:02d}
 """)
 
 # --- CONSTANTES ---
