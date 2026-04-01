@@ -13,33 +13,20 @@ import colorsys
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 
-# --- AUTO-REFRESH CORRIGIDO (SEM LOOP INFINITO) ---
+# --- AUTO-REFRESH ESTÁVEL ---
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now()
-    st.session_state.refresh_count = 0
 
-# CALCULAR TEMPO DECORRIDO UMA ÚNICA VEZ
 tempo_decorrido = (datetime.now() - st.session_state.last_refresh).total_seconds()
 
-# VERIFICAR SE PASSARAM 10 MINUTOS
 if tempo_decorrido >= 600:
     st.session_state.last_refresh = datetime.now()
-    st.session_state.refresh_count += 1
     st.cache_data.clear()
     st.rerun()
-    st.stop()  # ← PARA A EXECUÇÃO AQUI
 
-# CONTADOR REGRESSIVO CORRETO
+# Sidebar - SEM LOOP
 segundos_restantes = max(0, 600 - int(tempo_decorrido))
-minutos = segundos_restantes // 60
-segundos = segundos_restantes % 60
-
-st.sidebar.markdown(f"""
-**⏰ Auto-Refresh #{st.session_state.refresh_count}**  
-⏳ **{minutos}:{segundos:02d}** restantes  
-🕐 {st.session_state.last_refresh.strftime('%H:%M:%S')}  
-🔄 Próximo em {minutos}:{segundos:02d}
-""")
+st.sidebar.metric("⏰ Refresh", f"{segundos_restantes//60}:{segundos_restantes%60:02d}")
 
 # --- CONSTANTES ---
 # Substitua pelos IDs reais das suas pastas no Google Drive
