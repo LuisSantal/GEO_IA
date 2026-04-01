@@ -210,7 +210,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     
     # 1. Escala Gráfica (Barra de distância)
     # Na versão 0.14.0, a forma mais estável de adicionar a escala:
-    m.add_child(folium.features.ScaleControl(position='bottomleft', metric=True, imperial=False))
+    m.add_child(folium.ScaleControl(position='bottomleft', metric=True, imperial=False))
 
     # 2. Posição do Mouse (Coordenadas em tempo real)
     plugins.MousePosition(
