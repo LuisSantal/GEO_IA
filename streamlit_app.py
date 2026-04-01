@@ -469,8 +469,8 @@ if df_alerts is not None:
 
     # Calcular gravidade baseada nos incidentes do dia (apenas alerts)
     incidentes_dia = len(df_filtered) if not df_filtered.empty else 0
-    acidentes_graves = len(df_filtered[df_filtered['type'] == 'ACIDENTE']) if not df_filtered.empty else 0
-    vias_fechadas = len(df_filtered[df_filtered['type'] == 'VIA FECHADA']) if not df_filtered.empty else 0
+    acidentes_graves = len(df_filtered[df_filtered['type'] == 'ACIDENTE']) if not df_filtered.empty and 'type' in df_filtered.columns else 0
+    vias_fechadas = len(df_filtered[df_filtered['type'] == 'ROAD_CLOSED']) if not df_filtered.empty and 'type' in df_filtered.columns else 0
 
     # Lógica de gravidade: mais incidentes = mais grave
     if incidentes_dia == 0:
