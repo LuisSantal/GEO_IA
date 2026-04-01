@@ -374,13 +374,18 @@ if df_alerts is not None:
     st.sidebar.subheader("🔍 Filtros Avançados")
     
     # 1. Filtro por Tipo de Alerta
-    tipos_disponiveis = sorted(df_alerts['type'].unique().tolist()) if df_alerts is not None else []
-    filtro_tipo = st.sidebar.multiselect(
-        "🚨 Tipo de Alerta",
-        options=tipos_disponiveis,
-        default=tipos_disponiveis,
-        help="Selecione os tipos de alerta que deseja visualizar"
-    )
+    # Verifica se o DataFrame existe, se não está vazio e se a coluna 'type' está lá
+    if df_alerts is not None and not df_alerts.empty and 'type' in df_alerts.columns:
+        tipos_disponiveis = sorted(df_alerts['type'].unique().tolist())
+        filtro_tipo = st.sidebar.multiselect(
+            "🚨 Tipo de Alerta",
+            options=tipos_disponiveis,
+            default=tipos_disponiveis,  # Todos selecionados por padrão
+            help="Selecione os tipos de alertas para exibir"
+        )
+    else:
+        tipos_disponiveis = []
+        filtro_tipo = []
     
     # 2. Filtro por Rua
     filtro_rua = st.sidebar.text_input(
