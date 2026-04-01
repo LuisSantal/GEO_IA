@@ -106,17 +106,20 @@ def get_congestion_color(speed_kmh):
 def get_danger_color(incident_type):
     """
     Retorna cor baseada no tipo de incidente (perigo).
+    CORRIGIDO: Trata valores None, NaN e strings vazias
     """
+    if pd.isna(incident_type) or incident_type is None or str(incident_type).strip() == '':
+        return '#0099FF'  # Azul padrão para casos inválidos
+    
     danger_colors = {
-        'ACIDENTE': '#FF0000',        # Vermelho - Mais perigoso
-        'VIA FECHADA': '#FF4400',      # Vermelho-laranja
-        'CONGESTIONAMENTO': '#FFAA00',  # Laranja
-        'PERIGO': '#FF6600',            # Laranja-vermelho
-        'ALERTA': '#FFDD00',            # Amarelo
-        'OBRAS': '#AAAAAA',             # Cinza
+        'ACIDENTE': '#FF0000',        
+        'VIA FECHADA': '#FF4400',     
+        'CONGESTIONAMENTO': '#FFAA00', 
+        'PERIGO': '#FF6600',           
+        'ALERTA': '#FFDD00',           
+        'OBRAS': '#AAAAAA',             
     }
-    return danger_colors.get(str(incident_type).upper(), '#0099FF')  # Azul padrão
-
+    return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     """
     Cria um mapa Folium com:
@@ -555,125 +558,117 @@ if df_alerts is not None:
         else:
             st.error("🚫 Tráfego Congestionado")
 
-    with col_temp:
-        # Indicador de Temperatura
-        fig_temp = px.bar_polar(
-            r=[temperatura_atual],
-            theta=[0],
-            range_r=[0, 45],
-            color_discrete_sequence=['blue' if temperatura_atual < 15 else 'green' if temperatura_atual < 25 else 'orange' if temperatura_atual < 35 else 'red']
-        )
-        fig_temp.update_layout(
-            title=f"🌡️ Temperatura: {temperatura_atual:.1f}°C",
-            polar=dict(
-                radialaxis=dict(range=[0, 45], showticklabels=False),
-                angularaxis=dict(showticklabels=False)
-            ),
-            showlegend=False,
-            height=200
-        )
-        st.plotly_chart(fig_temp, width='stretch')
-
-        # Status da temperatura
-        if temperatura_atual < 15:
-            st.info("❄️ Frio")
-        elif temperatura_atual < 25:
-            st.success("🌤️ Agradável")
-        elif temperatura_atual < 35:
-            st.warning("☀️ Quente")
+with col1:
+    st.subheader("🗺️ Mapa de Incidentes - Nível de Perigo")
+    
+    if df_filtered.empty:
+        st.info(f"📅 Nenhum incidente registrado para {selected_date.strftime('%d/%m/%Y')}, mas há dados de congestionamento disponíveis.")
+    else:
+        # VERIFICAÇÃO DE SEGURANÇA: Garantir colunas necessárias
+        required_cols = ['lat', 'lon']
+        if not all(col in df_filtered.columns for col in required_cols):
+            st.error("❌ Dados insuficientes para gerar mapa (faltam colunas lat/lon)")
         else:
-            st.error("🔥 Muito Quente")
+            # Processar coordenadas com segurança
+            df_map = df_filtered.copy()
+            
+            # Garantir que temos coordenadas válidas
+            df_map = df_map.dropna(subset=['lat', 'lon'])
+            df_map = df_map[(df_map['lat'].notna()) & (df_map['lon'].notna())]
+            df_map = df_map[(df_map['lat'].between(-30, -20)) & (df_map['lon'].between(-55, -54))]
+            
+            if df_map.empty:
+                st.warning("⚠️ Nenhum incidente com coordenadas válidas para exibir no mapa.")
+            else:
+                # Remover duplicatas
+                df_map = df_map.drop_duplicates(subset=['lat', 'lon', 'pubMillis'])
+                
+                # Calcular centro do mapa
+                center_lat = df_map['lat'].mean()
+                center_lon = df_map['lon'].mean()
+                
+                # Criar mapa Folium
+                m = create_folium_map_with_compass(center_lat, center_lon, zoom_level=12)
+                
+                # Adicionar marcadores COM VERIFICAÇÕES
+                for idx, row in df_map.iterrows():
+                    try:
+                        # Verificar se type existe e é válido
+                        incident_type = row.get('type', 'DESCONHECIDO')
+                        maps_link = create_google_maps_link(row['lat'], row['lon'])
+                        color = get_danger_color(incident_type)
+                        
+                        # Tipo de ícone seguro
+                        icon_type = 'exclamation-triangle' if str(incident_type).upper() == 'ACIDENTE' else 'info-sign'
+                        
+                        # Popup seguro
+                        timestamp_str = (row['timestamp'].strftime('%H:%M:%S') 
+                                       if hasattr(row['timestamp'], 'strftime') 
+                                       else str(row['timestamp']))
+                        
+                        folium.CircleMarker(
+                            location=[row['lat'], row['lon']],
+                            radius=8,
+                            popup=f"""
+                            <div style='font-size: 12px; width: 250px;'>
+                                <b>{row.get('subtype', 'N/A')}</b><br>
+                                <b>Tipo:</b> {incident_type}<br>
+                                <b>Rua:</b> {row.get('street', 'N/A')}<br>
+                                <b>Hora:</b> {timestamp_str}<br>
+                                <a href='{maps_link}' target='_blank' style='color: blue; text-decoration: underline;'>Ver no Google Maps</a>
+                            </div>
+                            """,
+                            color=color,
+                            fill=True,
+                            fillColor=color,
+                            fillOpacity=0.7,
+                            weight=2,
+                            tooltip=f"{row.get('subtype', 'N/A')} - {incident_type}"
+                        ).add_to(m)
+                        
+                    except Exception as e:
+                        # Ignorar linhas problemáticas silenciosamente
+                        continue
+                
+                # Exibir mapa
+                st_folium(m, width=700, height=600)
+                
+                # Legenda
+                st.markdown("""
+                **Legenda de Cores para Incidentes (Nível de Perigo):**
+                - 🔴 **Vermelho**: ACIDENTE (Mais perigoso)
+                - 🟠 **Vermelho-laranja**: VIA FECHADA
+                - 🟠 **Laranja-vermelho**: PERIGO
+                - 🟠 **Laranja**: CONGESTIONAMENTO
+                - 🟡 **Amarelo**: ALERTA
+                - ⚫ **Cinza**: OBRAS
+                """)
 
-    # Layout Principal - Colunas
-    col1, col2 = st.columns([2, 1])
+# --- MAPA DE CONGESTIONAMENTOS ---
+if not df_jams_filtered.empty:
+    st.subheader("🗺️ Mapa de Congestionamentos - Paleta Verde (Livre) → Vermelho (Parado)")
 
-    with col1:
-        st.subheader("🗺️ Mapa de Incidentes - Nível de Perigo")
+    # ===== CORREÇÃO PARTE 3: VERIFICAÇÕES DE SEGURANÇA =====
+    # Processar coordenadas dos jams COM SEGURANÇA
+    df_jams_valid = df_jams_filtered.copy()
+    
+    # 1. Garantir colunas necessárias existem
+    if 'lat' not in df_jams_valid.columns or 'lon' not in df_jams_valid.columns:
+        st.warning("⚠️ Dados de congestionamento sem coordenadas válidas.")
+    else:
+        # 2. Filtrar coordenadas VÁLIDAS e DENTRO DE FOZ DO IGUAÇU
+        df_jams_valid = df_jams_valid.dropna(subset=['lat', 'lon', 'speed'])
+        df_jams_valid = df_jams_valid[
+            (df_jams_valid['lat'].between(-26, -25)) & 
+            (df_jams_valid['lon'].between(-55, -54))
+        ]
         
-        if df_filtered.empty:
-            st.info(f"📅 Nenhum incidente registrado para {selected_date.strftime('%d/%m/%Y')}, mas há dados de congestionamento disponíveis.")
-        else:
-            # Processar coordenadas ANTES de criar o gráfico
-            if 'location' in df_filtered.columns:
-                # Expande a string do dict para colunas reais se necessário
-                df_filtered = df_filtered.copy()  # Criar cópia para evitar warnings
-                df_filtered['lat'] = df_filtered['location'].apply(lambda x: eval(x)['y'] if isinstance(x, str) else x['y'])
-                df_filtered['lon'] = df_filtered['location'].apply(lambda x: eval(x)['x'] if isinstance(x, str) else x['x'])
-            
-            # Remover duplicatas baseadas em coordenadas e timestamp para evitar pontos repetidos
-            df_filtered = df_filtered.drop_duplicates(subset=['lat', 'lon', 'pubMillis'])
-            
-            # Calcular centro do mapa
-            center_lat = df_filtered['lat'].mean()
-            center_lon = df_filtered['lon'].mean()
-            
-            # Criar mapa Folium com compass e zoom
-            m = create_folium_map_with_compass(center_lat, center_lon, zoom_level=12)
-            
-            # Adicionar marcadores com cores dinâmicas baseadas em tipo de incidente
-            for idx, row in df_filtered.iterrows():
-                maps_link = create_google_maps_link(row['lat'], row['lon'])
-                color = get_danger_color(row['type'])
-                
-                # Determinar ícone baseado no tipo
-                icon_type = 'exclamation-triangle' if row['type'] == 'ACIDENTE' else 'info-sign'
-                
-                folium.CircleMarker(
-                    location=[row['lat'], row['lon']],
-                    radius=8,
-                    popup=f"""
-                    <div style='font-size: 12px; width: 250px;'>
-                        <b>{row['subtype']}</b><br>
-                        <b>Tipo:</b> {row['type']}<br>
-                        <b>Rua:</b> {row.get('street', 'N/A')}<br>
-                        <b>Hora:</b> {row['timestamp'].strftime('%H:%M:%S') if hasattr(row['timestamp'], 'strftime') else row['timestamp']}<br>
-                        <a href='{maps_link}' target='_blank' style='color: blue; text-decoration: underline;'>Ver no Google Maps</a>
-                    </div>
-                    """,
-                    color=color,
-                    fill=True,
-                    fillColor=color,
-                    fillOpacity=0.7,
-                    weight=2,
-                    tooltip=f"{row['subtype']} - {row['type']}"
-                ).add_to(m)
-            
-            # Exibir mapa
-            st_folium(m, width=700, height=600)
-            
-            # Legenda de cores para incidentes
-            st.markdown("""
-            **Legenda de Cores para Incidentes (Nível de Perigo):**
-            - 🔴 **Vermelho**: ACIDENTE (Mais perigoso)
-            - 🟠 **Vermelho-laranja**: VIA FECHADA
-            - 🟠 **Laranja-vermelho**: PERIGO
-            - 🟠 **Laranja**: CONGESTIONAMENTO
-            - 🟡 **Amarelo**: ALERTA
-            - ⚫ **Cinza**: OBRAS
-            """)
-
-    # --- MAPA DE CONGESTIONAMENTOS ---
-    if not df_jams_filtered.empty:
-        st.subheader("🗺️ Mapa de Congestionamentos - Paleta Verde (Livre) → Vermelho (Parado)")
-
-        # Processar coordenadas dos jams
-        if 'line' in df_jams_filtered.columns:
-            # Expandir coordenadas da linha do congestionamento
-            df_jams_filtered['lat'] = df_jams_filtered['line'].apply(lambda x: eval(x)[0]['y'] if isinstance(x, str) and eval(x) else None)
-            df_jams_filtered['lon'] = df_jams_filtered['line'].apply(lambda x: eval(x)[0]['x'] if isinstance(x, str) and eval(x) else None)
-
-        # Filtrar apenas jams com coordenadas válidas
-        df_jams_valid = df_jams_filtered.dropna(subset=['lat', 'lon'])
-
         if not df_jams_valid.empty:
-            # Calcular severidade baseada na velocidade e comprimento
+            # 3. Calcular severidade e speed_kmh
             df_jams_valid['severidade'] = 'Moderado'
-            if 'speed' in df_jams_valid.columns:
-                df_jams_valid.loc[df_jams_valid['speed'] < 10, 'severidade'] = 'Crítico'
-                df_jams_valid.loc[(df_jams_valid['speed'] >= 10) & (df_jams_valid['speed'] < 20), 'severidade'] = 'Alto'
-                df_jams_valid.loc[df_jams_valid['speed'] >= 20, 'severidade'] = 'Moderado'
-
-            # Traduzir severidade
+            df_jams_valid.loc[df_jams_valid['speed'] < 10, 'severidade'] = 'Crítico'
+            df_jams_valid.loc[(df_jams_valid['speed'] >= 10) & (df_jams_valid['speed'] < 20), 'severidade'] = 'Alto'
+            
             severidade_map = {
                 'Crítico': '🔴 Crítico',
                 'Alto': '🟠 Alto',
@@ -681,7 +676,7 @@ if df_alerts is not None:
             }
             df_jams_valid['severidade_label'] = df_jams_valid['severidade'].map(severidade_map)
             
-            # Converter velocidade para km/h se necessário
+            # Converter velocidade para km/h
             df_jams_valid['speed_kmh'] = df_jams_valid['speed'].apply(
                 lambda x: (x * 3.6) if x < 50 else x
             )
@@ -690,35 +685,46 @@ if df_alerts is not None:
             center_lat = df_jams_valid['lat'].mean()
             center_lon = df_jams_valid['lon'].mean()
             
-            # Criar mapa Folium com compass e zoom
+            # Criar mapa Folium
             m_jams = create_folium_map_with_compass(center_lat, center_lon, zoom_level=12)
             
-            # Adicionar marcadores com cores dinâmicas baseadas em velocidade
+            # ===== LOOP SEGURO COM TRY/EXCEPT =====
             for idx, row in df_jams_valid.iterrows():
-                color = get_congestion_color(row.get('speed_kmh', 0))
-                
-                # Tamanho do círculo baseado no comprimento
-                size = min(10, max(3, row.get('length', 100) / 100)) if 'length' in row else 5
-                
-                folium.CircleMarker(
-                    location=[row['lat'], row['lon']],
-                    radius=size,
-                    popup=f"""
-                    <div style='font-size: 12px; width: 250px;'>
-                        <b>{row.get('street', 'Congestionamento')}</b><br>
-                        <b>Velocidade:</b> {row.get('speed_kmh', 0):.1f} km/h<br>
-                        <b>Comprimento:</b> {row.get('length', 0):.0f} metros<br>
-                        <b>Severidade:</b> {row['severidade_label']}<br>
-                        <b>Hora:</b> {row.get('timestamp', 'N/A').strftime('%H:%M:%S') if hasattr(row.get('timestamp', 'N/A'), 'strftime') else str(row.get('timestamp', 'N/A'))}
-                    </div>
-                    """,
-                    color=color,
-                    fill=True,
-                    fillColor=color,
-                    fillOpacity=0.6,
-                    weight=2,
-                    tooltip=f"Velocidade: {row.get('speed_kmh', 0):.1f} km/h"
-                ).add_to(m_jams)
+                try:
+                    speed_kmh = row.get('speed_kmh', 0)
+                    color = get_congestion_color(speed_kmh)
+                    
+                    # Tamanho seguro
+                    size = min(10, max(3, row.get('length', 100) / 100)) if 'length' in df_jams_valid.columns else 5
+                    
+                    # Timestamp seguro
+                    timestamp_str = (row.get('timestamp', 'N/A').strftime('%H:%M:%S') 
+                                   if hasattr(row.get('timestamp', 'N/A'), 'strftime') 
+                                   else str(row.get('timestamp', 'N/A')))
+                    
+                    folium.CircleMarker(
+                        location=[row['lat'], row['lon']],
+                        radius=size,
+                        popup=f"""
+                        <div style='font-size: 12px; width: 250px;'>
+                            <b>{row.get('street', 'Congestionamento')}</b><br>
+                            <b>Velocidade:</b> {speed_kmh:.1f} km/h<br>
+                            <b>Comprimento:</b> {row.get('length', 0):.0f} metros<br>
+                            <b>Severidade:</b> {row.get('severidade_label', 'N/A')}<br>
+                            <b>Hora:</b> {timestamp_str}
+                        </div>
+                        """,
+                        color=color,
+                        fill=True,
+                        fillColor=color,
+                        fillOpacity=0.6,
+                        weight=2,
+                        tooltip=f"Velocidade: {speed_kmh:.1f} km/h"
+                    ).add_to(m_jams)
+                    
+                except Exception as e:
+                    # Ignora linhas problemáticas silenciosamente
+                    continue
             
             # Exibir mapa
             st_folium(m_jams, width=700, height=500)
@@ -745,43 +751,11 @@ if df_alerts is not None:
 
             with col_stats3:
                 if 'length' in df_jams_valid.columns:
-                    total_length = df_jams_valid['length'].sum() / 1000  # converter para km
+                    total_length = df_jams_valid['length'].sum() / 1000
                     st.metric("Comprimento Total", f"{total_length:.1f} km")
                 else:
                     st.metric("Comprimento Total", "N/A")
         else:
-            st.info("Nenhum dado de congestionamento com coordenadas válidas para a data selecionada.")
-    else:
-        st.info("Nenhum dado de congestionamento encontrado para a data selecionada.")
-
-    # --- GRÁFICOS ESTATÍSTICOS ---
-    st.subheader("Estatísticas de Alertas")
-    
-    if df_filtered.empty:
-        st.info("📊 Não há dados de incidentes para gerar estatísticas nesta data.")
-    else:
-        # Layout em colunas para os gráficos
-        col_graf1, col_graf2 = st.columns(2)
-        
-        with col_graf1:
-            # Gráfico por Hora 
-            fig_hora = px.bar(df_filtered['hour'].value_counts().sort_index(), 
-                             labels={'index': 'Hora', 'value': 'Qtd'},
-                             title="Incidentes por Hora")
-            st.plotly_chart(fig_hora, width='stretch')
-
-        with col_graf2:
-            # Gráfico de Subtipos 
-            fig_pie = px.pie(df_filtered, names='type', title="Proporção por Categoria")
-            st.plotly_chart(fig_pie, width='stretch')
-
-        # Tabela de Detalhes
-        st.subheader("Lista Detalhada de Eventos")
-        # Incluir coluna 'user' se existir nos dados
-        columns_to_show = ['timestamp', 'type', 'subtype', 'street']
-        if 'user' in df_filtered.columns:
-            columns_to_show.append('user')
-        st.dataframe(df_filtered[columns_to_show].sort_values(by='timestamp', ascending=False))
-
+            st.info("⚠️ Nenhum congestionamento com coordenadas válidas em Foz do Iguaçu.")
 else:
-    st.error("Nenhum arquivo de alertas encontrado na pasta do Google Drive.")
+    st.info("ℹ️ Nenhum dado de congestionamento encontrado para a data selecionada.")
