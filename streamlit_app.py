@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import folium
 from streamlit_folium import st_folium
 import colorsys
-
+from folium.plugins import MousePosition
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 
@@ -57,7 +57,7 @@ def generate_incidents_map(df_filtered):
             ).add_to(m)
         except:
             continue
-    
+    st.sidebar.write(f"🔍 Nível de Zoom Ativo: 13 (Escala Urbana)")
     return m
 
 @st.cache_resource(ttl=600, show_spinner=False)
@@ -91,7 +91,7 @@ def generate_jams_map(df_jams_filtered):
             ).add_to(m)
         except:
             continue
-    
+    st.sidebar.write(f"🔍 Nível de Zoom Ativo: 13 (Escala Urbana)")
     return m
 # SIDEBAR COM BOTÃO MANUAL
 st.sidebar.markdown("### ⏰ Refresh Manual")
@@ -236,7 +236,18 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     '''
     
     m.get_root().html.add_child(folium.Element(north_html))
-    
+    # 3. Adicionar Escala Gráfica (Escala do Mapa)
+    folium.ScaleControl(position='bottomleft', metric=True, imperial=False).add_to(m)
+
+    # 4. Adicionar Posição do Mouse (Coordenadas em tempo real)
+    MousePosition(
+        position='bottomright',
+        separator=' | ',
+        empty_string='Fora do Mapa',
+        lng_first=False,
+        num_digits=4,
+        prefix='Coord:'
+    ).add_to(m)
     # Nota: Folium adiciona automaticamente a escala do mapa
     # ScaleControl não está disponível em folium 0.14.0
     # Escala visual integrada: zoom scale + north compass + markers coloridos
@@ -391,12 +402,12 @@ st.sidebar.divider()
 df_alerts = load_historical_data(FOLDER_ALERTS_ID)
 if df_alerts is not None:
     
-    # Processamento de Dados [cite: 258, 982]
+    # Processamento de Dados 
     # Nota: Timestamps já foram normalizados pela função normalize_timestamps_local
     df_alerts['hour'] = df_alerts['timestamp'].dt.hour
     df_alerts['day_of_week'] = df_alerts['timestamp'].dt.day_name()
     
-    # Traduções [cite: 308-312, 1012-1016]
+    # Traduções 
     # Nota: Dados mockados já vêm em português, então só aplicamos se for dados reais
     type_map = {
         'ROAD_CLOSED': 'VIA FECHADA',
@@ -658,6 +669,7 @@ col_map1, col_map2 = st.columns(2)
 # Segundo: Preenchemos a Coluna 1
 with col_map1:
     st.markdown("### 🚨 Incidentes")
+    st.caption("📍 Centro: -25.54, -54.58 | 🗺️ Limite N: -25.40")
     # Chamamos a função cacheada
     mapa_inc = generate_incidents_map(df_filtered)
     
@@ -671,6 +683,7 @@ with col_map1:
 # Terceiro: Preenchemos a Coluna 2
 with col_map2:
     st.markdown("### 🚗 Congestionamentos")
+    st.caption("📍 Centro: -25.54, -54.58 | 🗺️ Limite S: -25.65")
     mapa_jam = generate_jams_map(df_jams_filtered)
     
     if mapa_jam is not None:
