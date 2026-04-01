@@ -7,6 +7,7 @@ import tempfile
 import json
 from datetime import datetime, timedelta
 import folium
+from folium import plugins
 from streamlit_folium import st_folium
 import colorsys
 from folium.plugins import MousePosition
@@ -192,6 +193,11 @@ def get_danger_color(incident_type):
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
+    """
+    Cria um mapa Folium com todas as notações cartográficas:
+    - Escala, Bússola, Medição e Coordenadas do Mouse.
+    """
+    # IMPORTANTE: Criar o objeto do mapa primeiro!
     m = folium.Map(
         location=[lat, lon],
         zoom_start=zoom_level,
@@ -199,18 +205,49 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
         max_bounds=True
     )
     
-    folium.LayerControl(position='topright', collapsed=False).add_to(m)
+    # Importar plugins de forma segura dentro da função
+    from folium import plugins
     
-    # HTML do Norte (seu código mantido)
-    north_html = '''<div style="position: fixed; ...">↑</div>...'''
+    # 1. Escala Gráfica (Barra de distância)
+    # Na versão 0.14.0, a forma mais estável de adicionar a escala:
+    m.add_child(folium.features.ScaleControl(position='bottomleft', metric=True, imperial=False))
+
+    # 2. Posição do Mouse (Coordenadas em tempo real)
+    plugins.MousePosition(
+        position='topright',
+        separator=' | ',
+        empty_string='Fora do Mapa',
+        lng_first=False,
+        num_digits=4,
+        prefix='Coord:'
+    ).add_to(m)
+
+    # 3. Ferramenta de Medição (Régua)
+    plugins.MeasureControl(
+        position='bottomright', 
+        primary_length_unit='kilometers',
+        secondary_length_unit='meters'
+    ).add_to(m)
+
+    # 4. Seta do Norte (HTML fixo que você já tinha)
+    north_html = '''
+    <div style="position: fixed; 
+        top: 50px; right: 50px; width: 40px; height: 40px; 
+        background-color: white; border:2px solid grey; z-index:9999; 
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 5px;">
+        <div style="font-size: 20px; color: red; font-weight: bold;">↑</div>
+    </div>
+    <div style="position: fixed; 
+        top: 85px; right: 50px; width: 40px; text-align: center; 
+        z-index:9999; font-weight: bold; color: #333;">
+        <small>N</small>
+    </div>
+    '''
     m.get_root().html.add_child(folium.Element(north_html))
     
-    # ADICIONADO: Escala e Plugins
-    from folium.plugins import MousePosition, MeasureControl
-    
-    m.add_child(folium.ControlScale(position='bottomleft'))
-    m.add_child(MeasureControl(position='bottomright'))
-    m.add_child(MousePosition(position='topright', prefix='Lat/Lon:'))
+    # Adicionar controle de camadas por último
+    folium.LayerControl(position='topright', collapsed=True).add_to(m)
     
     return m
 
