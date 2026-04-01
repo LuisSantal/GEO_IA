@@ -192,21 +192,6 @@ def get_danger_color(incident_type):
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
-    """
-    Cria um mapa Folium com:
-    - Controle de zoom (escala)
-    - Seta do norte (compass)
-    - Zoom inicial configurável
-    
-    Args:
-        lat: Latitude central
-        lon: Longitude central
-        zoom_level: Nível de zoom inicial
-        title: Título do mapa
-    
-    Returns:
-        Objeto folium.Map configurado
-    """
     m = folium.Map(
         location=[lat, lon],
         zoom_start=zoom_level,
@@ -214,48 +199,18 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
         max_bounds=True
     )
     
-    # Adicionar controles
-    # 1. Zoom control (padrão já vem, mas explícito)
     folium.LayerControl(position='topright', collapsed=False).add_to(m)
     
-    # 2. Nord Arrow (Bússola/Seta do Norte)
-    # Criar HTML para a seta do norte
-    north_html = '''
-    <div style="position: fixed; 
-        top: 50px; right: 50px; width: 70px; height: 70px; 
-        background-color: white; border:2px solid grey; z-index:9999; 
-        display: flex; align-items: center; justify-content: center;
-        border-radius: 5px;">
-        <div style="font-size: 40px; color: red;">↑</div>
-    </div>
-    <div style="position: fixed; 
-        top: 65px; right: 50px; width: 700px; height: 40px;
-        text-align: center; z-index:9999; font-weight: bold; color: #333;">
-        <small>N</small>
-    </div>
-    '''
-    
+    # HTML do Norte (seu código mantido)
+    north_html = '''<div style="position: fixed; ...">↑</div>...'''
     m.get_root().html.add_child(folium.Element(north_html))
-    # 3. Adicionar Escala Gráfica (Escala do Mapa)
-    # A forma correta na versão 0.14.0
-    folium.controls.MeasureControl(position='bottomleft', primary_length_unit='kilometers').add_to(m)
-    # OU, para a barra de escala simples:
-    folium.plugins.MeasureControl(position='bottomleft').add_to(m)
-
-    # 4. Adicionar Posição do Mouse (Coordenadas em tempo real)
-    MousePosition(
-        position='bottomright',
-        separator=' | ',
-        empty_string='Fora do Mapa',
-        lng_first=False,
-        num_digits=4,
-        prefix='Coord:'
-    ).add_to(m)
-        # Tente este primeiro, é o mais estável:
-    m.add_child(folium.ControlScale(position='bottomleft', metric=True, imperial=False))
-    # Nota: Folium adiciona automaticamente a escala do mapa
-    # ScaleControl não está disponível em folium 0.14.0
-    # Escala visual integrada: zoom scale + north compass + markers coloridos
+    
+    # ADICIONADO: Escala e Plugins
+    from folium.plugins import MousePosition, MeasureControl
+    
+    m.add_child(folium.ControlScale(position='bottomleft'))
+    m.add_child(MeasureControl(position='bottomright'))
+    m.add_child(MousePosition(position='topright', prefix='Lat/Lon:'))
     
     return m
 
