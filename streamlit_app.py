@@ -648,82 +648,49 @@ if df_alerts is not None:
         else:
             st.error("🚫 Tráfego Congestionado")
 
-# ===== LAYOUT PRINCIPAL - LINHAS 561-761 CORRIGIDAS =====
+# --- SEÇÃO DE MAPAS EM TEMPO REAL ---
 st.markdown("---")
+st.subheader("🗺️ Mapas em Tempo Real")
 
-# 1. CRIAR COLUNAS COM VERIFICAÇÃO DE SEGURANÇA
-if not df_filtered.empty and 'lat' in df_filtered.columns and 'lon' in df_filtered.columns:
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.subheader("🗺️ Mapas em Tempo Real")
+# Criamos duas colunas principais para os mapas ficarem lado a lado
 col_map1, col_map2 = st.columns(2)
 
 with col_map1:
     st.markdown("### 🚨 Incidentes")
+    # Usamos a função de cache que você já definiu no início do código
     mapa_inc = generate_incidents_map(df_filtered)
+    
     if mapa_inc is not None:
-        st_folium(mapa_inc, width=600, height=450, key="mapa_incidentes")
+        st_folium(mapa_inc, width=None, height=450, key="mapa_incidente_final")
+        st.markdown("**Legenda:** 🔴 Acidente | 🟠 Perigo | 🟡 Alerta | ⚫ Obras")
     else:
-        st.info("📭 Sem incidentes")
+        st.info("📭 Sem incidentes para exibir com os filtros atuais.")
 
 with col_map2:
-    st.markdown("### 🚗 Congestionamentos") 
+    st.markdown("### 🚗 Congestionamentos")
+    # Usamos a função de cache para os jams
     mapa_jam = generate_jams_map(df_jams_filtered)
-    if mapa_jam is not None:
-        st_folium(mapa_jam, width=600, height=450, key="mapa_jams")
-    else:
-        st.info("🛣️ Tráfego normal")
-        
-        # Processar coordenadas (seu código mantido + otimizado)
-        df_map = df_filtered.copy()
-        df_map = df_map.dropna(subset=['lat', 'lon'])
-        df_map = df_map[(df_map['lat'].between(-26, -25)) & (df_map['lon'].between(-55, -54))]
-        
-        if df_map.empty:
-            st.warning("⚠️ Nenhum incidente com coordenadas válidas.")
-        else:
-            df_map = df_map.drop_duplicates(subset=['lat', 'lon', 'pubMillis'])
-            center_lat = df_map['lat'].mean()
-            center_lon = df_map['lon'].mean()
-            
-            m = create_folium_map_with_compass(center_lat, center_lon, zoom_level=12)
-            
-            # Loop dos marcadores (seu código mantido + seguro)
-            for idx, row in df_map.iterrows():
-                try:
-                    incident_type = row.get('type', 'ALERTA')
-                    color = get_danger_color(incident_type)
-                    timestamp_str = (row['timestamp'].strftime('%H:%M') 
-                 if pd.notna(row['timestamp']) and hasattr(row['timestamp'], 'strftime') 
-                 else 'N/A')
-                    
-                    folium.CircleMarker(
-                        location=[row['lat'], row['lon']],
-                        radius=8,
-                        popup=f"""
-                        <div style='font-size: 12px; width: 250px;'>
-                            <b>{row.get('subtype', 'N/A')}</b><br>
-                            <b>{incident_type}</b><br>
-                            <b>{row.get('street', 'N/A')}</b><br>
-                            <b>{timestamp_str}</b>
-                        </div>
-                        """,
-                        color=color, fill=True, fillColor=color, 
-                        fillOpacity=0.7, weight=2,
-                        tooltip=f"{row.get('subtype', 'N/A')} - {incident_type}"
-                    ).add_to(m)
-                except:
-                    continue
-            
-            st_folium(m, width=700, height=600)
-            st.markdown("**Legenda:** 🔴 Acidente | 🟠 Perigo | 🟡 Alerta | ⚫ Obras")
     
-    with col2:
-        st.empty()  # Balanceia o layout
-        
-else:
-    st.columns([2, 1])[0].info("📭 Sem incidentes para mapear")
+    if mapa_jam is not None:
+        st_folium(mapa_jam, width=None, height=450, key="mapa_jam_final")
+        st.markdown("**Legenda:** 🟢 Livre | 🟡 Moderado | 🔴 Parado")
+    else:
+        st.info("🛣️ Tráfego normal (sem congestionamentos detectados).")
+
+# --- SEÇÃO DE ESTATÍSTICAS RÁPIDAS (OPCIONAL) ---
+if not df_jams_filtered.empty or not df_filtered.empty:
+    st.markdown("---")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Total de Alertas", len(df_filtered))
+    with c2:
+        st.metric("Pontos de Retenção", len(df_jams_filtered))
+    with c3:
+        if not df_jams_filtered.empty:
+            vel_media = df_jams_filtered['speed'].mean()
+            # Converte para km/h se parecer estar em m/s
+            vel_media = vel_media * 3.6 if vel_media < 50 else vel_media
+            st.metric("Velocidade Média", f"{vel_media:.1f} km/h")
 
 # 2. MAPA DE CONGESTIONAMENTOS (seu código já corrigido - MANTÉM)
 if not df_jams_filtered.empty:
