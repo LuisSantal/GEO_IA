@@ -13,20 +13,28 @@ import colorsys
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 
-# --- AUTO-REFRESH ESTÁVEL ---
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = datetime.now()
+# --- CONTADOR VISUAL (SEM RERUN AUTOMÁTICO) ---
+if 'app_start_time' not in st.session_state:
+    st.session_state.app_start_time = datetime.now()
+    st.session_state.manual_refreshes = 0
 
-tempo_decorrido = (datetime.now() - st.session_state.last_refresh).total_seconds()
+# TEMPO DESDE INÍCIO DA SESSÃO
+tempo_sessao = (datetime.now() - st.session_state.app_start_time).total_seconds()
+tempo_prox_refresh = 600 - (tempo_sessao % 600)  # Ciclo de 10min
 
-if tempo_decorrido >= 600:
-    st.session_state.last_refresh = datetime.now()
+minutos_restantes = int(tempo_prox_refresh // 60)
+segundos_restantes = int(tempo_prox_refresh % 60)
+
+# SIDEBAR COM BOTÃO MANUAL
+st.sidebar.markdown("### ⏰ Refresh Manual")
+if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True):
     st.cache_data.clear()
+    st.session_state.manual_refreshes += 1
     st.rerun()
 
-# Sidebar - SEM LOOP
-segundos_restantes = max(0, 600 - int(tempo_decorrido))
-st.sidebar.metric("⏰ Refresh", f"{segundos_restantes//60}:{segundos_restantes%60:02d}")
+st.sidebar.metric("⏳ Próximo ciclo", f"{minutos_restantes}:{segundos_restantes:02d}")
+st.sidebar.metric("🔄 Refreshes manuais", st.session_state.manual_refreshes)
+st.sidebar.info("💡 Clique para atualizar dados imediatamente")
 
 # --- CONSTANTES ---
 # Substitua pelos IDs reais das suas pastas no Google Drive
@@ -287,10 +295,29 @@ def create_google_maps_link(lat, lon):
 st.title("🚗 Monitoramento de Tráfego - Foz do Iguaçu")
 st.markdown("Dados extraídos em tempo real do Waze via Google Drive.")
 
-# Sidebar de Filtros [cite: 63-91]
-st.sidebar.header("Filtros e Configurações")
-if st.sidebar.button("Atualizar Dados"):
+# Sidebar COMPLETA e ESTÁVEL
+st.sidebar.header("⚙️ Controle")
+st.sidebar.markdown("### ⏰ Status da Sessão")
+
+if 'app_start_time' not in st.session_state:
+    st.session_state.app_start_time = datetime.now()
+    st.session_state.manual_refreshes = 0
+
+tempo_total = (datetime.now() - st.session_state.app_start_time).seconds
+tempo_prox = 600 - (tempo_total % 600)
+
+st.sidebar.metric("⏳ Tempo online", f"{tempo_total//3600}h:{(tempo_total%3600)//60:02d}m")
+st.sidebar.metric("⏰ Próximo ciclo", f"{tempo_prox//60}:{tempo_prox%60:02d}")
+
+if st.sidebar.button("🔄 **ATUALIZAR DADOS**", type="primary", use_container_width=True):
     st.cache_data.clear()
+    st.session_state.manual_refreshes += 1
+    st.success("✅ Dados atualizados!")
+    st.rerun()
+
+st.sidebar.metric("🔄 Atualizações", st.session_state.manual_refreshes)
+st.sidebar.divider()
+
 
 # 1. Carregar Alertas (dados históricos)
 df_alerts = load_historical_data(FOLDER_ALERTS_ID)
@@ -369,7 +396,7 @@ if df_alerts is not None:
 
     # Sidebar - Filtros Dinâmicos
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🔍 Filtros Avançados")
+    st.sidebar.subheader("🔍 Filtros")
     
     # 1. Filtro por Tipo de Alerta
     # Verifica se o DataFrame existe, se não está vazio e se a coluna 'type' está lá
