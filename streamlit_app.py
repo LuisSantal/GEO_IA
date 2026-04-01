@@ -17,20 +17,21 @@ st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now()
 
-# Verificar se passou 10 minutos desde o último refresh
 tempo_desde_refresh = datetime.now() - st.session_state.last_refresh
-if tempo_desde_refresh.total_seconds() >= 600:  # 600 segundos = 10 minutos
+if tempo_desde_refresh.total_seconds() >= 600:
     st.session_state.last_refresh = datetime.now()
-    st.cache_data.clear()  # Limpar cache para forçar recarregamento dos dados
+    st.cache_data.clear()
     st.rerun()
 
-# Exibir indicador de quando foi o último refresh
-minutos_restantes = 10 - int(tempo_desde_refresh.total_seconds() // 60)
-segundos_restantes = int(tempo_desde_refresh.total_seconds() % 60)
+# ✅ CÁLCULO CORRETO - TEMPO RESTANTE
+total_segundos_restantes = max(0, 600 - int(tempo_desde_refresh.total_seconds()))
+minutos_restantes = total_segundos_restantes // 60
+segundos_restantes = total_segundos_restantes % 60
+
 st.sidebar.markdown(f"""
-**⏰ Próximo Refresh**  
-Em {minutos_restantes}:{segundos_restantes:02d} minutos  
-Último: {st.session_state.last_refresh.strftime('%H:%M:%S')}
+**⏰ Auto-Refresh**  
+⏳ **{minutos_restantes}:{segundos_restantes:02d}** restantes  
+🕐 Último: {st.session_state.last_refresh.strftime('%H:%M:%S')}
 """)
 
 # --- CONSTANTES ---
