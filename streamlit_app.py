@@ -24,7 +24,7 @@ tempo_prox_refresh = 600 - (tempo_sessao % 600)  # Ciclo de 10min
 
 minutos_restantes = int(tempo_prox_refresh // 60)
 segundos_restantes = int(tempo_prox_refresh % 60)
-@st.cache_data(ttl=600, show_spinner=False)  # Cache 10min, sem spinner
+@st.cache_resource(ttl=600, show_spinner=False)
 def generate_incidents_map(df_filtered):
     """Mapa de incidentes CACHEADO"""
     if df_filtered.empty or len(df_filtered) == 0:
@@ -60,7 +60,7 @@ def generate_incidents_map(df_filtered):
     
     return m
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_resource(ttl=600, show_spinner=False)
 def generate_jams_map(df_jams_filtered):
     """Mapa de congestionamentos CACHEADO"""
     if df_jams_filtered.empty:
