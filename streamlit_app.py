@@ -249,7 +249,7 @@ def create_mock_data(num_alerts=50, num_jams=30):
     """Cria dados mockados realistas para Foz do Iguaçu."""
     import numpy as np
     from datetime import datetime, timedelta
-
+    np.random.seed(42)
     # Dados baseados em coordenadas reais de Foz do Iguaçu
     streets_foz = [
         "Avenida Brasil", "Avenida Paraná", "Avenida República Argentina",
@@ -648,49 +648,51 @@ if df_alerts is not None:
         else:
             st.error("🚫 Tráfego Congestionado")
 
-# --- SEÇÃO DE MAPAS EM TEMPO REAL ---
+# --- EXIBIÇÃO DOS MAPAS ---
 st.markdown("---")
 st.subheader("🗺️ Mapas em Tempo Real")
 
-# Criamos duas colunas principais para os mapas ficarem lado a lado
+# Primeiro: Criamos as colunas para os mapas
 col_map1, col_map2 = st.columns(2)
 
+# Segundo: Preenchemos a Coluna 1
 with col_map1:
     st.markdown("### 🚨 Incidentes")
-    # Usamos a função de cache que você já definiu no início do código
+    # Chamamos a função cacheada
     mapa_inc = generate_incidents_map(df_filtered)
     
     if mapa_inc is not None:
-        st_folium(mapa_inc, width=None, height=450, key="mapa_incidente_final")
+        # IMPORTANTE: Use uma 'key' fixa e diferente para cada mapa
+        st_folium(mapa_inc, width=None, height=450, key="map_inc_final_display")
         st.markdown("**Legenda:** 🔴 Acidente | 🟠 Perigo | 🟡 Alerta | ⚫ Obras")
     else:
-        st.info("📭 Sem incidentes para exibir com os filtros atuais.")
+        st.info("📭 Sem incidentes para os filtros selecionados.")
 
+# Terceiro: Preenchemos a Coluna 2
 with col_map2:
     st.markdown("### 🚗 Congestionamentos")
-    # Usamos a função de cache para os jams
     mapa_jam = generate_jams_map(df_jams_filtered)
     
     if mapa_jam is not None:
-        st_folium(mapa_jam, width=None, height=450, key="mapa_jam_final")
+        st_folium(mapa_jam, width=None, height=450, key="map_jam_final_display")
         st.markdown("**Legenda:** 🟢 Livre | 🟡 Moderado | 🔴 Parado")
     else:
-        st.info("🛣️ Tráfego normal (sem congestionamentos detectados).")
+        st.info("🛣️ Tráfego normal (sem congestionamentos).")
 
-# --- SEÇÃO DE ESTATÍSTICAS RÁPIDAS (OPCIONAL) ---
-if not df_jams_filtered.empty or not df_filtered.empty:
-    st.markdown("---")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Total de Alertas", len(df_filtered))
-    with c2:
-        st.metric("Pontos de Retenção", len(df_jams_filtered))
-    with c3:
-        if not df_jams_filtered.empty:
-            vel_media = df_jams_filtered['speed'].mean()
-            # Converte para km/h se parecer estar em m/s
-            vel_media = vel_media * 3.6 if vel_media < 50 else vel_media
-            st.metric("Velocidade Média", f"{vel_media:.1f} km/h")
+# --- QUARTO: MÉTRICAS (Fora das colunas dos mapas) ---
+st.markdown("---")
+st.subheader("📊 Resumo Estatístico")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Total Alertas", len(df_filtered))
+with c2:
+    st.metric("Pontos Retenção", len(df_jams_filtered))
+with c3:
+    if not df_jams_filtered.empty:
+        v_media = df_jams_filtered['speed'].mean() * 3.6
+        st.metric("Vel. Média", f"{v_media:.1f} km/h")
+
+st.markdown("---")
 
 # 2. MAPA DE CONGESTIONAMENTOS (seu código já corrigido - MANTÉM)
 if not df_jams_filtered.empty:
