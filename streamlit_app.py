@@ -237,7 +237,10 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     
     m.get_root().html.add_child(folium.Element(north_html))
     # 3. Adicionar Escala Gráfica (Escala do Mapa)
-    folium.ScaleControl(position='bottomleft', metric=True, imperial=False).add_to(m)
+    # A forma correta na versão 0.14.0
+    folium.controls.MeasureControl(position='bottomleft', primary_length_unit='kilometers').add_to(m)
+    # OU, para a barra de escala simples:
+    folium.plugins.MeasureControl(position='bottomleft').add_to(m)
 
     # 4. Adicionar Posição do Mouse (Coordenadas em tempo real)
     MousePosition(
@@ -248,6 +251,8 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
         num_digits=4,
         prefix='Coord:'
     ).add_to(m)
+        # Tente este primeiro, é o mais estável:
+    m.add_child(folium.ControlScale(position='bottomleft', metric=True, imperial=False))
     # Nota: Folium adiciona automaticamente a escala do mapa
     # ScaleControl não está disponível em folium 0.14.0
     # Escala visual integrada: zoom scale + north compass + markers coloridos
