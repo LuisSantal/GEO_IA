@@ -24,7 +24,75 @@ tempo_prox_refresh = 600 - (tempo_sessao % 600)  # Ciclo de 10min
 
 minutos_restantes = int(tempo_prox_refresh // 60)
 segundos_restantes = int(tempo_prox_refresh % 60)
+@st.cache_data(ttl=600, show_spinner=False)  # Cache 10min, sem spinner
+def generate_incidents_map(df_filtered):
+    """Mapa de incidentes CACHEADO"""
+    if df_filtered.empty or len(df_filtered) == 0:
+        return None
+        
+    # Filtrar coordenadas válidas
+    df_map = df_filtered.dropna(subset=['lat', 'lon']).head(100)  # Max 100 markers
+    
+    if df_map.empty:
+        return None
+    
+    center_lat = df_map['lat'].mean()
+    center_lon = df_map['lon'].mean()
+    
+    m = create_folium_map_with_compass(center_lat, center_lon, zoom_level=13)
+    
+    for _, row in df_map.iterrows():
+        try:
+            color = get_danger_color(row.get('type', 'ALERTA'))  # ✅ 'ALERTA' existe
+            folium.CircleMarker(
+                location=[float(row['lat']), float(row['lon'])],
+                radius=7,
+                popup=f"<b>{row.get('subtype', 'Incidente')}</b><br>"
+                      f"{row.get('street', 'N/A')}<br>"
+                      f"{row['timestamp'].strftime('%H:%M')}",
+                color=color,
+                fill=True,
+                fillColor=color,
+                fillOpacity=0.7
+            ).add_to(m)
+        except:
+            continue
+    
+    return m
 
+@st.cache_data(ttl=600, show_spinner=False)
+def generate_jams_map(df_jams_filtered):
+    """Mapa de congestionamentos CACHEADO"""
+    if df_jams_filtered.empty:
+        return None
+        
+    df_valid = df_jams_filtered.dropna(subset=['lat', 'lon', 'speed']).head(50)
+    
+    if df_valid.empty:
+        return None
+    
+    center_lat = df_valid['lat'].mean()
+    center_lon = df_valid['lon'].mean()
+    
+    m = create_folium_map_with_compass(center_lat, center_lon, zoom_level=13)
+    
+    for _, row in df_valid.iterrows():
+        try:
+            speed_kmh = float(row['speed']) * 3.6 if row['speed'] < 50 else float(row['speed'])
+            color = get_congestion_color(speed_kmh)
+            folium.CircleMarker(
+                location=[float(row['lat']), float(row['lon'])],
+                radius=6,
+                popup=f"🚗 {speed_kmh:.0f}km/h<br>{row.get('street', 'Via')}",
+                color=color,
+                fill=True,
+                fillColor=color,
+                fillOpacity=0.6
+            ).add_to(m)
+        except:
+            continue
+    
+    return m
 # SIDEBAR COM BOTÃO MANUAL
 st.sidebar.markdown("### ⏰ Refresh Manual")
 if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True):
@@ -588,7 +656,24 @@ if not df_filtered.empty and 'lat' in df_filtered.columns and 'lon' in df_filter
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader("🗺️ Mapa de Incidentes - Nível de Perigo")
+        st.subheader("🗺️ Mapas em Tempo Real")
+col_map1, col_map2 = st.columns(2)
+
+with col_map1:
+    st.markdown("### 🚨 Incidentes")
+    mapa_inc = generate_incidents_map(df_filtered)
+    if mapa_inc is not None:
+        st_folium(mapa_inc, width=600, height=450, key="mapa_incidentes")
+    else:
+        st.info("📭 Sem incidentes")
+
+with col_map2:
+    st.markdown("### 🚗 Congestionamentos") 
+    mapa_jam = generate_jams_map(df_jams_filtered)
+    if mapa_jam is not None:
+        st_folium(mapa_jam, width=600, height=450, key="mapa_jams")
+    else:
+        st.info("🛣️ Tráfego normal")
         
         # Processar coordenadas (seu código mantido + otimizado)
         df_map = df_filtered.copy()
@@ -609,7 +694,9 @@ if not df_filtered.empty and 'lat' in df_filtered.columns and 'lon' in df_filter
                 try:
                     incident_type = row.get('type', 'ALERTA')
                     color = get_danger_color(incident_type)
-                    timestamp_str = row['timestamp'].strftime('%H:%M:%S') if hasattr(row['timestamp'], 'strftime') else str(row['timestamp'])
+                    timestamp_str = (row['timestamp'].strftime('%H:%M') 
+                 if pd.notna(row['timestamp']) and hasattr(row['timestamp'], 'strftime') 
+                 else 'N/A')
                     
                     folium.CircleMarker(
                         location=[row['lat'], row['lon']],
