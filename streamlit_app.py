@@ -194,10 +194,9 @@ def get_danger_color(incident_type):
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
     """
-    Cria um mapa Folium com todas as notações cartográficas:
-    - Escala, Bússola, Medição e Coordenadas do Mouse.
+    Cria o mapa com as notações cartográficas oficiais do Folium 0.14.0.
     """
-    # IMPORTANTE: Criar o objeto do mapa primeiro!
+    # 1. Inicializa o mapa
     m = folium.Map(
         location=[lat, lon],
         zoom_start=zoom_level,
@@ -205,15 +204,19 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
         max_bounds=True
     )
     
-    # Importar plugins de forma segura dentro da função
-    from folium import plugins
+    # 2. Importa os plugins necessários (Importação interna para evitar conflitos)
+    from folium.plugins import ScaleControl, MousePosition, MeasureControl
     
-    # 1. Escala Gráfica (Barra de distância)
-    # Na versão 0.14.0, a forma mais estável de adicionar a escala:
-    m.add_child(folium.ScaleControl(position='bottomleft', metric=True, imperial=False))
+    # 3. Adiciona a Escala Gráfica (Conforme sua pesquisa no GitHub)
+    # Usamos o plugin ScaleControl para garantir compatibilidade com a v0.14.0
+    ScaleControl(
+        position='bottomleft', 
+        metric=True, 
+        imperial=False
+    ).add_to(m)
 
-    # 2. Posição do Mouse (Coordenadas em tempo real)
-    plugins.MousePosition(
+    # 4. Adiciona a Posição do Mouse (Coordenadas Lat/Lon)
+    MousePosition(
         position='topright',
         separator=' | ',
         empty_string='Fora do Mapa',
@@ -222,31 +225,30 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
         prefix='Coord:'
     ).add_to(m)
 
-    # 3. Ferramenta de Medição (Régua)
-    plugins.MeasureControl(
+    # 5. Adiciona a Ferramenta de Medição (Régua)
+    MeasureControl(
         position='bottomright', 
-        primary_length_unit='kilometers',
-        secondary_length_unit='meters'
+        primary_length_unit='kilometers'
     ).add_to(m)
 
-    # 4. Seta do Norte (HTML fixo que você já tinha)
+    # 6. Seta do Norte (HTML fixo)
     north_html = '''
     <div style="position: fixed; 
-        top: 50px; right: 50px; width: 40px; height: 40px; 
+        top: 60px; right: 20px; width: 40px; height: 40px; 
         background-color: white; border:2px solid grey; z-index:9999; 
         display: flex; align-items: center; justify-content: center;
-        border-radius: 5px;">
+        border-radius: 5px; opacity: 0.8;">
         <div style="font-size: 20px; color: red; font-weight: bold;">↑</div>
     </div>
     <div style="position: fixed; 
-        top: 85px; right: 50px; width: 40px; text-align: center; 
+        top: 95px; right: 20px; width: 40px; text-align: center; 
         z-index:9999; font-weight: bold; color: #333;">
         <small>N</small>
     </div>
     '''
     m.get_root().html.add_child(folium.Element(north_html))
     
-    # Adicionar controle de camadas por último
+    # Controle de camadas (opcional, mas bom para cartografia)
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     
     return m
