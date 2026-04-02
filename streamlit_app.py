@@ -25,12 +25,16 @@ minutos_restantes = int(tempo_prox_refresh // 60)
 segundos_restantes = int(tempo_prox_refresh % 60)
 @st.cache_resource(ttl=600, show_spinner=False)
 def generate_incidents_map(df_filtered):
-    """Mapa de incidentes CACHEADO"""
-    if df_filtered.empty or len(df_filtered) == 0:
+    """Mapa de incidentes com COORDENADAS CORRETAS + PORTUGUÊS."""
+    if df_filtered.empty:
         return None
         
-    # Filtrar coordenadas válidas
-    df_map = df_filtered.dropna(subset=['lat', 'lon']).head(100)  # Max 100 markers
+    # ✅ FILTRAR COORDENADAS VÁLIDAS DE FOZ
+    df_map = df_filtered.dropna(subset=['lat', 'lon']).head(50)
+    df_map = df_map[
+        (df_map['lat'].between(-25.60, -25.52)) & 
+        (df_map['lon'].between(-54.65, -54.55))
+    ]
     
     if df_map.empty:
         return None
@@ -42,30 +46,52 @@ def generate_incidents_map(df_filtered):
     
     for _, row in df_map.iterrows():
         try:
-            color = get_danger_color(row.get('type', 'ALERTA'))  # ✅ 'ALERTA' existe
+            tipo = row.get('type', 'ALERTA')
+            subtipo = row.get('subtype', 'Incidente')
+            rua = row.get('street', 'N/A')
+            hora = row['timestamp'].strftime('%H:%M')
+            
+            # ✅ COR BASEADA NO TIPO
+            color = get_danger_color(tipo)
+            
+            # ✅ POPUP COMPLETO EM PORTUGUÊS
+            popup_html = f"""
+            <div style="min-width: 200px; font-family: Arial;">
+                <b style="color: {color}; font-size: 16px;">🚨 {tipo}</b><br>
+                <b>{subtipo}</b><br>
+                🛣️ <i>{rua}</i><br>
+                🕒 {hora}<br>
+                📍 {row['lat']:.4f}, {row['lon']:.4f}
+            </div>
+            """
+            
             folium.CircleMarker(
                 location=[float(row['lat']), float(row['lon'])],
-                radius=7,
-                popup=f"<b>{row.get('subtype', 'Incidente')}</b><br>"
-                      f"{row.get('street', 'N/A')}<br>"
-                      f"{row['timestamp'].strftime('%H:%M')}",
+                radius=9,
+                popup=folium.Popup(popup_html, max_width=250),
+                tooltip=f"{tipo}: {rua}",
                 color=color,
                 fill=True,
                 fillColor=color,
-                fillOpacity=0.7
+                fillOpacity=0.8,
+                weight=2
             ).add_to(m)
-        except:
+        except Exception as e:
             continue
-    st.sidebar.write(f"🔍 Nível de Zoom Ativo: 13 (Escala Urbana)")
+    
     return m
 
 @st.cache_resource(ttl=600, show_spinner=False)
 def generate_jams_map(df_jams_filtered):
-    """Mapa de congestionamentos CACHEADO"""
+    """Mapa de congestionamentos CORRIGIDO."""
     if df_jams_filtered.empty:
         return None
         
-    df_valid = df_jams_filtered.dropna(subset=['lat', 'lon', 'speed']).head(50)
+    df_valid = df_jams_filtered.dropna(subset=['lat', 'lon', 'speed']).head(40)
+    df_valid = df_valid[
+        (df_valid['lat'].between(-25.60, -25.52)) & 
+        (df_valid['lon'].between(-54.65, -54.55))
+    ]
     
     if df_valid.empty:
         return None
@@ -77,20 +103,31 @@ def generate_jams_map(df_jams_filtered):
     
     for _, row in df_valid.iterrows():
         try:
-            speed_kmh = float(row['speed']) * 3.6 if row['speed'] < 50 else float(row['speed'])
+            speed_kmh = float(row['speed']) * 3.6  # Converter m/s → km/h
             color = get_congestion_color(speed_kmh)
+            rua = row.get('street', 'Via')
+            
+            popup_html = f"""
+            <div style="min-width: 180px;">
+                <b style="color: {color}">🚗 {speed_kmh:.0f} km/h</b><br>
+                🛣️ <i>{rua}</i><br>
+                🕒 {row['timestamp'].strftime('%H:%M')}
+            </div>
+            """
+            
             folium.CircleMarker(
                 location=[float(row['lat']), float(row['lon'])],
-                radius=6,
-                popup=f"🚗 {speed_kmh:.0f}km/h<br>{row.get('street', 'Via')}",
+                radius=7,
+                popup=folium.Popup(popup_html, max_width=220),
+                tooltip=f"{speed_kmh:.0f}km/h - {rua}",
                 color=color,
                 fill=True,
                 fillColor=color,
-                fillOpacity=0.6
+                fillOpacity=0.7
             ).add_to(m)
         except:
             continue
-    st.sidebar.write(f"🔍 Nível de Zoom Ativo: 13 (Escala Urbana)")
+    
     return m
 # SIDEBAR COM BOTÃO MANUAL
 st.sidebar.markdown("### ⏰ Refresh Manual")
@@ -272,20 +309,60 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
 # --- FUNÇÕES DE DADOS MOCKADOS (SEM HDF5) ---
 
 def create_mock_data():
+    """Dados MOCKADOS com COORDENADAS REAIS de Foz do Iguaçu."""
     import numpy as np
     np.random.seed(42)
-    streets = ["Av. Brasil", "Av. JK", "Av. das Cataratas", "Av. Paraná"]
-    alerts = pd.DataFrame([{
-        'timestamp': datetime.now(), 'type': 'ACIDENTE', 'subtype': 'Colisão',
-        'street': np.random.choice(streets), 'lat': -25.5478 + np.random.uniform(-0.02, 0.02),
-        'lon': -54.5882 + np.random.uniform(-0.02, 0.02)
-    } for _ in range(10)])
-    jams = pd.DataFrame([{
-        'timestamp': datetime.now(), 'speed': np.random.randint(10, 60),
-        'street': np.random.choice(streets), 'lat': -25.5478 + np.random.uniform(-0.02, 0.02),
-        'lon': -54.5882 + np.random.uniform(-0.02, 0.02)
-    } for _ in range(10)])
-    return alerts, jams
+    
+    # ✅ COORDENADAS REAIS DE FOZ DO IGUAÇU
+    foz_streets = {
+        "Av. Brasil": [-25.5475, -54.5870],
+        "Av. JK": [-25.5502, -54.5851],
+        "Av. das Cataratas": [-25.5531, -54.5792],
+        "Av. Paraná": [-25.5458, -54.5901],
+        "Ponte Tancredo Neves": [-25.5412, -54.5955],
+        "Rod. BR-277": [-25.5600, -54.5800],
+        "Av. Costa e Silva": [-25.5480, -54.5820],
+        "R. Edmundo de Barros": [-25.5460, -54.5890]
+    }
+    
+    # ✅ ALERTAS COM COORDENADAS REAIS + SUBTIPOS
+    alerts_data = []
+    for i in range(15):
+        street, (base_lat, base_lon) = np.random.choice(list(foz_streets.items()))
+        lat = base_lat + np.random.uniform(-0.003, 0.003)  # ~300m raio
+        lon = base_lon + np.random.uniform(-0.003, 0.003)
+        
+        alerts_data.append({
+            'timestamp': datetime.now() - timedelta(minutes=np.random.randint(0, 120)),
+            'type': np.random.choice(['ACIDENTE', 'VIA FECHADA', 'PERIGO', 'OBRAS', 'ALERTA']),
+            'subtype': np.random.choice([
+                'Colisão frontal', 'Carro parado', 'Buraco na pista', 
+                'Obras na via', 'Semáforo quebrado', 'Animal na pista',
+                'Acidente grave', 'Acidente leve', 'Inundação'
+            ]),
+            'street': street,
+            'lat': lat,
+            'lon': lon
+        })
+    
+    # ✅ JAMS COM VELOCIDADES REAIS
+    jams_data = []
+    for i in range(12):
+        street, (base_lat, base_lon) = np.random.choice(list(foz_streets.items()))
+        lat = base_lat + np.random.uniform(-0.002, 0.002)
+        lon = base_lon + np.random.uniform(-0.002, 0.002)
+        
+        jams_data.append({
+            'timestamp': datetime.now() - timedelta(minutes=np.random.randint(0, 60)),
+            'speed': np.random.uniform(5, 45),  # m/s (18-162 km/h)
+            'street': street,
+            'lat': lat,
+            'lon': lon
+        })
+    
+    df_alerts = pd.DataFrame(alerts_data)
+    df_jams = pd.DataFrame(jams_data)
+    return df_alerts, df_jams
 
 
 def load_historical_data(folder_id, selected_date=None):
