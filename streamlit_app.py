@@ -190,8 +190,8 @@ def get_danger_color(incident_type):
         'OBRAS': '#AAAAAA',             
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
-def create_folium_map_with_compass(lat, lon, zoom_level=12):
-    """Cria mapa com Norte, Medição e Coordenadas - 100% compatível."""
+def create_folium_map_with_compass(lat, lon, zoom_level=13):
+    """Mapa com NORTE FIXO + ESCALA DINÂMICA por ZOOM."""
     m = folium.Map(
         location=[lat, lon],
         zoom_start=zoom_level,
@@ -199,47 +199,73 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
         max_bounds=True
     )
     
-    # ✅ COORDENADAS DO MOUSE (funciona sempre)
+    # ✅ 1. COORDENADAS DO MOUSE (Topo Direito)
     plugins.MousePosition(
         position='topright',
         separator=' | ',
         empty_string='NaN',
         lng_first=False,
         num_digits=5,
-        prefix='Lat: '
+        prefix='Lat/Lon: '
     ).add_to(m)
 
-    # ✅ FERRAMENTA DE MEDIÇÃO (funciona sempre)
-    plugins.MeasureControl(
-        position='bottomright', 
-        primary_length_unit='kilometers'
-    ).add_to(m)
+    # ✅ 2. MEDIÇÃO DE DISTÂNCIA (Rodapé Direito)
+    plugins.MeasureControl(position='bottomright').add_to(m)
 
-    # ✅ ESCALA HTML CUSTOMIZADA (substitui ScaleControl)
-    scale_html = '''
-    <div style="position: fixed; 
-        bottom: 50px; left: 50px; width: 150px; height: 20px;
-        background-color: white; border:2px solid grey; z-index:9999; 
-        font-size: 12px; padding: 5px; border-radius: 3px; opacity: 0.9;
-        text-align: center;">
-        📏 Escala: 1km
-    </div>
-    '''
-    folium.Element(scale_html).add_to(m)
-    
-    # ✅ SETA DO NORTE CUSTOMIZADA
+    # ✅ 3. SETA NORTE FIXA (Topo Esquerdo - SEMPRE VISÍVEL)
     north_html = '''
     <div style="position: fixed; 
-        top: 10px; left: 50px; width: 40px; height: 40px; 
-        background-color: white; border:2px solid grey; z-index:9999; 
+        top: 10px; left: 10px; width: 45px; height: 45px; 
+        background: linear-gradient(145deg, #f0f0f0, #e6e6e6); 
+        border: 2px solid #333; border-radius: 8px; z-index: 1000; 
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         display: flex; align-items: center; justify-content: center;
-        border-radius: 5px; opacity: 0.9;">
-        <div style="font-size: 20px; color: red; font-weight: bold;">↑<br>
-            <small style="color:black; font-size: 10px;">N</small>
-        </div>
+        font-weight: bold; font-size: 18px;">
+        <div style="color: #d32f2f; text-shadow: 1px 1px 1px white;">↑</div>
+        <div style="position: absolute; bottom: 2px; 
+            font-size: 9px; color: #333; font-weight: bold;">N</div>
     </div>
     '''
     folium.Element(north_html).add_to(m)
+
+    # ✅ 4. ESCALA DINÂMICA por ZOOM (Rodapé Esquerdo - JavaScript)
+    scale_html = '''
+    <div id="scalebar" style="position: fixed; 
+        bottom: 10px; left: 10px; 
+        background: white; border: 2px solid #333; border-radius: 5px; 
+        padding: 8px 12px; z-index: 1000; font-size: 12px; font-weight: bold;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3); min-width: 120px;
+        text-align: center; color: #333;">
+        📏 Calculando escala...
+    </div>
+    
+    <script>
+    // ESCALA DINÂMICA BASEADA NO ZOOM
+    var map = window.map;
+    function updateScale() {
+        var zoom = map.getZoom();
+        var scaleDiv = document.getElementById('scalebar');
+        
+        // Escala aproximada por nível de zoom (em metros)
+        var scaleMeters;
+        if (zoom >= 18) scaleMeters = 20;
+        else if (zoom >= 16) scaleMeters = 50;
+        else if (zoom >= 14) scaleMeters = 100;
+        else if (zoom >= 12) scaleMeters = 200;
+        else if (zoom >= 10) scaleMeters = 500;
+        else if (zoom >= 8) scaleMeters = 1000;
+        else if (zoom >= 6) scaleMeters = 5000;
+        else scaleMeters = 10000;
+        
+        scaleDiv.innerHTML = `📏 ${scaleMeters.toLocaleString()}m`;
+    }
+    
+    // Atualizar escala no load e no move
+    map.whenReady(updateScale);
+    map.on('moveend zoomend', updateScale);
+    </script>
+    '''
+    folium.Element(scale_html).add_to(m)
     
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
