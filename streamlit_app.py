@@ -6,8 +6,6 @@ import re
 from datetime import datetime, timedelta
 import folium
 from folium import plugins
-from folium.features import Control  # ✅ CORREÇÃO 1
-from folium.plugins import MousePosition, MeasureControl  # ✅ CORREÇÃO 2
 from streamlit_folium import st_folium
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
@@ -201,11 +199,11 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
         max_bounds=True
     )
     
-    # 1. Escala Gráfica (Rodapé Esquerdo)
-    Control(position='bottomleft', metric=True, imperial=False).add_to(m)
+    # Escala gráfica simples e compatível
+    folium.ScaleControl(position='bottomleft').add_to(m)
     
-    # 2. Posição do Mouse / Coordenadas (Topo Direito)
-    MousePosition(
+    # Coordenadas do mouse
+    plugins.MousePosition(
         position='topright',
         separator=' | ',
         empty_string='Fora do Mapa',
@@ -214,10 +212,10 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
         prefix='Lat/Lon:'
     ).add_to(m)
 
-    # 3. Ferramenta de Medição (Rodapé Direito)
-    MeasureControl(position='bottomright', primary_length_unit='kilometers').add_to(m)
+    # Ferramenta de medição
+    plugins.MeasureControl(position='bottomright', primary_length_unit='kilometers').add_to(m)
 
-    # 4. Seta do Norte (Customizada no Topo Esquerdo para não chocar com coordenadas)
+    # Seta do Norte customizada
     north_html = '''
     <div style="position: fixed; 
         top: 10px; left: 50px; width: 40px; height: 40px; 
@@ -231,7 +229,6 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
     
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
-
 # --- FUNÇÕES DE DADOS MOCKADOS (SEM HDF5) ---
 
 def create_mock_data():
