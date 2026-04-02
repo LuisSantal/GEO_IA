@@ -300,13 +300,17 @@ tempo_prox = 600 - (tempo_total % 600)
 
 st.sidebar.metric("⏳ Tempo online", f"{tempo_total//3600}h:{(tempo_total%3600)//60:02d}m")
 st.sidebar.metric("⏳ Próximo ciclo", f"{minutos_restantes}:{segundos_restantes:02d}")
-if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True):
+if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True, key="btn_refresh_sidebar"):
     st.cache_resource.clear()
+    st.session_state.manual_refreshes += 1
     st.rerun()
 
 df_filtered, df_jams_filtered = create_mock_data()
-if st.sidebar.button("🔄 **ATUALIZAR DADOS**", type="primary", use_container_width=True):
+if st.sidebar.button("🔄 **ATUALIZAR DADOS**", type="primary", use_container_width=True, key="btn_atualizar_sidebar"):
+    # Limpa tanto cache_data quanto cache_resource para garantir atualização total
     st.cache_data.clear()
+    st.cache_resource.clear()
+    
     st.session_state.manual_refreshes += 1
     st.success("✅ Dados atualizados!")
     st.rerun()
