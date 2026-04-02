@@ -5,7 +5,9 @@ import io
 import re
 from datetime import datetime, timedelta
 import folium
-from folium import plugins  # Import único e suficiente para todos os plugins
+from folium import plugins
+from folium.features import Control  # ✅ CORREÇÃO 1
+from folium.plugins import MousePosition, MeasureControl  # ✅ CORREÇÃO 2
 from streamlit_folium import st_folium
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
@@ -200,12 +202,10 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
     )
     
     # 1. Escala Gráfica (Rodapé Esquerdo)
-    from folium.features import Control
-    
     Control(position='bottomleft', metric=True, imperial=False).add_to(m)
-    from folium.plugins import MousePosition, MeasureControl
+    
     # 2. Posição do Mouse / Coordenadas (Topo Direito)
-    plugins.MousePosition(
+    MousePosition(
         position='topright',
         separator=' | ',
         empty_string='Fora do Mapa',
@@ -215,7 +215,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
     ).add_to(m)
 
     # 3. Ferramenta de Medição (Rodapé Direito)
-    plugins.MeasureControl(position='bottomright', primary_length_unit='kilometers').add_to(m)
+    MeasureControl(position='bottomright', primary_length_unit='kilometers').add_to(m)
 
     # 4. Seta do Norte (Customizada no Topo Esquerdo para não chocar com coordenadas)
     north_html = '''
