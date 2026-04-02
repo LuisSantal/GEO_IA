@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import io
 import re
+import random  # ✅ ADICIONE ESTA LINHA
 from datetime import datetime, timedelta
 import folium
 from folium import plugins
@@ -309,61 +310,69 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
 # --- FUNÇÕES DE DADOS MOCKADOS (SEM HDF5) ---
 
 def create_mock_data():
-    """Dados MOCKADOS com COORDENADAS REAIS de Foz do Iguaçu."""
-    import numpy as np
-    np.random.seed(42)
+    """Dados MOCKADOS REAIS de Foz do Iguaçu - SEM NUMPY."""
     
-    # ✅ COORDENADAS REAIS DE FOZ DO IGUAÇU
-    foz_streets = {
-        "Av. Brasil": [-25.5475, -54.5870],
-        "Av. JK": [-25.5502, -54.5851],
-        "Av. das Cataratas": [-25.5531, -54.5792],
-        "Av. Paraná": [-25.5458, -54.5901],
-        "Ponte Tancredo Neves": [-25.5412, -54.5955],
-        "Rod. BR-277": [-25.5600, -54.5800],
-        "Av. Costa e Silva": [-25.5480, -54.5820],
-        "R. Edmundo de Barros": [-25.5460, -54.5890]
-    }
+    # ✅ COORDENADAS EXATAS DE FOZ DO IGUAÇU
+    foz_streets = [
+        ("Av. Brasil", -25.5475, -54.5870),
+        ("Av. JK", -25.5502, -54.5851),
+        ("Av. das Cataratas", -25.5531, -54.5792),
+        ("Av. Paraná", -25.5458, -54.5901),
+        ("Ponte Tancredo Neves", -25.5412, -54.5955),
+        ("Rod. BR-277", -25.5600, -54.5800),
+        ("Av. Costa e Silva", -25.5480, -54.5820),
+        ("R. Edmundo de Barros", -25.5460, -54.5890)
+    ]
     
-    # ✅ ALERTAS COM COORDENADAS REAIS + SUBTIPOS
+    import random
+    from datetime import timedelta
+    
+    # ✅ ALERTAS REALISTAS
     alerts_data = []
+    subtipos = [
+        'Colisão frontal', 'Carro parado', 'Buraco na pista', 
+        'Obras na via', 'Semáforo quebrado', 'Animal na pista',
+        'Acidente grave', 'Acidente leve', 'Inundação'
+    ]
+    tipos = ['ACIDENTE', 'VIA FECHADA', 'PERIGO', 'OBRAS', 'ALERTA']
+    
     for i in range(15):
-        street, (base_lat, base_lon) = np.random.choice(list(foz_streets.items()))
-        lat = base_lat + np.random.uniform(-0.003, 0.003)  # ~300m raio
-        lon = base_lon + np.random.uniform(-0.003, 0.003)
+        street_data = random.choice(foz_streets)
+        street, base_lat, base_lon = street_data
+        
+        # Pequena variação (±300m)
+        lat = base_lat + random.uniform(-0.003, 0.003)
+        lon = base_lon + random.uniform(-0.003, 0.003)
         
         alerts_data.append({
-            'timestamp': datetime.now() - timedelta(minutes=np.random.randint(0, 120)),
-            'type': np.random.choice(['ACIDENTE', 'VIA FECHADA', 'PERIGO', 'OBRAS', 'ALERTA']),
-            'subtype': np.random.choice([
-                'Colisão frontal', 'Carro parado', 'Buraco na pista', 
-                'Obras na via', 'Semáforo quebrado', 'Animal na pista',
-                'Acidente grave', 'Acidente leve', 'Inundação'
-            ]),
+            'timestamp': datetime.now() - timedelta(minutes=random.randint(0, 120)),
+            'type': random.choice(tipos),
+            'subtype': random.choice(subtipos),
             'street': street,
-            'lat': lat,
-            'lon': lon
+            'lat': round(lat, 6),
+            'lon': round(lon, 6)
         })
     
-    # ✅ JAMS COM VELOCIDADES REAIS
+    # ✅ JAMS REALISTAS
     jams_data = []
     for i in range(12):
-        street, (base_lat, base_lon) = np.random.choice(list(foz_streets.items()))
-        lat = base_lat + np.random.uniform(-0.002, 0.002)
-        lon = base_lon + np.random.uniform(-0.002, 0.002)
+        street_data = random.choice(foz_streets)
+        street, base_lat, base_lon = street_data
+        
+        lat = base_lat + random.uniform(-0.002, 0.002)
+        lon = base_lon + random.uniform(-0.002, 0.002)
         
         jams_data.append({
-            'timestamp': datetime.now() - timedelta(minutes=np.random.randint(0, 60)),
-            'speed': np.random.uniform(5, 45),  # m/s (18-162 km/h)
+            'timestamp': datetime.now() - timedelta(minutes=random.randint(0, 60)),
+            'speed': round(random.uniform(5, 45), 1),  # m/s
             'street': street,
-            'lat': lat,
-            'lon': lon
+            'lat': round(lat, 6),
+            'lon': round(lon, 6)
         })
     
     df_alerts = pd.DataFrame(alerts_data)
     df_jams = pd.DataFrame(jams_data)
     return df_alerts, df_jams
-
 
 def load_historical_data(folder_id, selected_date=None):
     """Carrega dados históricos - usando dados mockados para evitar problemas de memória."""
