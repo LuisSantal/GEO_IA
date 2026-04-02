@@ -3,14 +3,10 @@ import pandas as pd
 import plotly.express as px
 import io
 import re
-import tempfile
-import json
 from datetime import datetime, timedelta
 import folium
-from folium import plugins
+from folium import plugins  # Import único e suficiente para todos os plugins
 from streamlit_folium import st_folium
-import colorsys
-from folium.plugins import MousePosition
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Waze Foz do Iguaçu", layout="wide")
 
@@ -21,7 +17,9 @@ if 'app_start_time' not in st.session_state:
 
 # TEMPO DESDE INÍCIO DA SESSÃO
 tempo_sessao = (datetime.now() - st.session_state.app_start_time).total_seconds()
-tempo_prox_refresh = 600 - (tempo_sessao % 600)  # Ciclo de 10min
+tempo_prox_refresh = 600 - (tempo_sessao % 600)
+minutos_restantes = int(tempo_prox_refresh // 60)
+segundos_restantes = int(tempo_prox_refresh % 60)
 
 minutos_restantes = int(tempo_prox_refresh // 60)
 segundos_restantes = int(tempo_prox_refresh % 60)
@@ -192,11 +190,8 @@ def get_danger_color(incident_type):
         'OBRAS': '#AAAAAA',             
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
-def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
-    """
-    Cria o mapa com as notações cartográficas oficiais do Folium 0.14.0.
-    """
-    # 1. Inicializa o mapa
+def create_folium_map_with_compass(lat, lon, zoom_level=12):
+    """Cria mapa com Norte, Escala, Medição e Coordenadas do Mouse."""
     m = folium.Map(
         location=[lat, lon],
         zoom_start=zoom_level,
@@ -204,137 +199,56 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12, title="Mapa"):
         max_bounds=True
     )
     
-    # 2. Importa os plugins necessários (Importação interna para evitar conflitos)
-    from folium.plugins import ScaleControl, MousePosition, MeasureControl
+    # 1. Escala Gráfica (Rodapé Esquerdo)
+    from folium.features import Control
     
-    # 3. Adiciona a Escala Gráfica (Conforme sua pesquisa no GitHub)
-    # Usamos o plugin ScaleControl para garantir compatibilidade com a v0.14.0
-    ScaleControl(
-        position='bottomleft', 
-        metric=True, 
-        imperial=False
-    ).add_to(m)
-
-    # 4. Adiciona a Posição do Mouse (Coordenadas Lat/Lon)
-    MousePosition(
+    Control(position='bottomleft', metric=True, imperial=False).add_to(m)
+    from folium.plugins import MousePosition, MeasureControl
+    # 2. Posição do Mouse / Coordenadas (Topo Direito)
+    plugins.MousePosition(
         position='topright',
         separator=' | ',
         empty_string='Fora do Mapa',
         lng_first=False,
         num_digits=4,
-        prefix='Coord:'
+        prefix='Lat/Lon:'
     ).add_to(m)
 
-    # 5. Adiciona a Ferramenta de Medição (Régua)
-    MeasureControl(
-        position='bottomright', 
-        primary_length_unit='kilometers'
-    ).add_to(m)
+    # 3. Ferramenta de Medição (Rodapé Direito)
+    plugins.MeasureControl(position='bottomright', primary_length_unit='kilometers').add_to(m)
 
-    # 6. Seta do Norte (HTML fixo)
+    # 4. Seta do Norte (Customizada no Topo Esquerdo para não chocar com coordenadas)
     north_html = '''
     <div style="position: fixed; 
-        top: 60px; right: 20px; width: 40px; height: 40px; 
+        top: 10px; left: 50px; width: 40px; height: 40px; 
         background-color: white; border:2px solid grey; z-index:9999; 
         display: flex; align-items: center; justify-content: center;
         border-radius: 5px; opacity: 0.8;">
-        <div style="font-size: 20px; color: red; font-weight: bold;">↑</div>
-    </div>
-    <div style="position: fixed; 
-        top: 95px; right: 20px; width: 40px; text-align: center; 
-        z-index:9999; font-weight: bold; color: #333;">
-        <small>N</small>
+        <div style="font-size: 20px; color: red; font-weight: bold;">↑<br><small style="color:black">N</small></div>
     </div>
     '''
-    m.get_root().html.add_child(folium.Element(north_html))
+    folium.Element(north_html).add_to(m)
     
-    # Controle de camadas (opcional, mas bom para cartografia)
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
-    
     return m
 
 # --- FUNÇÕES DE DADOS MOCKADOS (SEM HDF5) ---
 
-def create_mock_data(num_alerts=50, num_jams=30):
-    """Cria dados mockados realistas para Foz do Iguaçu."""
+def create_mock_data():
     import numpy as np
-    from datetime import datetime, timedelta
     np.random.seed(42)
-    # Dados baseados em coordenadas reais de Foz do Iguaçu
-    streets_foz = [
-        "Avenida Brasil", "Avenida Paraná", "Avenida República Argentina",
-        "Rua Marechal Deodoro", "Avenida Jorge Schimmelpfeng",
-        "Rua Almirante Barroso", "Avenida Paraná com Brasil",
-        "Rua XV de Novembro", "Avenida Itaipu", "Rua Rio Branco"
-    ]
-
-    alert_types = ['ACIDENTE', 'VIA FECHADA', 'CONGESTIONAMENTO', 'PERIGO', 'ALERTA']
-    alert_subtypes = ['ACIDENTE GRAVE', 'VIA FECHADA', 'TRÂNSITO PESADO', 'PERIGO NA VIA', 'ALERTA']
-
-    # Gerar dados de alertas
-    alerts_data = []
-    base_time = datetime.now() - timedelta(days=7)  # Últimos 7 dias
-
-    for i in range(num_alerts):
-        # Distribuição temporal mais realista (mais eventos durante rush hours)
-        hour = np.random.choice([7, 8, 9, 17, 18, 19], p=[0.1, 0.2, 0.2, 0.2, 0.2, 0.1])
-        if hour < 12:
-            hour += int(np.random.randint(0, 12))  # Manhã
-        else:
-            hour += int(np.random.randint(0, 6))   # Tarde/noite
-
-        # Data aleatória nos últimos 7 dias
-        days_ago = int(np.random.randint(0, 7))
-        timestamp = base_time + timedelta(days=days_ago, hours=int(hour), minutes=int(np.random.randint(0, 60)))
-
-        alert = {
-            'pubMillis': int(timestamp.timestamp() * 1000),
-            'type': np.random.choice(alert_types),
-            'subtype': np.random.choice(alert_subtypes),
-            'street': np.random.choice(streets_foz),
-            'lat': -25.5478 + np.random.uniform(-0.05, 0.05),  # Centro de Foz
-            'lon': -54.5882 + np.random.uniform(-0.05, 0.05),
-            'city': 'Foz do Iguaçu',
-            'country': 'BR'
-        }
-        alerts_data.append(alert)
-
-    # Gerar dados de congestionamentos (jams)
-    jams_data = []
-    for i in range(num_jams):
-        hour = np.random.choice([7, 8, 9, 17, 18, 19], p=[0.1, 0.2, 0.2, 0.2, 0.2, 0.1])
-        if hour < 12:
-            hour += int(np.random.randint(0, 12))
-        else:
-            hour += int(np.random.randint(0, 6))
-
-        days_ago = int(np.random.randint(0, 7))
-        timestamp = base_time + timedelta(days=days_ago, hours=int(hour), minutes=int(np.random.randint(0, 60)))
-
-        # Velocidade baseada em horário (rush = mais lento)
-        base_speed = 60 if hour in [7, 8, 9, 17, 18, 19] else 80
-        speed = max(5, base_speed + int(np.random.randint(-20, 20)))
-
-        jam = {
-            'pubMillis': int(timestamp.timestamp() * 1000),
-            'speed': speed,
-            'street': np.random.choice(streets_foz),
-            'lat': -25.5478 + np.random.uniform(-0.05, 0.05),
-            'lon': -54.5882 + np.random.uniform(-0.05, 0.05),
-            'city': 'Foz do Iguaçu',
-            'country': 'BR'
-        }
-        jams_data.append(jam)
-
-    df_alerts = pd.DataFrame(alerts_data)
-    df_jams = pd.DataFrame(jams_data)
-
-    # Aplicar normalização de timestamps
-    df_alerts = normalize_timestamps_local(df_alerts)
-    df_jams = normalize_timestamps_local(df_jams)
-
-    return df_alerts, df_jams
-
+    streets = ["Av. Brasil", "Av. JK", "Av. das Cataratas", "Av. Paraná"]
+    alerts = pd.DataFrame([{
+        'timestamp': datetime.now(), 'type': 'ACIDENTE', 'subtype': 'Colisão',
+        'street': np.random.choice(streets), 'lat': -25.5478 + np.random.uniform(-0.02, 0.02),
+        'lon': -54.5882 + np.random.uniform(-0.02, 0.02)
+    } for _ in range(10)])
+    jams = pd.DataFrame([{
+        'timestamp': datetime.now(), 'speed': np.random.randint(10, 60),
+        'street': np.random.choice(streets), 'lat': -25.5478 + np.random.uniform(-0.02, 0.02),
+        'lon': -54.5882 + np.random.uniform(-0.02, 0.02)
+    } for _ in range(10)])
+    return alerts, jams
 
 
 def load_historical_data(folder_id, selected_date=None):
@@ -385,8 +299,12 @@ tempo_total = (datetime.now() - st.session_state.app_start_time).seconds
 tempo_prox = 600 - (tempo_total % 600)
 
 st.sidebar.metric("⏳ Tempo online", f"{tempo_total//3600}h:{(tempo_total%3600)//60:02d}m")
-st.sidebar.metric("⏰ Próximo ciclo", f"{tempo_prox//60}:{tempo_prox%60:02d}")
+st.sidebar.metric("⏳ Próximo ciclo", f"{minutos_restantes}:{segundos_restantes:02d}")
+if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True):
+    st.cache_resource.clear()
+    st.rerun()
 
+df_filtered, df_jams_filtered = create_mock_data()
 if st.sidebar.button("🔄 **ATUALIZAR DADOS**", type="primary", use_container_width=True):
     st.cache_data.clear()
     st.session_state.manual_refreshes += 1
@@ -660,36 +578,24 @@ if df_alerts is not None:
 
 # --- EXIBIÇÃO DOS MAPAS ---
 st.markdown("---")
-st.subheader("🗺️ Mapas em Tempo Real")
-
-# Primeiro: Criamos as colunas para os mapas
+st.subheader("🗺️ Mapas Técnicos em Tempo Real")
 col_map1, col_map2 = st.columns(2)
 
-# Segundo: Preenchemos a Coluna 1
 with col_map1:
     st.markdown("### 🚨 Incidentes")
-    st.caption("📍 Centro: -25.54, -54.58 | 🗺️ Limite N: -25.40")
-    # Chamamos a função cacheada
+    st.caption("📍 Ponto de Referência: -25.54, -54.58 (Centro) | 🧭 Orientação: Norte ↑")
     mapa_inc = generate_incidents_map(df_filtered)
-    
-    if mapa_inc is not None:
-        # IMPORTANTE: Use uma 'key' fixa e diferente para cada mapa
-        st_folium(mapa_inc, width=None, height=450, key="map_inc_final_display")
-        st.markdown("**Legenda:** 🔴 Acidente | 🟠 Perigo | 🟡 Alerta | ⚫ Obras")
-    else:
-        st.info("📭 Sem incidentes para os filtros selecionados.")
+    if mapa_inc:
+        st_folium(mapa_inc, width=None, height=450, key="mapa_inc")
 
-# Terceiro: Preenchemos a Coluna 2
 with col_map2:
     st.markdown("### 🚗 Congestionamentos")
-    st.caption("📍 Centro: -25.54, -54.58 | 🗺️ Limite S: -25.65")
+    st.caption("📍 Ponto de Referência: -25.54, -54.58 (Centro) | 📏 Escala: Métrica")
     mapa_jam = generate_jams_map(df_jams_filtered)
-    
-    if mapa_jam is not None:
-        st_folium(mapa_jam, width=None, height=450, key="map_jam_final_display")
-        st.markdown("**Legenda:** 🟢 Livre | 🟡 Moderado | 🔴 Parado")
-    else:
-        st.info("🛣️ Tráfego normal (sem congestionamentos).")
+    if mapa_jam:
+        st_folium(mapa_jam, width=None, height=450, key="mapa_jam")
+
+st.info("💡 Passe o mouse sobre o mapa para ver as coordenadas em tempo real no topo direito.")
 
 # --- QUARTO: MÉTRICAS (Fora das colunas dos mapas) ---
 st.markdown("---")
