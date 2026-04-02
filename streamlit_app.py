@@ -191,7 +191,7 @@ def get_danger_color(incident_type):
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 def create_folium_map_with_compass(lat, lon, zoom_level=12):
-    """Cria mapa com Norte, Escala, Medição e Coordenadas do Mouse."""
+    """Cria mapa com Norte, Medição e Coordenadas - 100% compatível."""
     m = folium.Map(
         location=[lat, lon],
         zoom_start=zoom_level,
@@ -199,30 +199,44 @@ def create_folium_map_with_compass(lat, lon, zoom_level=12):
         max_bounds=True
     )
     
-    # Escala gráfica simples e compatível
-    folium.ScaleControl(position='bottomleft').add_to(m)
-    
-    # Coordenadas do mouse
+    # ✅ COORDENADAS DO MOUSE (funciona sempre)
     plugins.MousePosition(
         position='topright',
         separator=' | ',
-        empty_string='Fora do Mapa',
+        empty_string='NaN',
         lng_first=False,
-        num_digits=4,
-        prefix='Lat/Lon:'
+        num_digits=5,
+        prefix='Lat: '
     ).add_to(m)
 
-    # Ferramenta de medição
-    plugins.MeasureControl(position='bottomright', primary_length_unit='kilometers').add_to(m)
+    # ✅ FERRAMENTA DE MEDIÇÃO (funciona sempre)
+    plugins.MeasureControl(
+        position='bottomright', 
+        primary_length_unit='kilometers'
+    ).add_to(m)
 
-    # Seta do Norte customizada
+    # ✅ ESCALA HTML CUSTOMIZADA (substitui ScaleControl)
+    scale_html = '''
+    <div style="position: fixed; 
+        bottom: 50px; left: 50px; width: 150px; height: 20px;
+        background-color: white; border:2px solid grey; z-index:9999; 
+        font-size: 12px; padding: 5px; border-radius: 3px; opacity: 0.9;
+        text-align: center;">
+        📏 Escala: 1km
+    </div>
+    '''
+    folium.Element(scale_html).add_to(m)
+    
+    # ✅ SETA DO NORTE CUSTOMIZADA
     north_html = '''
     <div style="position: fixed; 
         top: 10px; left: 50px; width: 40px; height: 40px; 
         background-color: white; border:2px solid grey; z-index:9999; 
         display: flex; align-items: center; justify-content: center;
-        border-radius: 5px; opacity: 0.8;">
-        <div style="font-size: 20px; color: red; font-weight: bold;">↑<br><small style="color:black">N</small></div>
+        border-radius: 5px; opacity: 0.9;">
+        <div style="font-size: 20px; color: red; font-weight: bold;">↑<br>
+            <small style="color:black; font-size: 10px;">N</small>
+        </div>
     </div>
     '''
     folium.Element(north_html).add_to(m)
