@@ -63,7 +63,24 @@ def get_danger_color(incident_type):
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 
+# =============================================
+# 5. CONEXÃO COM GOOGLE DRIVE (SERVICE ACCOUNT)
+# =============================================
+@st.cache_resource(show_spinner=False)
+def get_drive_service():
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
 
+        creds_info = st.secrets["gcp_service_account"]
+        creds = service_account.Credentials.from_service_account_info(
+            creds_info,
+            scopes=["https://www.googleapis.com/auth/drive.readonly"]
+        )
+        return build('drive', 'v3', credentials=creds)
+    except Exception:
+        st.session_state.use_mock_data = True
+        return None
 
 def get_latest_h5_id(folder_id):
     """
