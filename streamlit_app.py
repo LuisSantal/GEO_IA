@@ -68,6 +68,16 @@ def get_danger_color(incident_type):
 # =============================================
 @st.cache_resource(show_spinner=False)
 def get_drive_service():
+    """
+    Autentica via Service Account usando st.secrets.
+    Configure em .streamlit/secrets.toml:
+      [gcp_service_account]
+      type = "service_account"
+      project_id = "..."
+      private_key_id = "..."
+      private_key = "-----BEGIN RSA PRIVATE KEY-----\\n..."
+      client_email = "..."
+    """
     try:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
@@ -401,6 +411,22 @@ def generate_incidents_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
+    if 'lat' not in df.columns and 'y' in df.columns:
+        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
+    if 'lon' not in df.columns and 'x' in df.columns:
+        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
+    if 'lat' not in df.columns and 'location' in df.columns:
+        import ast
+        def _gy(x):
+            try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('y'))
+            except: return None
+        def _gx(x):
+            try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('x'))
+            except: return None
+        df['lat'] = df['location'].apply(_gy)
+        df['lon'] = df['location'].apply(_gx)
+    if 'lat' not in df.columns or 'lon' not in df.columns:
+        return None
     df_map = df.dropna(subset=['lat', 'lon']).head(50)
     df_map = df_map[
         (df_map['lat'].between(-25.60, -25.52)) &
@@ -439,6 +465,31 @@ def generate_jams_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
+    # Mapeia colunas alternativas do Waze (lat/lon podem vir como x/y ou dentro de 'location')
+    if 'lat' not in df.columns and 'y' in df.columns:
+        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
+    if 'lon' not in df.columns and 'x' in df.columns:
+        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
+    if 'lat' not in df.columns and 'location' in df.columns:
+        import ast
+        def _get_y(x):
+            try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('y'))
+            except: return None
+        def _get_x(x):
+            try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('x'))
+            except: return None
+        df['lat'] = df['location'].apply(_get_y)
+        df['lon'] = df['location'].apply(_get_x)
+    # Normaliza velocidade: aceita speedKMH (m/s→km/h) ou outros nomes
+    if 'speed' not in df.columns:
+        for alt in ['speedKMH', 'speedkmh', 'speed_kmh', 'velocity']:
+            if alt in df.columns:
+                df['speed'] = pd.to_numeric(df[alt], errors='coerce') / 3.6
+                break
+    # Aborta se ainda faltam colunas obrigatórias
+    missing = [c for c in ['lat', 'lon', 'speed'] if c not in df.columns]
+    if missing:
+        return None
     df_valid = df.dropna(subset=['lat', 'lon', 'speed']).head(40)
     df_valid = df_valid[
         (df_valid['lat'].between(-25.60, -25.52)) &
@@ -475,6 +526,12 @@ def generate_heatmap(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
+    if 'lat' not in df.columns and 'y' in df.columns:
+        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
+    if 'lon' not in df.columns and 'x' in df.columns:
+        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
+    if 'lat' not in df.columns or 'lon' not in df.columns:
+        return None
     df_map = df.dropna(subset=['lat', 'lon'])
     if df_map.empty:
         return None
@@ -492,7 +549,7 @@ st.sidebar.metric("⏳ Tempo online",  f"{tempo_total//3600}h:{(tempo_total%3600
 st.sidebar.metric("⏳ Próximo ciclo", f"{minutos_restantes}:{segundos_restantes:02d}")
 st.sidebar.metric("🔄 Atualizações",  st.session_state.manual_refreshes)
 
-if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True, type="primary"):
+if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", width='stretch', type="primary"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.manual_refreshes += 1
@@ -626,7 +683,7 @@ with col_grav:
         ),
         showlegend=False, height=220
     )
-    st.plotly_chart(fig_grav, use_container_width=True)
+    st.plotly_chart(fig_grav, width='stretch')
 
 cor_vel = 'green' if v_media_kmh > 40 else ('yellow' if v_media_kmh > 20 else 'red')
 
@@ -643,7 +700,7 @@ with col_vel:
         ),
         showlegend=False, height=220
     )
-    st.plotly_chart(fig_vel, use_container_width=True)
+    st.plotly_chart(fig_vel, width='stretch')
 
 st.markdown("---")
 
@@ -675,7 +732,7 @@ with tab_inc:
 with tab_jams:
     st.caption("📏 Escala métrica | 🟢 Livre → 🔴 Parado")
     if not df_jams_filtered.empty:
-        m_jam = generate_jams_map(df_filtered.to_json(date_format='iso'))
+        m_jam = generate_jams_map(df_jams_filtered.to_json(date_format='iso'))
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key="mapa_jam")
             st.markdown("**Legenda:** 🟢 >80 km/h | 🟡 40–80 km/h | 🟠 20–40 km/h | 🔴 <20 km/h")
@@ -707,7 +764,7 @@ with tab_graficos:
                 labels={'hour': 'Hora', 'count': 'Qtd'},
                 color='count', color_continuous_scale='Reds'
             )
-            st.plotly_chart(fig_hora, use_container_width=True)
+            st.plotly_chart(fig_hora, width='stretch')
 
         with col_g2:
             st.subheader("🥧 Proporção por Tipo")
@@ -715,7 +772,7 @@ with tab_graficos:
                 df_filtered, names='type',
                 color_discrete_sequence=px.colors.qualitative.Set3
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width='stretch')
 
         if 'day_of_week' in df_filtered.columns:
             st.subheader("📅 Incidentes por Dia da Semana")
@@ -727,7 +784,7 @@ with tab_graficos:
                 labels={'day_of_week': 'Dia', 'count': 'Qtd'},
                 color='count', color_continuous_scale='Blues'
             )
-            st.plotly_chart(fig_dow, use_container_width=True)
+            st.plotly_chart(fig_dow, width='stretch')
     else:
         st.info("Sem dados para gerar gráficos.")
 
@@ -749,7 +806,7 @@ with tab_dados:
                 "street":      "Rua",
                 "Google Maps": st.column_config.LinkColumn("📍 Ver no Maps"),
             },
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
         csv = df_display[cols_show].to_csv(index=False).encode('utf-8')
