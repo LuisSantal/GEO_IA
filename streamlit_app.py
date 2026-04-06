@@ -663,7 +663,7 @@ tab_inc, tab_jams, tab_calor, tab_graficos, tab_dados = st.tabs([
 with tab_inc:
     st.caption("📍 Centro: -25.54, -54.58 | 🧭 Norte ↑ | Clique nos pontos para detalhes")
     if not df_filtered.empty:
-        m_inc = generate_incidents_map(df_filtered.to_json())
+        m_inc = generate_incidents_map(df_filtered.to_json(date_format='iso'))
         if m_inc:
             st_folium(m_inc, width="100%", height=500, key="mapa_inc")
         else:
@@ -675,7 +675,7 @@ with tab_inc:
 with tab_jams:
     st.caption("📏 Escala métrica | 🟢 Livre → 🔴 Parado")
     if not df_jams_filtered.empty:
-        m_jam = generate_jams_map(df_jams_filtered.to_json())
+        m_jam = generate_jams_map(df_filtered.to_json(date_format='iso'))
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key="mapa_jam")
             st.markdown("**Legenda:** 🟢 >80 km/h | 🟡 40–80 km/h | 🟠 20–40 km/h | 🔴 <20 km/h")
@@ -688,7 +688,7 @@ with tab_jams:
 with tab_calor:
     st.subheader("Zonas de Concentração de Incidentes")
     if not df_filtered.empty:
-        m_heat = generate_heatmap(df_filtered.to_json())
+        m_heat = generate_heatmap(df_filtered.to_json(date_format='iso'))
         if m_heat:
             st_folium(m_heat, width="100%", height=500, key="mapa_calor")
     else:
