@@ -26,7 +26,7 @@ TZ_FOZ = ZoneInfo("America/Sao_Paulo")
 
 def now_foz():
     """Retorna datetime atual no horário de Foz do Iguaçu."""
-    return datetime.now(TZ_FOZ)
+    return datetime.now(TZ_FOZ).replace(tzinfo=None)
 
 # =============================================
 # 3. ESTADO DA SESSÃO
