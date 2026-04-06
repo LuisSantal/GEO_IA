@@ -68,35 +68,20 @@ def get_danger_color(incident_type):
 # =============================================
 @st.cache_resource(show_spinner=False)
 def get_drive_service():
-    """
-    Autentica via Service Account usando st.secrets.
-    Configure em .streamlit/secrets.toml:
-      [gcp_service_account]
-      type = "service_account"
-      project_id = "..."
-      private_key_id = "..."
-      private_key = "-----BEGIN RSA PRIVATE KEY-----\\n..."
-      client_email = "..."
-    """
     try:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
-
         creds_info = st.secrets["gcp_service_account"]
         creds = service_account.Credentials.from_service_account_info(
             creds_info,
             scopes=["https://www.googleapis.com/auth/drive.readonly"]
         )
         return build('drive', 'v3', credentials=creds)
-    except Exception:
+    except Exception as e:
         st.session_state.use_mock_data = True
         return None
 
 def get_latest_h5_id(folder_id):
-    """
-    Encontra o arquivo .h5 mais recente na pasta do Drive
-    baseando-se no timestamp numérico no nome. Ex: alerts1774879588.h5
-    """
     service = get_drive_service()
     if service is None:
         return None
@@ -111,9 +96,8 @@ def get_latest_h5_id(folder_id):
         files = results.get('files', [])
         if not files:
             return None
-
-        latest_id  = None
-        latest_ts  = -1
+        latest_id = None
+        latest_ts = -1
         for f in files:
             match = re.search(r'(\d{8,})', f['name'])
             if match:
@@ -121,11 +105,8 @@ def get_latest_h5_id(folder_id):
                 if ts > latest_ts:
                     latest_ts = ts
                     latest_id = f['id']
-
-        # Fallback: primeiro arquivo (ordenado por modifiedTime desc)
         if latest_id is None and files:
             latest_id = files[0]['id']
-
         return latest_id
     except Exception as e:
         st.warning(f"⚠️ Erro ao listar arquivos do Drive: {e}")
@@ -134,19 +115,13 @@ def get_latest_h5_id(folder_id):
 
 @st.cache_data(ttl=600, show_spinner="📥 Baixando dados do Drive...")
 def load_hdf_from_drive(file_id):
-    """
-    Baixa o arquivo .h5 do Google Drive e carrega como DataFrame.
-    Retorna None em caso de falha.
-    """
     if not file_id:
         return None
     try:
         from googleapiclient.http import MediaIoBaseDownload
-
         service = get_drive_service()
         if service is None:
             return None
-
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
@@ -154,11 +129,9 @@ def load_hdf_from_drive(file_id):
         while not done:
             _, done = downloader.next_chunk()
         fh.seek(0)
-
         with tempfile.NamedTemporaryFile(delete=False, suffix='.h5') as tmp:
             tmp.write(fh.getvalue())
             tmp_path = tmp.name
-
         df = pd.read_hdf(tmp_path, key='s')
         return df
     except Exception as e:
@@ -170,20 +143,14 @@ def load_hdf_from_drive(file_id):
 # 6. NORMALIZAÇÃO DE TIMESTAMPS
 # =============================================
 def normalize_timestamps(df):
-    """
-    Converte pubMillis (epoch ms UTC) → horário local Foz do Iguaçu.
-    Adiciona colunas: timestamp, date, hour, day_of_week.
-    """
     if df is None or df.empty:
         return df
     df = df.copy()
-
     if 'pubMillis' in df.columns:
         df['timestamp'] = pd.to_datetime(df['pubMillis'], unit='ms', utc=True)
         df['timestamp'] = df['timestamp'].dt.tz_convert('America/Sao_Paulo').dt.tz_localize(None)
     elif 'timestamp' not in df.columns:
         df['timestamp'] = datetime.now()
-
     df['date']        = df['timestamp'].dt.date
     df['hour']        = df['timestamp'].dt.hour
     df['day_of_week'] = df['timestamp'].dt.day_name()
@@ -193,20 +160,11 @@ def normalize_timestamps(df):
 # 7. EXTRAÇÃO DE COORDENADAS
 # =============================================
 def extract_coordinates(df):
-    """
-    Extrai lat/lon de diferentes formatos nos dados do Waze:
-    - 'location' como dict {'x': lon, 'y': lat}
-    - 'location' como string "{'x': ..., 'y': ...}"
-    - Colunas separadas 'x' e 'y'
-    - Colunas 'lat' e 'lon' já existentes
-    """
     if df is None or df.empty:
         return df
     df = df.copy()
-
     if 'lat' in df.columns and 'lon' in df.columns:
         return df
-
     if 'location' in df.columns:
         try:
             sample = df['location'].dropna().iloc[0] if not df['location'].dropna().empty else None
@@ -219,16 +177,36 @@ def extract_coordinates(df):
             df['lon'] = df['location'].apply(lambda x: float(x.get('x', 0)) if isinstance(x, dict) else None)
         except Exception:
             pass
-
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
         df['lon'] = pd.to_numeric(df['x'], errors='coerce')
-
     return df
 
 # =============================================
-# 8. TRADUÇÕES WAZE → PT-BR
+# 8. NORMALIZAÇÃO DE VELOCIDADE (JAMS)
+# =============================================
+def normalize_speed(df):
+    """
+    Garante que o DataFrame de jams tenha a coluna 'speed' em m/s.
+    Aceita: speed (m/s), speedKMH, speedkmh, speed_kmh (km/h → divide por 3.6).
+    """
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    if 'speed' in df.columns:
+        df['speed'] = pd.to_numeric(df['speed'], errors='coerce')
+        return df
+    for alt in ['speedKMH', 'speedkmh', 'speed_kmh', 'velocity']:
+        if alt in df.columns:
+            df['speed'] = pd.to_numeric(df[alt], errors='coerce') / 3.6
+            return df
+    # Coluna não encontrada: cria coluna NaN para evitar KeyError downstream
+    df['speed'] = float('nan')
+    return df
+
+# =============================================
+# 9. TRADUÇÕES WAZE → PT-BR
 # =============================================
 TYPE_MAP = {
     'ROAD_CLOSED': 'VIA FECHADA', 'ROAD_CLOSED_CONSTRUCTION': 'VIA FECHADA',
@@ -261,12 +239,9 @@ def translate_dataframe(df):
     return df
 
 # =============================================
-# 9. DADOS MOCKADOS — CORREÇÃO ERRO 3
-# ✅ Usa random.choice() puro (sem numpy) para evitar
-#    ValueError com lista de tuplas mistas
+# 10. DADOS MOCKADOS
 # =============================================
 def create_mock_data():
-    """Dados mockados realistas de Foz do Iguaçu para demonstração."""
     foz_streets = [
         ("Av. Brasil",           -25.5475, -54.5870),
         ("Av. JK",               -25.5502, -54.5851),
@@ -283,11 +258,8 @@ def create_mock_data():
         'Acidente grave', 'Acidente leve', 'Inundação'
     ]
     tipos = ['ACIDENTE', 'VIA FECHADA', 'PERIGO', 'OBRAS', 'ALERTA']
-
     alerts_data, jams_data = [], []
-
     for _ in range(20):
-        # ✅ CORRIGIDO: random.choice() em vez de np.random.choice()
         street, base_lat, base_lon = random.choice(foz_streets)
         alerts_data.append({
             'timestamp': datetime.now() - timedelta(minutes=random.randint(0, 120)),
@@ -297,40 +269,28 @@ def create_mock_data():
             'lat': round(base_lat + random.uniform(-0.005, 0.005), 6),
             'lon': round(base_lon + random.uniform(-0.005, 0.005), 6),
         })
-
     for _ in range(15):
-        # ✅ CORRIGIDO: random.choice() em vez de np.random.choice()
         street, base_lat, base_lon = random.choice(foz_streets)
         jams_data.append({
             'timestamp': datetime.now() - timedelta(minutes=random.randint(0, 60)),
-            'speed':  round(random.uniform(5, 45), 1),
+            'speed':  round(random.uniform(5, 45), 1) / 3.6,  # armazenado em m/s
             'street': street,
             'lat': round(base_lat + random.uniform(-0.003, 0.003), 6),
             'lon': round(base_lon + random.uniform(-0.003, 0.003), 6),
         })
-
     df_alerts = pd.DataFrame(alerts_data)
     df_jams   = pd.DataFrame(jams_data)
-
     for df in [df_alerts, df_jams]:
         df['hour']        = df['timestamp'].dt.hour
         df['date']        = df['timestamp'].dt.date
         df['day_of_week'] = df['timestamp'].dt.day_name()
-
     return df_alerts, df_jams
 
 # =============================================
-# 10. PIPELINE PRINCIPAL DE DADOS
+# 11. PIPELINE PRINCIPAL DE DADOS
 # =============================================
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando dados...")
 def load_all_data():
-    """
-    Tenta Google Drive primeiro.
-    Fallback automático para dados mockados se:
-    - st.secrets não tiver 'gcp_service_account'
-    - Drive não retornar arquivos
-    - HDF5 falhar ao carregar
-    """
     if not st.session_state.get('use_mock_data', False):
         try:
             alerts_id = get_latest_h5_id(FOLDER_ALERTS_ID)
@@ -349,8 +309,8 @@ def load_all_data():
             if df_jams_raw is not None:
                 df_jams_raw = normalize_timestamps(df_jams_raw)
                 df_jams_raw = extract_coordinates(df_jams_raw)
-                if 'speed' not in df_jams_raw.columns and 'speedKMH' in df_jams_raw.columns:
-                    df_jams_raw['speed'] = df_jams_raw['speedKMH'] / 3.6
+                # ✅ FIX: normaliza velocidade usando função dedicada
+                df_jams_raw = normalize_speed(df_jams_raw)
                 if 'street' not in df_jams_raw.columns:
                     df_jams_raw['street'] = 'Via'
 
@@ -367,10 +327,7 @@ def load_all_data():
     return df_alerts, df_jams, "mock"
 
 # =============================================
-# 11. FUNÇÕES DE MAPA — CORREÇÃO ERROS 1 e 2
-# ✅ Removido folium.ScaleControl (não existe)
-# ✅ Removido from folium.features import Control (não existe)
-# ✅ Usa apenas plugins.MeasureControl (compatível)
+# 12. FUNÇÕES DE MAPA
 # =============================================
 def create_folium_map_with_compass(lat, lon, zoom_level=13):
     m = folium.Map(
@@ -379,19 +336,13 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         tiles="OpenStreetMap",
         max_bounds=True
     )
-
-    # ✅ Coordenadas do mouse (topo direito)
     plugins.MousePosition(
         position='topright',
         separator=' | ',
         prefix='Lat/Lon: ',
         num_digits=5
     ).add_to(m)
-
-    # ✅ Ferramenta de medição (rodapé direito) — substitui ScaleControl
     plugins.MeasureControl(position='bottomright').add_to(m)
-
-    # ✅ Seta Norte fixa (topo esquerdo)
     north_html = '''
     <div style="position:fixed;top:10px;left:10px;width:45px;height:45px;
         background:linear-gradient(145deg,#f0f0f0,#e6e6e6);
@@ -411,6 +362,7 @@ def generate_incidents_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
+    # Garante lat/lon
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
@@ -434,7 +386,6 @@ def generate_incidents_map(df_json):
     ]
     if df_map.empty:
         return None
-
     m = create_folium_map_with_compass(df_map['lat'].mean(), df_map['lon'].mean())
     for _, row in df_map.iterrows():
         try:
@@ -465,7 +416,7 @@ def generate_jams_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-    # Mapeia colunas alternativas do Waze (lat/lon podem vir como x/y ou dentro de 'location')
+    # ✅ FIX 1: garante lat/lon de formatos alternativos
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
@@ -480,15 +431,14 @@ def generate_jams_map(df_json):
             except: return None
         df['lat'] = df['location'].apply(_get_y)
         df['lon'] = df['location'].apply(_get_x)
-    # Normaliza velocidade: aceita speedKMH (m/s→km/h) ou outros nomes
+    # ✅ FIX 2: garante coluna speed de nomes alternativos
     if 'speed' not in df.columns:
         for alt in ['speedKMH', 'speedkmh', 'speed_kmh', 'velocity']:
             if alt in df.columns:
                 df['speed'] = pd.to_numeric(df[alt], errors='coerce') / 3.6
                 break
-    # Aborta se ainda faltam colunas obrigatórias
-    missing = [c for c in ['lat', 'lon', 'speed'] if c not in df.columns]
-    if missing:
+    # ✅ FIX 3: aborta sem crash se colunas ainda faltam
+    if any(c not in df.columns for c in ['lat', 'lon', 'speed']):
         return None
     df_valid = df.dropna(subset=['lat', 'lon', 'speed']).head(40)
     df_valid = df_valid[
@@ -497,7 +447,6 @@ def generate_jams_map(df_json):
     ]
     if df_valid.empty:
         return None
-
     m = create_folium_map_with_compass(df_valid['lat'].mean(), df_valid['lon'].mean())
     for _, row in df_valid.iterrows():
         try:
@@ -541,7 +490,7 @@ def generate_heatmap(df_json):
     return m
 
 # =============================================
-# 12. SIDEBAR
+# 13. SIDEBAR
 # =============================================
 st.sidebar.header("⚙️ Controles")
 st.sidebar.markdown("### ⏰ Status da Sessão")
@@ -549,7 +498,7 @@ st.sidebar.metric("⏳ Tempo online",  f"{tempo_total//3600}h:{(tempo_total%3600
 st.sidebar.metric("⏳ Próximo ciclo", f"{minutos_restantes}:{segundos_restantes:02d}")
 st.sidebar.metric("🔄 Atualizações",  st.session_state.manual_refreshes)
 
-if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", width='stretch', type="primary"):
+if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True, type="primary"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.manual_refreshes += 1
@@ -558,11 +507,10 @@ if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", width='stretch', type="primar
 st.sidebar.divider()
 
 # =============================================
-# 13. CARREGAMENTO DE DADOS
+# 14. CARREGAMENTO DE DADOS
 # =============================================
 df_alerts_raw, df_jams_raw, fonte = load_all_data()
 
-# Garante colunas auxiliares
 for df_ref in [df_alerts_raw, df_jams_raw]:
     if not df_ref.empty:
         if 'hour' not in df_ref.columns:
@@ -571,7 +519,7 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
             df_ref['date'] = df_ref['timestamp'].dt.date
 
 # =============================================
-# 14. FILTROS NA SIDEBAR
+# 15. FILTROS NA SIDEBAR
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
 
@@ -596,7 +544,7 @@ filtro_rua = st.sidebar.text_input("🛣️ Buscar Rua", placeholder="Ex: Av. Br
 hora_range = st.sidebar.slider("⏰ Horário", 0, 23, (0, 23))
 
 # =============================================
-# 15. APLICAÇÃO DOS FILTROS
+# 16. APLICAÇÃO DOS FILTROS
 # =============================================
 df_filtered = pd.DataFrame()
 if not df_alerts_raw.empty:
@@ -618,7 +566,7 @@ if not df_jams_raw.empty:
     ].copy()
 
 # =============================================
-# 16. CABEÇALHO
+# 17. CABEÇALHO
 # =============================================
 st.title(f"🚗 Monitoramento de Tráfego — Foz do Iguaçu | {selected_date.strftime('%d/%m/%Y')}")
 
@@ -634,7 +582,7 @@ else:
 st.markdown("---")
 
 # =============================================
-# 17. RESUMO DOS FILTROS ATIVOS
+# 18. RESUMO DOS FILTROS ATIVOS
 # =============================================
 col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 col_f1.metric("📅 Data",    selected_date.strftime("%d/%m/%Y"))
@@ -644,7 +592,7 @@ col_f4.metric("⏰ Horário", f"{hora_range[0]:02d}:00–{hora_range[1]:02d}:59"
 st.markdown("---")
 
 # =============================================
-# 18. KPIs PRINCIPAIS
+# 19. KPIs PRINCIPAIS
 # =============================================
 st.subheader("📊 Resumo Estatístico")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -662,7 +610,7 @@ kpi4.metric("Status da Via",  status_via)
 st.markdown("---")
 
 # =============================================
-# 19. INDICADORES VISUAIS DE GRAVIDADE
+# 20. INDICADORES VISUAIS DE GRAVIDADE
 # =============================================
 st.subheader("📈 Indicadores de Gravidade")
 col_grav, col_vel = st.columns(2)
@@ -683,7 +631,7 @@ with col_grav:
         ),
         showlegend=False, height=220
     )
-    st.plotly_chart(fig_grav, width='stretch')
+    st.plotly_chart(fig_grav, use_container_width=True)
 
 cor_vel = 'green' if v_media_kmh > 40 else ('yellow' if v_media_kmh > 20 else 'red')
 
@@ -700,12 +648,12 @@ with col_vel:
         ),
         showlegend=False, height=220
     )
-    st.plotly_chart(fig_vel, width='stretch')
+    st.plotly_chart(fig_vel, use_container_width=True)
 
 st.markdown("---")
 
 # =============================================
-# 20. ABAS DE VISUALIZAÇÃO
+# 21. ABAS DE VISUALIZAÇÃO
 # =============================================
 st.subheader("🗺️ Visualizações")
 tab_inc, tab_jams, tab_calor, tab_graficos, tab_dados = st.tabs([
@@ -729,6 +677,7 @@ with tab_inc:
         st.info("Nenhum incidente com os filtros aplicados.")
 
 # --- ABA 2: Congestionamentos ---
+# ✅ FIX CRÍTICO: era df_filtered (alertas), agora é df_jams_filtered (jams)
 with tab_jams:
     st.caption("📏 Escala métrica | 🟢 Livre → 🔴 Parado")
     if not df_jams_filtered.empty:
@@ -755,7 +704,6 @@ with tab_calor:
 with tab_graficos:
     if not df_filtered.empty:
         col_g1, col_g2 = st.columns(2)
-
         with col_g1:
             st.subheader("📊 Incidentes por Hora")
             fig_hora = px.bar(
@@ -764,16 +712,14 @@ with tab_graficos:
                 labels={'hour': 'Hora', 'count': 'Qtd'},
                 color='count', color_continuous_scale='Reds'
             )
-            st.plotly_chart(fig_hora, width='stretch')
-
+            st.plotly_chart(fig_hora, use_container_width=True)
         with col_g2:
             st.subheader("🥧 Proporção por Tipo")
             fig_pie = px.pie(
                 df_filtered, names='type',
                 color_discrete_sequence=px.colors.qualitative.Set3
             )
-            st.plotly_chart(fig_pie, width='stretch')
-
+            st.plotly_chart(fig_pie, use_container_width=True)
         if 'day_of_week' in df_filtered.columns:
             st.subheader("📅 Incidentes por Dia da Semana")
             order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
@@ -784,7 +730,7 @@ with tab_graficos:
                 labels={'day_of_week': 'Dia', 'count': 'Qtd'},
                 color='count', color_continuous_scale='Blues'
             )
-            st.plotly_chart(fig_dow, width='stretch')
+            st.plotly_chart(fig_dow, use_container_width=True)
     else:
         st.info("Sem dados para gerar gráficos.")
 
@@ -806,7 +752,7 @@ with tab_dados:
                 "street":      "Rua",
                 "Google Maps": st.column_config.LinkColumn("📍 Ver no Maps"),
             },
-            width='stretch',
+            use_container_width=True,
             hide_index=True
         )
         csv = df_display[cols_show].to_csv(index=False).encode('utf-8')
@@ -815,7 +761,7 @@ with tab_dados:
         st.info("Nenhum registro com os filtros aplicados.")
 
 # =============================================
-# 21. RODAPÉ
+# 22. RODAPÉ
 # =============================================
 st.markdown("---")
 st.info("💡 Passe o mouse sobre os mapas para ver coordenadas em tempo real no canto superior direito.")
