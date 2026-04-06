@@ -4,8 +4,7 @@ import plotly.express as px
 import io
 import re
 import tempfile
-import random
-from datetime import datetime, timedelta, date
+from datetime import datetime, date
 import folium
 from folium import plugins
 from streamlit_folium import st_folium
@@ -25,8 +24,6 @@ st.set_page_config(
 if 'app_start_time' not in st.session_state:
     st.session_state.app_start_time = datetime.now()
     st.session_state.manual_refreshes = 0
-if 'use_mock_data' not in st.session_state:
-    st.session_state.use_mock_data = False
 
 tempo_sessao = (datetime.now() - st.session_state.app_start_time).total_seconds()
 tempo_prox_refresh = 600 - (tempo_sessao % 600)
@@ -64,80 +61,59 @@ def get_danger_color(incident_type):
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 
 # =============================================
-# 5. CONEXÃO COM GOOGLE DRIVE (SERVICE ACCOUNT)
+# 5. CONEXÃO COM GOOGLE DRIVE
 # =============================================
 @st.cache_resource(show_spinner=False)
 def get_drive_service():
-    try:
-        from google.oauth2 import service_account
-        from googleapiclient.discovery import build
-        creds_info = st.secrets["gcp_service_account"]
-        creds = service_account.Credentials.from_service_account_info(
-            creds_info,
-            scopes=["https://www.googleapis.com/auth/drive.readonly"]
-        )
-        return build('drive', 'v3', credentials=creds)
-    except Exception as e:
-        st.session_state.use_mock_data = True
-        return None
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    creds_info = st.secrets["gcp_service_account"]
+    creds = service_account.Credentials.from_service_account_info(
+        creds_info,
+        scopes=["https://www.googleapis.com/auth/drive.readonly"]
+    )
+    return build('drive', 'v3', credentials=creds)
 
 def get_latest_h5_id(folder_id):
     service = get_drive_service()
-    if service is None:
+    query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
+    results = service.files().list(
+        q=query,
+        fields="files(id, name, modifiedTime)",
+        orderBy="modifiedTime desc",
+        pageSize=20
+    ).execute()
+    files = results.get('files', [])
+    if not files:
         return None
-    try:
-        query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
-        results = service.files().list(
-            q=query,
-            fields="files(id, name, modifiedTime)",
-            orderBy="modifiedTime desc",
-            pageSize=20
-        ).execute()
-        files = results.get('files', [])
-        if not files:
-            return None
-        latest_id = None
-        latest_ts = -1
-        for f in files:
-            match = re.search(r'(\d{8,})', f['name'])
-            if match:
-                ts = int(match.group(1))
-                if ts > latest_ts:
-                    latest_ts = ts
-                    latest_id = f['id']
-        if latest_id is None and files:
-            latest_id = files[0]['id']
-        return latest_id
-    except Exception as e:
-        st.warning(f"⚠️ Erro ao listar arquivos do Drive: {e}")
-        st.session_state.use_mock_data = True
-        return None
+    latest_id = None
+    latest_ts = -1
+    for f in files:
+        match = re.search(r'(\d{8,})', f['name'])
+        if match:
+            ts = int(match.group(1))
+            if ts > latest_ts:
+                latest_ts = ts
+                latest_id = f['id']
+    if latest_id is None:
+        latest_id = files[0]['id']
+    return latest_id
 
 @st.cache_data(ttl=600, show_spinner="📥 Baixando dados do Drive...")
 def load_hdf_from_drive(file_id):
-    if not file_id:
-        return None
-    try:
-        from googleapiclient.http import MediaIoBaseDownload
-        service = get_drive_service()
-        if service is None:
-            return None
-        request = service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        fh.seek(0)
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.h5') as tmp:
-            tmp.write(fh.getvalue())
-            tmp_path = tmp.name
-        df = pd.read_hdf(tmp_path, key='s')
-        return df
-    except Exception as e:
-        st.warning(f"⚠️ Falha ao carregar HDF5: {e}")
-        st.session_state.use_mock_data = True
-        return None
+    from googleapiclient.http import MediaIoBaseDownload
+    service = get_drive_service()
+    request = service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    fh.seek(0)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.h5') as tmp:
+        tmp.write(fh.getvalue())
+        tmp_path = tmp.name
+    return pd.read_hdf(tmp_path, key='s')
 
 # =============================================
 # 6. NORMALIZAÇÃO DE TIMESTAMPS
@@ -184,13 +160,9 @@ def extract_coordinates(df):
     return df
 
 # =============================================
-# 8. NORMALIZAÇÃO DE VELOCIDADE (JAMS)
+# 8. NORMALIZAÇÃO DE VELOCIDADE
 # =============================================
 def normalize_speed(df):
-    """
-    Garante que o DataFrame de jams tenha a coluna 'speed' em m/s.
-    Aceita: speed (m/s), speedKMH, speedkmh, speed_kmh (km/h → divide por 3.6).
-    """
     if df is None or df.empty:
         return df
     df = df.copy()
@@ -201,7 +173,6 @@ def normalize_speed(df):
         if alt in df.columns:
             df['speed'] = pd.to_numeric(df[alt], errors='coerce') / 3.6
             return df
-    # Coluna não encontrada: cria coluna NaN para evitar KeyError downstream
     df['speed'] = float('nan')
     return df
 
@@ -239,95 +210,34 @@ def translate_dataframe(df):
     return df
 
 # =============================================
-# 10. DADOS MOCKADOS
+# 10. PIPELINE PRINCIPAL DE DADOS
 # =============================================
-def create_mock_data():
-    foz_streets = [
-        ("Av. Brasil",           -25.5475, -54.5870),
-        ("Av. JK",               -25.5502, -54.5851),
-        ("Av. das Cataratas",    -25.5531, -54.5792),
-        ("Av. Paraná",           -25.5458, -54.5901),
-        ("Ponte Tancredo Neves", -25.5412, -54.5955),
-        ("Rod. BR-277",          -25.5600, -54.5800),
-        ("Av. Costa e Silva",    -25.5480, -54.5820),
-        ("R. Edmundo de Barros", -25.5460, -54.5890),
-    ]
-    subtipos = [
-        'Colisão frontal', 'Carro parado', 'Buraco na pista',
-        'Obras na via', 'Semáforo quebrado', 'Animal na pista',
-        'Acidente grave', 'Acidente leve', 'Inundação'
-    ]
-    tipos = ['ACIDENTE', 'VIA FECHADA', 'PERIGO', 'OBRAS', 'ALERTA']
-    alerts_data, jams_data = [], []
-    for _ in range(20):
-        street, base_lat, base_lon = random.choice(foz_streets)
-        alerts_data.append({
-            'timestamp': datetime.now() - timedelta(minutes=random.randint(0, 120)),
-            'type':    random.choice(tipos),
-            'subtype': random.choice(subtipos),
-            'street':  street,
-            'lat': round(base_lat + random.uniform(-0.005, 0.005), 6),
-            'lon': round(base_lon + random.uniform(-0.005, 0.005), 6),
-        })
-    for _ in range(15):
-        street, base_lat, base_lon = random.choice(foz_streets)
-        jams_data.append({
-            'timestamp': datetime.now() - timedelta(minutes=random.randint(0, 60)),
-            'speed':  round(random.uniform(5, 45), 1) / 3.6,  # armazenado em m/s
-            'street': street,
-            'lat': round(base_lat + random.uniform(-0.003, 0.003), 6),
-            'lon': round(base_lon + random.uniform(-0.003, 0.003), 6),
-        })
-    df_alerts = pd.DataFrame(alerts_data)
-    df_jams   = pd.DataFrame(jams_data)
-    for df in [df_alerts, df_jams]:
-        df['hour']        = df['timestamp'].dt.hour
-        df['date']        = df['timestamp'].dt.date
-        df['day_of_week'] = df['timestamp'].dt.day_name()
+@st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
+def load_all_data():
+    alerts_id = get_latest_h5_id(FOLDER_ALERTS_ID)
+    jams_id   = get_latest_h5_id(FOLDER_JAMS_ID)
+
+    df_alerts = load_hdf_from_drive(alerts_id) if alerts_id else pd.DataFrame()
+    df_jams   = load_hdf_from_drive(jams_id)   if jams_id   else pd.DataFrame()
+
+    if not df_alerts.empty:
+        df_alerts = normalize_timestamps(df_alerts)
+        df_alerts = extract_coordinates(df_alerts)
+        df_alerts = translate_dataframe(df_alerts)
+        if 'street' not in df_alerts.columns:
+            df_alerts['street'] = 'N/A'
+
+    if not df_jams.empty:
+        df_jams = normalize_timestamps(df_jams)
+        df_jams = extract_coordinates(df_jams)
+        df_jams = normalize_speed(df_jams)
+        if 'street' not in df_jams.columns:
+            df_jams['street'] = 'Via'
+
     return df_alerts, df_jams
 
 # =============================================
-# 11. PIPELINE PRINCIPAL DE DADOS
-# =============================================
-@st.cache_data(ttl=600, show_spinner="🔄 Carregando dados...")
-def load_all_data():
-    if not st.session_state.get('use_mock_data', False):
-        try:
-            alerts_id = get_latest_h5_id(FOLDER_ALERTS_ID)
-            jams_id   = get_latest_h5_id(FOLDER_JAMS_ID)
-
-            df_alerts_raw = load_hdf_from_drive(alerts_id) if alerts_id else None
-            df_jams_raw   = load_hdf_from_drive(jams_id)   if jams_id   else None
-
-            if df_alerts_raw is not None:
-                df_alerts_raw = normalize_timestamps(df_alerts_raw)
-                df_alerts_raw = extract_coordinates(df_alerts_raw)
-                df_alerts_raw = translate_dataframe(df_alerts_raw)
-                if 'street' not in df_alerts_raw.columns:
-                    df_alerts_raw['street'] = 'N/A'
-
-            if df_jams_raw is not None:
-                df_jams_raw = normalize_timestamps(df_jams_raw)
-                df_jams_raw = extract_coordinates(df_jams_raw)
-                # ✅ FIX: normaliza velocidade usando função dedicada
-                df_jams_raw = normalize_speed(df_jams_raw)
-                if 'street' not in df_jams_raw.columns:
-                    df_jams_raw['street'] = 'Via'
-
-            if df_alerts_raw is not None or df_jams_raw is not None:
-                return (
-                    df_alerts_raw if df_alerts_raw is not None else pd.DataFrame(),
-                    df_jams_raw   if df_jams_raw   is not None else pd.DataFrame(),
-                    "drive"
-                )
-        except Exception:
-            pass
-
-    df_alerts, df_jams = create_mock_data()
-    return df_alerts, df_jams, "mock"
-
-# =============================================
-# 12. FUNÇÕES DE MAPA
+# 11. FUNÇÕES DE MAPA
 # =============================================
 def create_folium_map_with_compass(lat, lon, zoom_level=13):
     m = folium.Map(
@@ -362,7 +272,6 @@ def generate_incidents_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-    # Garante lat/lon
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
@@ -416,7 +325,6 @@ def generate_jams_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-    # ✅ FIX 1: garante lat/lon de formatos alternativos
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
@@ -431,13 +339,11 @@ def generate_jams_map(df_json):
             except: return None
         df['lat'] = df['location'].apply(_get_y)
         df['lon'] = df['location'].apply(_get_x)
-    # ✅ FIX 2: garante coluna speed de nomes alternativos
     if 'speed' not in df.columns:
         for alt in ['speedKMH', 'speedkmh', 'speed_kmh', 'velocity']:
             if alt in df.columns:
                 df['speed'] = pd.to_numeric(df[alt], errors='coerce') / 3.6
                 break
-    # ✅ FIX 3: aborta sem crash se colunas ainda faltam
     if any(c not in df.columns for c in ['lat', 'lon', 'speed']):
         return None
     df_valid = df.dropna(subset=['lat', 'lon', 'speed']).head(40)
@@ -490,7 +396,7 @@ def generate_heatmap(df_json):
     return m
 
 # =============================================
-# 13. SIDEBAR
+# 12. SIDEBAR
 # =============================================
 st.sidebar.header("⚙️ Controles")
 st.sidebar.markdown("### ⏰ Status da Sessão")
@@ -507,9 +413,19 @@ if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True, typ
 st.sidebar.divider()
 
 # =============================================
-# 14. CARREGAMENTO DE DADOS
+# 13. CARREGAMENTO DE DADOS
 # =============================================
-df_alerts_raw, df_jams_raw, fonte = load_all_data()
+try:
+    df_alerts_raw, df_jams_raw = load_all_data()
+except Exception as e:
+    st.error(f"❌ Erro ao conectar com o Google Drive: {e}")
+    st.markdown("""
+    **Verifique:**
+    - As credenciais `gcp_service_account` estão configuradas em **Settings → Secrets**
+    - A Service Account tem acesso às pastas do Drive
+    - Os arquivos `.h5` existem nas pastas configuradas
+    """)
+    st.stop()
 
 for df_ref in [df_alerts_raw, df_jams_raw]:
     if not df_ref.empty:
@@ -519,7 +435,7 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
             df_ref['date'] = df_ref['timestamp'].dt.date
 
 # =============================================
-# 15. FILTROS NA SIDEBAR
+# 14. FILTROS NA SIDEBAR
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
 
@@ -544,7 +460,7 @@ filtro_rua = st.sidebar.text_input("🛣️ Buscar Rua", placeholder="Ex: Av. Br
 hora_range = st.sidebar.slider("⏰ Horário", 0, 23, (0, 23))
 
 # =============================================
-# 16. APLICAÇÃO DOS FILTROS
+# 15. APLICAÇÃO DOS FILTROS
 # =============================================
 df_filtered = pd.DataFrame()
 if not df_alerts_raw.empty:
@@ -566,23 +482,14 @@ if not df_jams_raw.empty:
     ].copy()
 
 # =============================================
-# 17. CABEÇALHO
+# 16. CABEÇALHO
 # =============================================
 st.title(f"🚗 Monitoramento de Tráfego — Foz do Iguaçu | {selected_date.strftime('%d/%m/%Y')}")
-
-if fonte == "mock":
-    st.warning(
-        "⚠️ **Modo demonstração** — dados simulados. "
-        "Configure `st.secrets['gcp_service_account']` para usar dados reais do Google Drive.",
-        icon="🟡"
-    )
-else:
-    st.success("✅ **Dados reais** carregados do Google Drive.", icon="🟢")
-
+st.success("✅ **Dados reais** carregados do Google Drive.", icon="🟢")
 st.markdown("---")
 
 # =============================================
-# 18. RESUMO DOS FILTROS ATIVOS
+# 17. RESUMO DOS FILTROS ATIVOS
 # =============================================
 col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 col_f1.metric("📅 Data",    selected_date.strftime("%d/%m/%Y"))
@@ -592,7 +499,7 @@ col_f4.metric("⏰ Horário", f"{hora_range[0]:02d}:00–{hora_range[1]:02d}:59"
 st.markdown("---")
 
 # =============================================
-# 19. KPIs PRINCIPAIS
+# 18. KPIs PRINCIPAIS
 # =============================================
 st.subheader("📊 Resumo Estatístico")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -606,11 +513,10 @@ kpi1.metric("Total Alertas",  incidentes_dia)
 kpi2.metric("Acidentes",      acidentes_graves)
 kpi3.metric("Vel. Média",     f"{v_media_kmh:.1f} km/h")
 kpi4.metric("Status da Via",  status_via)
-
 st.markdown("---")
 
 # =============================================
-# 20. INDICADORES VISUAIS DE GRAVIDADE
+# 19. INDICADORES VISUAIS DE GRAVIDADE
 # =============================================
 st.subheader("📈 Indicadores de Gravidade")
 col_grav, col_vel = st.columns(2)
@@ -653,7 +559,7 @@ with col_vel:
 st.markdown("---")
 
 # =============================================
-# 21. ABAS DE VISUALIZAÇÃO
+# 20. ABAS DE VISUALIZAÇÃO
 # =============================================
 st.subheader("🗺️ Visualizações")
 tab_inc, tab_jams, tab_calor, tab_graficos, tab_dados = st.tabs([
@@ -677,7 +583,6 @@ with tab_inc:
         st.info("Nenhum incidente com os filtros aplicados.")
 
 # --- ABA 2: Congestionamentos ---
-# ✅ FIX CRÍTICO: era df_filtered (alertas), agora é df_jams_filtered (jams)
 with tab_jams:
     st.caption("📏 Escala métrica | 🟢 Livre → 🔴 Parado")
     if not df_jams_filtered.empty:
@@ -761,12 +666,12 @@ with tab_dados:
         st.info("Nenhum registro com os filtros aplicados.")
 
 # =============================================
-# 22. RODAPÉ
+# 21. RODAPÉ
 # =============================================
 st.markdown("---")
 st.info("💡 Passe o mouse sobre os mapas para ver coordenadas em tempo real no canto superior direito.")
 st.caption(
-    f"Fonte: {'Google Drive (dados reais)' if fonte == 'drive' else 'Dados de demonstração'} | "
+    f"Fonte: Google Drive | "
     f"Atualizações manuais: {st.session_state.manual_refreshes} | "
     f"App online há {tempo_total // 60} min"
 )
