@@ -5,7 +5,7 @@ import io
 import re
 import tempfile
 from datetime import datetime, date
-import pytz
+from zoneinfo import ZoneInfo
 import folium
 from folium import plugins
 from streamlit_folium import st_folium
@@ -22,7 +22,7 @@ st.set_page_config(
 # =============================================
 # 2. TIMEZONE E HORA LOCAL
 # =============================================
-TZ_FOZ = pytz.timezone("America/Sao_Paulo")
+TZ_FOZ = ZoneInfo("America/Sao_Paulo")
 
 def now_foz():
     """Retorna datetime atual no horário de Foz do Iguaçu."""
@@ -141,7 +141,7 @@ def normalize_timestamps(df):
             .dt.tz_localize(None)
         )
     elif 'timestamp' not in df.columns:
-        df['timestamp'] = now_foz().replace(tzinfo=None)
+        df["timestamp"] = datetime.now()
 
     df['date']        = df['timestamp'].dt.date
     df['hour']        = df['timestamp'].dt.hour
