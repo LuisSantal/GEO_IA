@@ -11,7 +11,7 @@ import folium
 from folium import plugins
 from streamlit_folium import st_folium
 
-st.set_page_config(page_title="Waze Foz do Iguacu", layout="wide", page_icon="U+1F697")
+st.set_page_config(page_title="Waze Foz do Iguacu", layout="wide", page_icon="🚗")
 
 TZ_FOZ = ZoneInfo("America/Sao_Paulo")
 
@@ -497,7 +497,7 @@ if not df_jams_raw.empty:
 st.title("Monitoramento de Trafego - Foz do Iguacu | " + selected_date.strftime("%d/%m/%Y"))
 st.success(
     "Dados reais carregados do Google Drive | Hora local (Foz): " + hora_foz_atual.strftime("%H:%M:%S"),
-    icon="U+1F7E2"
+     icon="🟢"
 )
 st.markdown("---")
 
