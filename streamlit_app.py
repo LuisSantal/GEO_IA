@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import io
 import re
+import ast
 import tempfile
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
@@ -25,7 +26,6 @@ st.set_page_config(
 TZ_FOZ = ZoneInfo("America/Sao_Paulo")
 
 def now_foz():
-    """Retorna datetime atual no horário de Foz do Iguaçu."""
     return datetime.now(TZ_FOZ).replace(tzinfo=None)
 
 # =============================================
@@ -35,11 +35,11 @@ if 'app_start_time' not in st.session_state:
     st.session_state.app_start_time = now_foz()
     st.session_state.manual_refreshes = 0
 
-tempo_sessao = (now_foz() - st.session_state.app_start_time).total_seconds()
+tempo_sessao       = (now_foz() - st.session_state.app_start_time).total_seconds()
 tempo_prox_refresh = 600 - (tempo_sessao % 600)
-minutos_restantes = int(tempo_prox_refresh // 60)
+minutos_restantes  = int(tempo_prox_refresh // 60)
 segundos_restantes = int(tempo_prox_refresh % 60)
-tempo_total = int(tempo_sessao)
+tempo_total        = int(tempo_sessao)
 
 # =============================================
 # 4. IDs DAS PASTAS DO GOOGLE DRIVE
@@ -55,18 +55,18 @@ def get_congestion_color(speed_kmh):
     elif speed_kmh >= 60: return '#55DD00'
     elif speed_kmh >= 40: return '#DDDD00'
     elif speed_kmh >= 20: return '#FF8800'
-    else:                  return '#FF0000'
+    else:                 return '#FF0000'
 
 def get_danger_color(incident_type):
     if pd.isna(incident_type) or str(incident_type).strip() == '':
         return '#0099FF'
     danger_colors = {
-        'ACIDENTE': '#FF0000',
-        'VIA FECHADA': '#FF4400',
+        'ACIDENTE':         '#FF0000',
+        'VIA FECHADA':      '#FF4400',
         'CONGESTIONAMENTO': '#FFAA00',
-        'PERIGO': '#FF6600',
-        'ALERTA': '#FFDD00',
-        'OBRAS': '#AAAAAA',
+        'PERIGO':           '#FF6600',
+        'ALERTA':           '#FFDD00',
+        'OBRAS':            '#AAAAAA',
     }
     return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
 
@@ -86,7 +86,7 @@ def get_drive_service():
 
 def get_latest_h5_id(folder_id):
     service = get_drive_service()
-    query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
+    query   = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
     results = service.files().list(
         q=query,
         fields="files(id, name, modifiedTime)",
@@ -96,8 +96,7 @@ def get_latest_h5_id(folder_id):
     files = results.get('files', [])
     if not files:
         return None
-    latest_id = None
-    latest_ts = -1
+    latest_id, latest_ts = None, -1
     for f in files:
         match = re.search(r'(\d{8,})', f['name'])
         if match:
@@ -105,16 +104,14 @@ def get_latest_h5_id(folder_id):
             if ts > latest_ts:
                 latest_ts = ts
                 latest_id = f['id']
-    if latest_id is None:
-        latest_id = files[0]['id']
-    return latest_id
+    return latest_id if latest_id else files[0]['id']
 
 @st.cache_data(ttl=600, show_spinner="📥 Baixando dados do Drive...")
 def load_hdf_from_drive(file_id):
     from googleapiclient.http import MediaIoBaseDownload
-    service = get_drive_service()
-    request = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
+    service    = get_drive_service()
+    request    = service.files().get_media(fileId=file_id)
+    fh         = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
@@ -126,30 +123,27 @@ def load_hdf_from_drive(file_id):
     return pd.read_hdf(tmp_path, key='s')
 
 # =============================================
-# 7. NORMALIZAÇÃO DE TIMESTAMPS  ← CORRIGIDO
+# 7. NORMALIZAÇÃO DE TIMESTAMPS
 # =============================================
 def normalize_timestamps(df):
-    """Converte pubMillis (UTC epoch ms) para horário local de Foz do Iguaçu (UTC-3)."""
     if df is None or df.empty:
         return df
     df = df.copy()
     if 'pubMillis' in df.columns:
-        # Converte epoch ms → UTC → America/Sao_Paulo (UTC-3), remove tzinfo para compatibilidade
         df['timestamp'] = (
             pd.to_datetime(df['pubMillis'], unit='ms', utc=True)
             .dt.tz_convert('America/Sao_Paulo')
             .dt.tz_localize(None)
         )
     elif 'timestamp' not in df.columns:
-        df["timestamp"] = datetime.now()
-
+        df['timestamp'] = datetime.now()
     df['date']        = df['timestamp'].dt.date
     df['hour']        = df['timestamp'].dt.hour
     df['day_of_week'] = df['timestamp'].dt.day_name()
     return df
 
 # =============================================
-# 8. EXTRAÇÃO DE COORDENADAS
+# 8. EXTRAÇÃO DE COORDENADAS — ALERTAS
 # =============================================
 def extract_coordinates(df):
     if df is None or df.empty:
@@ -161,18 +155,85 @@ def extract_coordinates(df):
         try:
             sample = df['location'].dropna().iloc[0] if not df['location'].dropna().empty else None
             if isinstance(sample, str):
-                import ast
                 df['location'] = df['location'].apply(
                     lambda x: ast.literal_eval(x) if isinstance(x, str) else x
                 )
-            df['lat'] = df['location'].apply(lambda x: float(x.get('y', 0)) if isinstance(x, dict) else None)
-            df['lon'] = df['location'].apply(lambda x: float(x.get('x', 0)) if isinstance(x, dict) else None)
+            df['lat'] = df['location'].apply(
+                lambda x: float(x.get('y', 0)) if isinstance(x, dict) else None
+            )
+            df['lon'] = df['location'].apply(
+                lambda x: float(x.get('x', 0)) if isinstance(x, dict) else None
+            )
         except Exception:
             pass
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
         df['lon'] = pd.to_numeric(df['x'], errors='coerce')
+    return df
+
+# =============================================
+# 8b. EXTRAÇÃO DE COORDENADAS — JAMS  ← NOVO
+# =============================================
+def extract_jams_coordinates(df):
+    """
+    Jams do Waze armazenam o traçado na coluna 'line' (lista de pontos {x, y}).
+    Esta função extrai o ponto médio do traçado como representante do jam.
+    Fallback: 'location', colunas soltas x/y.
+    """
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+
+    # Se já tem lat/lon válidos, apenas normaliza o tipo
+    if 'lat' in df.columns and 'lon' in df.columns:
+        df['lat'] = pd.to_numeric(df['lat'], errors='coerce')
+        df['lon'] = pd.to_numeric(df['lon'], errors='coerce')
+        if df['lat'].notna().any():
+            return df
+
+    # ── PRIORIDADE 1: coluna 'line' (traçado do jam) ──────────────────────────
+    if 'line' in df.columns:
+        def _midpoint(val):
+            try:
+                pts = val if isinstance(val, list) else ast.literal_eval(str(val))
+                if not pts:
+                    return None, None
+                mid = pts[len(pts) // 2]
+                return float(mid.get('y')), float(mid.get('x'))
+            except Exception:
+                return None, None
+
+        coords    = df['line'].apply(lambda x: pd.Series(_midpoint(x), index=['lat', 'lon']))
+        df['lat'] = coords['lat']
+        df['lon'] = coords['lon']
+
+        if df['lat'].notna().any():
+            return df
+
+    # ── PRIORIDADE 2: coluna 'location' ──────────────────────────────────────
+    if 'location' in df.columns:
+        try:
+            sample = df['location'].dropna().iloc[0] if not df['location'].dropna().empty else None
+            if isinstance(sample, str):
+                df['location'] = df['location'].apply(
+                    lambda x: ast.literal_eval(x) if isinstance(x, str) else x
+                )
+            df['lat'] = df['location'].apply(
+                lambda x: float(x.get('y', 0)) if isinstance(x, dict) else None
+            )
+            df['lon'] = df['location'].apply(
+                lambda x: float(x.get('x', 0)) if isinstance(x, dict) else None
+            )
+        except Exception:
+            pass
+
+    # ── PRIORIDADE 3: colunas soltas x / y ───────────────────────────────────
+    if 'lat' not in df.columns and 'y' in df.columns:
+        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
+    if 'lon' not in df.columns and 'x' in df.columns:
+        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
+
     return df
 
 # =============================================
@@ -196,23 +257,35 @@ def normalize_speed(df):
 # 10. TRADUÇÕES WAZE → PT-BR
 # =============================================
 TYPE_MAP = {
-    'ROAD_CLOSED': 'VIA FECHADA', 'ROAD_CLOSED_CONSTRUCTION': 'VIA FECHADA',
-    'ROAD_CLOSED_EVENT': 'VIA FECHADA', 'HAZARD': 'PERIGO',
-    'ACCIDENT': 'ACIDENTE', 'JAM': 'CONGESTIONAMENTO',
-    'WEATHERHAZARD': 'PERIGO CLIMÁTICO',
+    'ROAD_CLOSED':              'VIA FECHADA',
+    'ROAD_CLOSED_CONSTRUCTION': 'VIA FECHADA',
+    'ROAD_CLOSED_EVENT':        'VIA FECHADA',
+    'HAZARD':                   'PERIGO',
+    'ACCIDENT':                 'ACIDENTE',
+    'JAM':                      'CONGESTIONAMENTO',
+    'WEATHERHAZARD':            'PERIGO CLIMÁTICO',
 }
 SUBTYPE_MAP = {
-    'ROAD_CLOSED_CONSTRUCTION': 'OBRAS', 'ROAD_CLOSED_EVENT': 'EVENTO',
-    'HAZARD_ON_ROAD': 'PERIGO NA VIA', 'HAZARD_ON_SHOULDER': 'PERIGO NO ACOSTAMENTO',
-    'HAZARD_WEATHER': 'CONDIÇÕES CLIMÁTICAS', 'HAZARD_ON_ROAD_POT_HOLE': 'BURACO NA VIA',
-    'HAZARD_ON_ROAD_ROAD_KILL': 'ANIMAL NA VIA', 'HAZARD_ON_ROAD_CAR_STOPPED': 'VEÍCULO PARADO',
-    'HAZARD_ON_ROAD_CONSTRUCTION': 'OBRAS NA VIA', 'HAZARD_ON_ROAD_OBJECT': 'OBJETO NA VIA',
-    'HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT': 'SEMÁFORO QUEBRADO',
-    'HAZARD_WEATHER_FOG': 'NEBLINA', 'HAZARD_WEATHER_HAIL': 'GRANIZO',
-    'HAZARD_WEATHER_HEAVY_RAIN': 'CHUVA FORTE', 'HAZARD_WEATHER_FLOOD': 'INUNDAÇÃO',
-    'ACCIDENT_MAJOR': 'ACIDENTE GRAVE', 'ACCIDENT_MINOR': 'ACIDENTE LEVE',
-    'JAM_HEAVY_TRAFFIC': 'TRÂNSITO PESADO', 'JAM_MODERATE_TRAFFIC': 'TRÂNSITO MODERADO',
-    'JAM_STAND_STILL_TRAFFIC': 'TRÂNSITO PARADO',
+    'ROAD_CLOSED_CONSTRUCTION':          'OBRAS',
+    'ROAD_CLOSED_EVENT':                 'EVENTO',
+    'HAZARD_ON_ROAD':                    'PERIGO NA VIA',
+    'HAZARD_ON_SHOULDER':                'PERIGO NO ACOSTAMENTO',
+    'HAZARD_WEATHER':                    'CONDIÇÕES CLIMÁTICAS',
+    'HAZARD_ON_ROAD_POT_HOLE':           'BURACO NA VIA',
+    'HAZARD_ON_ROAD_ROAD_KILL':          'ANIMAL NA VIA',
+    'HAZARD_ON_ROAD_CAR_STOPPED':        'VEÍCULO PARADO',
+    'HAZARD_ON_ROAD_CONSTRUCTION':       'OBRAS NA VIA',
+    'HAZARD_ON_ROAD_OBJECT':             'OBJETO NA VIA',
+    'HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT':'SEMÁFORO QUEBRADO',
+    'HAZARD_WEATHER_FOG':                'NEBLINA',
+    'HAZARD_WEATHER_HAIL':               'GRANIZO',
+    'HAZARD_WEATHER_HEAVY_RAIN':         'CHUVA FORTE',
+    'HAZARD_WEATHER_FLOOD':              'INUNDAÇÃO',
+    'ACCIDENT_MAJOR':                    'ACIDENTE GRAVE',
+    'ACCIDENT_MINOR':                    'ACIDENTE LEVE',
+    'JAM_HEAVY_TRAFFIC':                 'TRÂNSITO PESADO',
+    'JAM_MODERATE_TRAFFIC':              'TRÂNSITO MODERADO',
+    'JAM_STAND_STILL_TRAFFIC':           'TRÂNSITO PARADO',
 }
 
 def translate_dataframe(df):
@@ -226,7 +299,7 @@ def translate_dataframe(df):
     return df
 
 # =============================================
-# 11. PIPELINE PRINCIPAL DE DADOS
+# 11. PIPELINE PRINCIPAL DE DADOS  ← CORRIGIDO
 # =============================================
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
 def load_all_data():
@@ -238,14 +311,14 @@ def load_all_data():
 
     if not df_alerts.empty:
         df_alerts = normalize_timestamps(df_alerts)
-        df_alerts = extract_coordinates(df_alerts)
+        df_alerts = extract_coordinates(df_alerts)       # alertas usam 'location'
         df_alerts = translate_dataframe(df_alerts)
         if 'street' not in df_alerts.columns:
             df_alerts['street'] = 'N/A'
 
     if not df_jams.empty:
         df_jams = normalize_timestamps(df_jams)
-        df_jams = extract_coordinates(df_jams)
+        df_jams = extract_jams_coordinates(df_jams)      # ← CORRIGIDO: usa 'line'
         df_jams = normalize_speed(df_jams)
         if 'street' not in df_jams.columns:
             df_jams['street'] = 'Via'
@@ -253,7 +326,13 @@ def load_all_data():
     return df_alerts, df_jams
 
 # =============================================
-# 12. FUNÇÕES DE MAPA  ← BOUNDING BOX AMPLIADA
+# 12. BOUNDING BOX DE FOZ DO IGUAÇU
+# =============================================
+LAT_MIN, LAT_MAX = -25.70, -25.40
+LON_MIN, LON_MAX = -54.75, -54.45
+
+# =============================================
+# 13. FUNÇÕES DE MAPA
 # =============================================
 def create_folium_map_with_compass(lat, lon, zoom_level=13):
     m = folium.Map(
@@ -263,10 +342,8 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         max_bounds=True
     )
     plugins.MousePosition(
-        position='topright',
-        separator=' | ',
-        prefix='Lat/Lon: ',
-        num_digits=5
+        position='topright', separator=' | ',
+        prefix='Lat/Lon: ', num_digits=5
     ).add_to(m)
     plugins.MeasureControl(position='bottomright').add_to(m)
     north_html = '''
@@ -283,21 +360,15 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
 
-# Bounding box ampliada: ±0.15 grau em torno de Foz do Iguaçu
-LAT_MIN, LAT_MAX = -25.70, -25.40
-LON_MIN, LON_MAX = -54.75, -54.45
 
 @st.cache_resource(ttl=600, show_spinner=False)
 def generate_incidents_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-    if 'lat' not in df.columns and 'y' in df.columns:
-        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
-    if 'lon' not in df.columns and 'x' in df.columns:
-        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
-    if 'lat' not in df.columns and 'location' in df.columns:
-        import ast
+
+    # Recupera coordenadas caso venham zeradas do JSON
+    if ('lat' not in df.columns or df['lat'].isna().all()) and 'location' in df.columns:
         def _gy(x):
             try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('y'))
             except: return None
@@ -306,33 +377,49 @@ def generate_incidents_map(df_json):
             except: return None
         df['lat'] = df['location'].apply(_gy)
         df['lon'] = df['location'].apply(_gx)
+    if 'lat' not in df.columns and 'y' in df.columns:
+        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
+    if 'lon' not in df.columns and 'x' in df.columns:
+        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
     if 'lat' not in df.columns or 'lon' not in df.columns:
         return None
-    df_map = df.dropna(subset=['lat', 'lon']).head(50)
+
+    # ── CORRIGIDO: filtra bbox ANTES de aplicar head() ────────────────────────
+    df_map = df.dropna(subset=['lat', 'lon'])
     df_map = df_map[
-        (df_map['lat'].between(LAT_MIN, LAT_MAX)) &
-        (df_map['lon'].between(LON_MIN, LON_MAX))
-    ]
+        df_map['lat'].between(LAT_MIN, LAT_MAX) &
+        df_map['lon'].between(LON_MIN, LON_MAX)
+    ].head(50)
+
     if df_map.empty:
         return None
+
     m = create_folium_map_with_compass(df_map['lat'].mean(), df_map['lon'].mean())
     for _, row in df_map.iterrows():
         try:
-            color = get_danger_color(row.get('type', 'ALERTA'))
-            ts = pd.to_datetime(row['timestamp']).strftime('%H:%M') if pd.notna(row.get('timestamp')) else '--'
-            popup_html = f"""
-            <div style="min-width:200px;font-family:Arial;">
-                <b style="color:{color};font-size:16px;">🚨 {row.get('type','?')}</b><br>
-                <b>{row.get('subtype','')}</b><br>
-                🛣️ <i>{row.get('street','N/A')}</i><br>
-                🕒 {ts}<br>
-                📍 {float(row['lat']):.4f}, {float(row['lon']):.4f}
-            </div>"""
+            tipo    = str(row.get('type', '?'))
+            subtipo = str(row.get('subtype', ''))
+            rua     = str(row.get('street', 'N/A'))
+            color   = get_danger_color(tipo)
+            ts_raw  = row.get('timestamp')
+            ts      = pd.to_datetime(ts_raw).strftime('%H:%M') if pd.notna(ts_raw) else '--'
+            lat_val = float(row['lat'])
+            lon_val = float(row['lon'])
+
+            popup_html = (
+                f"<div style='min-width:200px;font-family:Arial;'>"
+                f"<b style='color:{color};font-size:16px;'>🚨 {tipo}</b><br>"
+                f"<b>{subtipo}</b><br>"
+                f"🛣️ <i>{rua}</i><br>"
+                f"🕒 {ts}<br>"
+                f"📍 {lat_val:.4f}, {lon_val:.4f}"
+                f"</div>"
+            )
             folium.CircleMarker(
-                location=[float(row['lat']), float(row['lon'])],
+                location=[lat_val, lon_val],
                 radius=9,
                 popup=folium.Popup(popup_html, max_width=250),
-                tooltip=f"{row.get('type','?')}: {row.get('street','N/A')}",
+                tooltip=tipo + ": " + rua,
                 color=color, fill=True, fillColor=color,
                 fillOpacity=0.8, weight=2
             ).add_to(m)
@@ -340,17 +427,30 @@ def generate_incidents_map(df_json):
             continue
     return m
 
+
 @st.cache_resource(ttl=600, show_spinner=False)
 def generate_jams_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-    if 'lat' not in df.columns and 'y' in df.columns:
-        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
-    if 'lon' not in df.columns and 'x' in df.columns:
-        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
-    if 'lat' not in df.columns and 'location' in df.columns:
-        import ast
+
+    # ── CORRIGIDO: extrai coords da coluna 'line' se lat/lon ausentes ─────────
+    if ('lat' not in df.columns or df['lat'].isna().all()) and 'line' in df.columns:
+        def _midpoint(val):
+            try:
+                pts = val if isinstance(val, list) else ast.literal_eval(str(val))
+                if not pts:
+                    return None, None
+                mid = pts[len(pts) // 2]
+                return float(mid.get('y')), float(mid.get('x'))
+            except Exception:
+                return None, None
+        coords    = df['line'].apply(lambda x: pd.Series(_midpoint(x), index=['lat', 'lon']))
+        df['lat'] = coords['lat']
+        df['lon'] = coords['lon']
+
+    # Fallbacks adicionais
+    if ('lat' not in df.columns or df['lat'].isna().all()) and 'location' in df.columns:
         def _get_y(x):
             try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('y'))
             except: return None
@@ -359,6 +459,12 @@ def generate_jams_map(df_json):
             except: return None
         df['lat'] = df['location'].apply(_get_y)
         df['lon'] = df['location'].apply(_get_x)
+    if 'lat' not in df.columns and 'y' in df.columns:
+        df['lat'] = pd.to_numeric(df['y'], errors='coerce')
+    if 'lon' not in df.columns and 'x' in df.columns:
+        df['lon'] = pd.to_numeric(df['x'], errors='coerce')
+
+    # Normaliza velocidade se ausente
     if 'speed' not in df.columns:
         for alt in ['speedKMH', 'speedkmh', 'speed_kmh', 'velocity']:
             if alt in df.columns:
@@ -366,38 +472,51 @@ def generate_jams_map(df_json):
                 break
         else:
             df['speed'] = float('nan')
-    if any(c not in df.columns for c in ['lat', 'lon']):
+
+    if 'lat' not in df.columns or 'lon' not in df.columns:
         return None
-    df_valid = df.dropna(subset=['lat', 'lon']).head(40)
+
+    # ── CORRIGIDO: filtra bbox ANTES de aplicar head() ────────────────────────
+    df_valid = df.dropna(subset=['lat', 'lon'])
     df_valid = df_valid[
-        (df_valid['lat'].between(LAT_MIN, LAT_MAX)) &
-        (df_valid['lon'].between(LON_MIN, LON_MAX))
-    ]
+        df_valid['lat'].between(LAT_MIN, LAT_MAX) &
+        df_valid['lon'].between(LON_MIN, LON_MAX)
+    ].head(40)
+
     if df_valid.empty:
         return None
+
     m = create_folium_map_with_compass(df_valid['lat'].mean(), df_valid['lon'].mean())
     for _, row in df_valid.iterrows():
         try:
             speed_raw = row.get('speed', float('nan'))
             speed_kmh = float(speed_raw) * 3.6 if pd.notna(speed_raw) else 0.0
-            color = get_congestion_color(speed_kmh)
-            ts = pd.to_datetime(row['timestamp']).strftime('%H:%M') if pd.notna(row.get('timestamp')) else '--'
-            popup_html = f"""
-            <div style="min-width:180px;">
-                <b style="color:{color}">🚗 {speed_kmh:.0f} km/h</b><br>
-                🛣️ <i>{row.get('street','Via')}</i><br>
-                🕒 {ts}
-            </div>"""
+            color     = get_congestion_color(speed_kmh)
+            rua       = str(row.get('street', 'Via'))
+            ts_raw    = row.get('timestamp')
+            ts        = pd.to_datetime(ts_raw).strftime('%H:%M') if pd.notna(ts_raw) else '--'
+            lat_val   = float(row['lat'])
+            lon_val   = float(row['lon'])
+            spd_str   = f"{speed_kmh:.0f} km/h"
+
+            popup_html = (
+                f"<div style='min-width:180px;'>"
+                f"<b style='color:{color}'>🚗 {spd_str}</b><br>"
+                f"🛣️ <i>{rua}</i><br>"
+                f"🕒 {ts}"
+                f"</div>"
+            )
             folium.CircleMarker(
-                location=[float(row['lat']), float(row['lon'])],
+                location=[lat_val, lon_val],
                 radius=7,
                 popup=folium.Popup(popup_html, max_width=220),
-                tooltip=f"{speed_kmh:.0f}km/h - {row.get('street','Via')}",
+                tooltip=spd_str + " — " + rua,
                 color=color, fill=True, fillColor=color, fillOpacity=0.7
             ).add_to(m)
         except Exception:
             continue
     return m
+
 
 @st.cache_resource(ttl=600, show_spinner=False)
 def generate_heatmap(df_json):
@@ -419,7 +538,7 @@ def generate_heatmap(df_json):
     return m
 
 # =============================================
-# 13. SIDEBAR
+# 14. SIDEBAR — STATUS E CONTROLES
 # =============================================
 hora_foz_atual = now_foz()
 
@@ -439,7 +558,7 @@ if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", use_container_width=True, typ
 st.sidebar.divider()
 
 # =============================================
-# 14. CARREGAMENTO DE DADOS
+# 15. CARREGAMENTO DE DADOS
 # =============================================
 try:
     df_alerts_raw, df_jams_raw = load_all_data()
@@ -461,11 +580,9 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
             df_ref['date'] = df_ref['timestamp'].dt.date
 
 # =============================================
-# 15. FILTROS NA SIDEBAR  ← DATA DEFAULT CORRIGIDA
+# 16. FILTROS NA SIDEBAR
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
-
-# Data atual em Foz do Iguaçu (UTC-3) — NUNCA usa UTC
 today_foz = hora_foz_atual.date()
 
 all_dates = set()
@@ -473,9 +590,8 @@ if not df_alerts_raw.empty: all_dates.update(df_alerts_raw['date'].unique())
 if not df_jams_raw.empty:   all_dates.update(df_jams_raw['date'].unique())
 
 if all_dates:
-    min_date = min(all_dates)
-    max_date = max(all_dates)
-    # Prefere a data de hoje (Foz); se não há dados hoje, usa o máximo disponível
+    min_date     = min(all_dates)
+    max_date     = max(all_dates)
     default_date = today_foz if today_foz in all_dates else max_date
 else:
     min_date = max_date = default_date = today_foz
@@ -484,7 +600,7 @@ selected_date = st.sidebar.date_input(
     "📅 Data",
     value=default_date,
     min_value=min_date,
-    max_value=max(max_date, today_foz)  # permite selecionar hoje mesmo sem dados ainda
+    max_value=max(max_date, today_foz)
 )
 
 tipos_disponiveis = sorted(df_alerts_raw['type'].dropna().unique().tolist()) if not df_alerts_raw.empty else []
@@ -493,12 +609,11 @@ filtro_tipo = st.sidebar.multiselect(
     options=tipos_disponiveis,
     default=tipos_disponiveis,
 )
-
-filtro_rua = st.sidebar.text_input("🛣️ Buscar Rua", placeholder="Ex: Av. Brasil")
-hora_range = st.sidebar.slider("⏰ Horário", 0, 23, (0, 23))
+filtro_rua  = st.sidebar.text_input("🛣️ Buscar Rua", placeholder="Ex: Av. Brasil")
+hora_range  = st.sidebar.slider("⏰ Horário", 0, 23, (0, 23))
 
 # =============================================
-# 16. APLICAÇÃO DOS FILTROS  ← FALLBACK SE SEM DADOS HOJE
+# 17. APLICAÇÃO DOS FILTROS
 # =============================================
 df_filtered = pd.DataFrame()
 if not df_alerts_raw.empty:
@@ -511,7 +626,6 @@ if not df_alerts_raw.empty:
         df_filtered = df_filtered[
             df_filtered['street'].str.contains(filtro_rua, case=False, na=False)
         ]
-    # Fallback: se filtro de data zerou os registros, mostra os mais recentes disponíveis
     if df_filtered.empty:
         st.sidebar.warning(f"⚠️ Sem dados em {selected_date}. Exibindo dados mais recentes.")
         df_filtered = df_alerts_raw[
@@ -525,14 +639,13 @@ if not df_jams_raw.empty:
         (df_jams_raw['date'] == selected_date) &
         (df_jams_raw['hour'].between(hora_range[0], hora_range[1]))
     ].copy()
-    # Fallback para jams também
     if df_jams_filtered.empty:
         df_jams_filtered = df_jams_raw[
             df_jams_raw['hour'].between(hora_range[0], hora_range[1])
         ].copy()
 
 # =============================================
-# 17. CABEÇALHO
+# 18. CABEÇALHO
 # =============================================
 st.title(f"🚗 Monitoramento de Tráfego — Foz do Iguaçu | {selected_date.strftime('%d/%m/%Y')}")
 st.success(
@@ -543,7 +656,7 @@ st.success(
 st.markdown("---")
 
 # =============================================
-# 18. RESUMO DOS FILTROS ATIVOS
+# 19. RESUMO DOS FILTROS ATIVOS
 # =============================================
 col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 col_f1.metric("📅 Data",    selected_date.strftime("%d/%m/%Y"))
@@ -553,24 +666,30 @@ col_f4.metric("⏰ Horário", f"{hora_range[0]:02d}:00–{hora_range[1]:02d}:59"
 st.markdown("---")
 
 # =============================================
-# 19. KPIs PRINCIPAIS
+# 20. KPIs PRINCIPAIS
 # =============================================
 st.subheader("📊 Resumo Estatístico")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
 incidentes_dia   = len(df_filtered)
 acidentes_graves = len(df_filtered[df_filtered['type'] == 'ACIDENTE']) if not df_filtered.empty else 0
-v_media_kmh      = (df_jams_filtered['speed'].mean() * 3.6) if not df_jams_filtered.empty and 'speed' in df_jams_filtered.columns and df_jams_filtered['speed'].notna().any() else 0
-status_via       = "🚫 Crítico" if incidentes_dia > 15 else ("⚠️ Moderado" if incidentes_dia > 5 else "✅ Normal")
+v_media_kmh      = (
+    df_jams_filtered['speed'].mean() * 3.6
+    if not df_jams_filtered.empty
+    and 'speed' in df_jams_filtered.columns
+    and df_jams_filtered['speed'].notna().any()
+    else 0
+)
+status_via = "🚫 Crítico" if incidentes_dia > 15 else ("⚠️ Moderado" if incidentes_dia > 5 else "✅ Normal")
 
-kpi1.metric("Total Alertas",  incidentes_dia)
-kpi2.metric("Acidentes",      acidentes_graves)
-kpi3.metric("Vel. Média",     f"{v_media_kmh:.1f} km/h")
-kpi4.metric("Status da Via",  status_via)
+kpi1.metric("Total Alertas", incidentes_dia)
+kpi2.metric("Acidentes",     acidentes_graves)
+kpi3.metric("Vel. Média",    f"{v_media_kmh:.1f} km/h")
+kpi4.metric("Status da Via", status_via)
 st.markdown("---")
 
 # =============================================
-# 20. INDICADORES VISUAIS DE GRAVIDADE
+# 21. INDICADORES DE GRAVIDADE
 # =============================================
 st.subheader("📈 Indicadores de Gravidade")
 col_grav, col_vel = st.columns(2)
@@ -613,7 +732,7 @@ with col_vel:
 st.markdown("---")
 
 # =============================================
-# 21. ABAS DE VISUALIZAÇÃO
+# 22. ABAS DE VISUALIZAÇÃO
 # =============================================
 st.subheader("🗺️ Visualizações")
 tab_inc, tab_jams, tab_calor, tab_graficos, tab_dados = st.tabs([
@@ -639,13 +758,31 @@ with tab_inc:
 # --- ABA 2: Congestionamentos ---
 with tab_jams:
     st.caption("📏 Escala métrica | 🟢 Livre → 🔴 Parado")
+    # Painel de diagnóstico — remova após confirmar que os mapas aparecem
+    with st.expander("🔎 Diagnóstico de dados (remover após validação)", expanded=False):
+        st.write("Total de jams carregados:", len(df_jams_raw))
+        st.write("Total após filtro:", len(df_jams_filtered))
+        if not df_jams_filtered.empty:
+            st.write("Colunas disponíveis:", df_jams_filtered.columns.tolist())
+            st.write("Tem coluna 'line'?", 'line' in df_jams_filtered.columns)
+            st.write("Tem coluna 'lat'?",  'lat'  in df_jams_filtered.columns)
+            if 'lat' in df_jams_filtered.columns:
+                n_nan = int(df_jams_filtered['lat'].isna().sum())
+                st.write(f"NaN em lat: {n_nan} / {len(df_jams_filtered)}")
+                st.write("Amostra lat/lon:")
+                st.dataframe(df_jams_filtered[['lat','lon']].dropna().head(5))
+
     if not df_jams_filtered.empty:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format='iso'))
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key="mapa_jam")
             st.markdown("**Legenda:** 🟢 >80 km/h | 🟡 40–80 km/h | 🟠 20–40 km/h | 🔴 <20 km/h")
         else:
-            st.info("⚠️ Nenhum congestionamento na área filtrada.")
+            st.warning("⚠️ Nenhum congestionamento na área filtrada.")
+            cols_diag = [c for c in ['lat','lon','line','speed','street'] if c in df_jams_filtered.columns]
+            if cols_diag:
+                st.caption("Amostra dos dados de jams:")
+                st.dataframe(df_jams_filtered[cols_diag].head(5), use_container_width=True)
     else:
         st.info("Nenhum congestionamento para exibir.")
 
@@ -681,7 +818,7 @@ with tab_graficos:
             st.plotly_chart(fig_pie, use_container_width=True)
         if 'day_of_week' in df_filtered.columns:
             st.subheader("📅 Incidentes por Dia da Semana")
-            order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+            order      = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
             dow_counts = df_filtered['day_of_week'].value_counts().reindex(order).dropna().reset_index()
             dow_counts.columns = ['day_of_week', 'count']
             fig_dow = px.bar(
@@ -721,7 +858,7 @@ with tab_dados:
         st.info("Nenhum registro com os filtros aplicados.")
 
 # =============================================
-# 22. RODAPÉ
+# 23. RODAPÉ
 # =============================================
 st.markdown("---")
 st.info("💡 Passe o mouse sobre os mapas para ver coordenadas em tempo real no canto superior direito.")
