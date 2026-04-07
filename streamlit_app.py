@@ -381,7 +381,7 @@ def generate_incidents_map(df_json):
                 location=[float(row["lat"]), float(row["lon"])],
                 radius=9,
                 popup=folium.Popup(popup_html, max_width=250),
-                tooltip=f"{row.get(\'type\',\'?\')}: {row.get(\'street\',\'N/A\')}",
+                tooltip=str(tipo) + ": " + str(rua),
                 color=color, fill=True, fillColor=color, fillOpacity=0.8, weight=2
             ).add_to(m)
         except Exception:
@@ -447,7 +447,10 @@ def generate_jams_map(df_json):
     # --- DEBUG silencioso: exibe contagem no console do servidor ---
     print(f"[JAMS MAP] total={len(df)} | válidos na bbox={len(df_valid)}")
     if not df_valid.empty:
-        print(f"[JAMS MAP] lat range: {df_valid[\'lat\'].min():.4f}~{df_valid[\'lat\'].max():.4f}")
+        lat_min_s = str(round(float(df_valid["lat"].min()), 4))
+        lat_max_s = str(round(float(df_valid["lat"].max()), 4))
+        print("[JAMS MAP] lat range: " + lat_min_s + "~" + lat_max_s)
+
 
     if df_valid.empty:
         return None
