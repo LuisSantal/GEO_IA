@@ -427,16 +427,17 @@ def generate_jams_map(df_json):
     df_valid = df.dropna(subset=["lat", "lon"]).head(40)
     df_valid = df_valid[df_valid["lat"].between(LAT_MIN, LAT_MAX) & df_valid["lon"].between(LON_MIN, LON_MAX)]
 
+    lat_col = df["lat"] if "lat" in df.columns else pd.Series([])
+    valid_count = int(df_valid["lat"].notna().sum()) if not df_valid.empty else 0
+    print("[JAMS MAP] total=" + str(len(df)) + " | validos bbox=" + str(valid_count))
+    if not df_valid.empty:
+        if not df_valid.empty and "lat" in df_valid.columns:
+            lat_min_s = str(round(float(df_valid["lat"].min()), 4))
+            lat_max_s = str(round(float(df_valid["lat"].max()), 4))
+            print("[JAMS MAP] lat range: " + lat_min_s + "~" + lat_max_s)
+
     if df_valid.empty:
         return None
-
-    valid_count = int(df_valid["lat"].notna().sum())
-    print("[JAMS MAP] total=" + str(len(df)) + " | validos bbox=" + str(valid_count))
-    if "lat" in df_valid.columns:
-        lat_min_s = str(round(float(df_valid["lat"].min()), 4))
-        lat_max_s = str(round(float(df_valid["lat"].max()), 4))
-        print("[JAMS MAP] lat range: " + lat_min_s + "~" + lat_max_s)
-
 
     m = create_folium_map_with_compass(df_valid["lat"].mean(), df_valid["lon"].mean())
     for _, row in df_valid.iterrows():
