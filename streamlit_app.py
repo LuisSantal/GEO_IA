@@ -447,7 +447,9 @@ def generate_jams_map(df_json):
     # --- DEBUG silencioso: exibe contagem no console do servidor ---
     print(f"[JAMS MAP] total={len(df)} | válidos na bbox={len(df_valid)}")
     if not df_valid.empty:
-        print(f"[JAMS MAP] lat range: {df_valid[\'lat\'].min():.4f}~{df_valid[\'lat\'].max():.4f}")
+        lat_min_s = str(round(float(df_valid["lat"].min()), 4))
+lat_max_s = str(round(float(df_valid["lat"].max()), 4))
+print("[JAMS MAP] lat range: " + lat_min_s + "~" + lat_max_s)
 
     if df_valid.empty:
         return None
