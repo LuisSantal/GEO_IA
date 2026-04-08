@@ -348,75 +348,78 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     ).add_to(m)
     plugins.MeasureControl(position='bottomright').add_to(m)
 
-    # ── Rosa dos ventos fixa no canto superior esquerdo ───────────────────────
-    compass_html = """
-    <div style="
-        position: fixed;
-        top: 12px;
-        left: 12px;
-        width: 52px;
-        height: 52px;
-        z-index: 9999;
+    # ── Rosa dos ventos — injetada DENTRO do iframe do mapa ───────────────────
+    compass_css_js = """
+    <style>
+    .compass-rose {
+        position: absolute !important;
+        top: 12px !important;
+        left: 52px !important;
+        width: 50px !important;
+        height: 50px !important;
+        z-index: 9999 !important;
         background: linear-gradient(145deg, #ffffff, #e8e8e8);
         border: 2px solid #555;
         border-radius: 50%;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.4);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        font-family: Arial, sans-serif;
         pointer-events: none;
-    ">
-        <!-- Seta Norte (vermelha) -->
-        <div style="
-            width: 0;
-            height: 0;
-            border-left: 7px solid transparent;
-            border-right: 7px solid transparent;
-            border-bottom: 16px solid #d32f2f;
-            margin-bottom: 1px;
-        "></div>
-        <!-- Seta Sul (cinza) -->
-        <div style="
-            width: 0;
-            height: 0;
-            border-left: 7px solid transparent;
-            border-right: 7px solid transparent;
-            border-top: 16px solid #888;
-            margin-top: 1px;
-        "></div>
-        <!-- Letras N e S -->
-        <div style="
-            position: absolute;
-            top: 3px;
-            font-size: 9px;
-            font-weight: bold;
-            color: #d32f2f;
-            letter-spacing: 0;
-        ">N</div>
-        <div style="
-            position: absolute;
-            bottom: 3px;
-            font-size: 9px;
-            font-weight: bold;
-            color: #888;
-        ">S</div>
-    </div>
+        font-family: Arial, sans-serif;
+    }
+    .compass-n {
+        width: 0; height: 0;
+        border-left: 6px solid transparent;
+        border-right: 6px solid transparent;
+        border-bottom: 14px solid #d32f2f;
+        margin-bottom: 1px;
+    }
+    .compass-s {
+        width: 0; height: 0;
+        border-left: 6px solid transparent;
+        border-right: 6px solid transparent;
+        border-top: 14px solid #888;
+        margin-top: 1px;
+    }
+    .compass-label-n {
+        position: absolute;
+        top: 2px;
+        font-size: 9px;
+        font-weight: bold;
+        color: #d32f2f;
+    }
+    .compass-label-s {
+        position: absolute;
+        bottom: 2px;
+        font-size: 9px;
+        font-weight: bold;
+        color: #777;
+    }
+    </style>
+    <script>
+    // Aguarda o mapa carregar e injeta a rosa dentro do container do mapa
+    document.addEventListener("DOMContentLoaded", function() {
+        var mapContainer = document.querySelector(".folium-map");
+        if (!mapContainer) {
+            mapContainer = document.querySelector("#map") || document.body;
+        }
+        var rose = document.createElement("div");
+        rose.className = "compass-rose";
+        rose.innerHTML = `
+            <div class="compass-label-n">N</div>
+            <div class="compass-n"></div>
+            <div class="compass-s"></div>
+            <div class="compass-label-s">S</div>
+        `;
+        mapContainer.style.position = "relative";
+        mapContainer.appendChild(rose);
+    });
+    </script>
     """
 
-    # Injeta via MacroElement para garantir que apareça sobre o mapa
-    from folium.elements import MacroElement
-    from jinja2 import Template
-
-    class FixedDiv(MacroElement):
-        def __init__(self, html):
-            super().__init__()
-            self._template = Template(
-                "{% macro header(this, kwargs) %}" + html + "{% endmacro %}"
-            )
-
-    FixedDiv(compass_html).add_to(m)
+    m.get_root().html.add_child(folium.Element(compass_css_js))
 
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
