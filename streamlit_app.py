@@ -791,7 +791,10 @@ with tab_calor:
     st.subheader("🔥 Zonas de Concentração de Incidentes")
 
     if not df_filtered.empty:
-        df_heat = df_filtered[['lat','lon']].dropna()
+        df_heat = df_filtered.copy()
+
+        # Garante lat/lon limpos e dentro de Foz
+        df_heat = df_heat.dropna(subset=['lat', 'lon'])
         df_heat = df_heat[
             df_heat['lat'].between(LAT_MIN, LAT_MAX) &
             df_heat['lon'].between(LON_MIN, LON_MAX)
@@ -801,20 +804,181 @@ with tab_calor:
             import folium
             from folium import plugins
 
+            # ── Mapa base ────────────────────────────────────────────────────
             m_heat = folium.Map(
                 location=[df_heat['lat'].mean(), df_heat['lon'].mean()],
                 zoom_start=13,
                 tiles="OpenStreetMap"
             )
+
+            # ── Camada de calor ───────────────────────────────────────────────
             heat_data = [[row['lat'], row['lon']] for _, row in df_heat.iterrows()]
-            plugins.HeatMap(heat_data, radius=15, blur=10).add_to(m_heat)
+            plugins.HeatMap(
+                heat_data,
+                radius=20,
+                blur=15,
+                min_opacity=0.35,
+                gradient={0.2: '#ffffb2', 0.4: '#fecc5c', 0.6: '#fd8d3c',
+                          0.8: '#f03b20', 1.0: '#bd0026'}
+            ).add_to(m_heat)
+
+            # ── Ícones por tipo de incidente ──────────────────────────────────
+            ICON_MAP = {
+                'ACIDENTE':           ('car-crash',  'red',    '💥'),
+                'VIA FECHADA':        ('ban',        'darkred','🚫'),
+                'PERIGO':             ('warning',    'orange', '⚠️'),
+                'PERIGO CLIMÁTICO':   ('cloud-rain', 'blue',   '🌧️'),
+                'CONGESTIONAMENTO':   ('traffic-light','gray', '🚦'),
+            }
+
+            # Grupos separados por tipo (para o LayerControl)
+            grupos = {}
+            for tipo in df_heat['type'].dropna().unique():
+                grupos[tipo] = folium.FeatureGroup(name=f"{ICON_MAP.get(tipo, ('','',' '))[2]} {tipo}", show=True)
+
+            for _, row in df_heat.iterrows():
+                try:
+                    tipo    = str(row.get('type',    'ALERTA'))
+                    subtipo = str(row.get('subtype', ''))
+                    rua     = str(row.get('street',  'N/A'))
+                    conf    = row.get('confidence',  'N/A')
+                    rating  = row.get('reportRating','N/A')
+                    ts_raw  = row.get('timestamp')
+                    ts      = pd.to_datetime(ts_raw).strftime('%d/%m %H:%M') if pd.notna(ts_raw) else '--'
+                    lat_val = float(row['lat'])
+                    lon_val = float(row['lon'])
+
+                    icon_name, icon_color, emoji = ICON_MAP.get(tipo, ('info-sign', 'cadetblue', 'ℹ️'))
+                    danger_cor = get_danger_color(tipo)
+
+                    # ── Popup rico ────────────────────────────────────────────
+                    popup_html = f"""
+                    <div style="min-width:220px;font-family:Arial,sans-serif;font-size:13px;">
+                        <div style="background:{danger_cor};color:white;padding:6px 10px;
+                                    border-radius:6px 6px 0 0;font-size:15px;font-weight:bold;">
+                            {emoji} {tipo}
+                        </div>
+                        <div style="padding:8px 10px;border:1px solid #ddd;border-top:none;border-radius:0 0 6px 6px;">
+                            <b>Subtipo:</b> {subtipo if subtipo and subtipo != 'nan' else '—'}<br>
+                            <b>🛣️ Rua:</b> {rua}<br>
+                            <b>🕒 Horário:</b> {ts}<br>
+                            <b>⭐ Rating:</b> {rating}<br>
+                            <b>🔒 Confiança:</b> {conf}<br>
+                            <b>📍 Coords:</b> {lat_val:.5f}, {lon_val:.5f}<br>
+                            <a href="https://www.google.com/maps?q={lat_val},{lon_val}"
+                               target="_blank"
+                               style="color:#1a73e8;font-weight:bold;">
+                               🗺️ Abrir no Google Maps
+                            </a>
+                        </div>
+                    </div>"""
+
+                    # ── Tooltip sempre visível (rótulo no mapa) ───────────────
+                    tooltip_txt = f"{emoji} {tipo}"
+                    if rua and rua != 'N/A' and rua != 'nan':
+                        tooltip_txt += f" — {rua[:30]}"
+                    if ts != '--':
+                        tooltip_txt += f" ({ts[-5:]})"   # só HH:MM
+
+                    marker = folium.Marker(
+                        location=[lat_val, lon_val],
+                        popup=folium.Popup(popup_html, max_width=270),
+                        tooltip=folium.Tooltip(
+                            tooltip_txt,
+                            permanent=False,   # True = sempre visível (pode poluir)
+                            sticky=True
+                        ),
+                        icon=folium.Icon(
+                            color=icon_color,
+                            icon=icon_name,
+                            prefix='fa'
+                        )
+                    )
+
+                    if tipo in grupos:
+                        marker.add_to(grupos[tipo])
+                    else:
+                        marker.add_to(m_heat)
+
+                except Exception:
+                    continue
+
+            # Adiciona os grupos ao mapa
+            for g in grupos.values():
+                g.add_to(m_heat)
+
+            # ── Rótulos permanentes nos TOP 5 pontos mais críticos ────────────
+            # Prioridade: ACIDENTE > VIA FECHADA > PERIGO
+            prioridade = {'ACIDENTE': 1, 'VIA FECHADA': 2, 'PERIGO': 3,
+                          'PERIGO CLIMÁTICO': 4, 'CONGESTIONAMENTO': 5}
+            df_top = df_heat.copy()
+            df_top['_prio'] = df_top['type'].map(prioridade).fillna(9)
+            df_top = df_top.sort_values('_prio').head(5)
+
+            for _, row in df_top.iterrows():
+                try:
+                    tipo    = str(row.get('type', '?'))
+                    rua     = str(row.get('street', ''))
+                    emoji   = ICON_MAP.get(tipo, ('','','ℹ️'))[2]
+                    cor     = get_danger_color(tipo)
+                    label   = f"{emoji} {tipo}"
+                    if rua and rua not in ('N/A', 'nan', ''):
+                        label += f"\n{rua[:25]}"
+
+                    folium.Marker(
+                        location=[float(row['lat']), float(row['lon'])],
+                        icon=folium.DivIcon(
+                            html=f"""
+                            <div style="
+                                background:{cor};color:white;
+                                padding:3px 7px;border-radius:5px;
+                                font-size:11px;font-weight:bold;
+                                white-space:nowrap;
+                                box-shadow:0 2px 6px rgba(0,0,0,0.4);
+                                border:1px solid rgba(255,255,255,0.4);
+                                pointer-events:none;">
+                                {label.replace(chr(10),'<br>')}
+                            </div>""",
+                            icon_size=(160, 36),
+                            icon_anchor=(80, 36)
+                        )
+                    ).add_to(m_heat)
+                except Exception:
+                    continue
+
+            # ── Controles do mapa ─────────────────────────────────────────────
+            plugins.MousePosition(
+                position='topright', separator=' | ',
+                prefix='Lat/Lon: ', num_digits=5
+            ).add_to(m_heat)
+            plugins.MeasureControl(position='bottomright').add_to(m_heat)
+            folium.LayerControl(position='topleft', collapsed=False).add_to(m_heat)
+
+            # ── Renderiza ─────────────────────────────────────────────────────
             st_folium(
                 m_heat,
                 width="100%",
-                height=500,
+                height=560,
                 key=f"mapa_calor_{len(df_heat)}"
             )
-            st.caption(f"🔥 {len(df_heat)} pontos plotados na área de Foz do Iguaçu")
+
+            # ── Legenda abaixo do mapa ────────────────────────────────────────
+            st.markdown("""
+            **Legenda do Gradiente de Calor:**
+            🟡 Baixa concentração → 🟠 Média → 🔴 Alta concentração → 🟣 Crítica
+            """)
+
+            tipos_no_mapa = df_heat['type'].value_counts().reset_index()
+            tipos_no_mapa.columns = ['Tipo', 'Qtd']
+            tipos_no_mapa['Emoji'] = tipos_no_mapa['Tipo'].map(
+                lambda t: ICON_MAP.get(t, ('','','ℹ️'))[2]
+            )
+            st.dataframe(
+                tipos_no_mapa[['Emoji','Tipo','Qtd']],
+                hide_index=True,
+                use_container_width=True
+            )
+
         else:
             st.info("⚠️ Nenhum ponto dentro da área de Foz do Iguaçu.")
     else:
