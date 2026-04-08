@@ -348,15 +348,15 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     ).add_to(m)
     plugins.MeasureControl(position='bottomright').add_to(m)
 
-    # ── Rosa dos ventos — injetada DENTRO do iframe do mapa ───────────────────
+    # ── Rosa dos ventos — canto inferior ESQUERDO (longe do MeasureControl) ───
     compass_css_js = """
     <style>
     .compass-rose {
         position: absolute !important;
-        top: 12px !important;
-        left: 52px !important;
-        width: 50px !important;
-        height: 50px !important;
+        bottom: 30px !important;
+        left: 12px !important;
+        width: 52px !important;
+        height: 52px !important;
         z-index: 9999 !important;
         background: linear-gradient(145deg, #ffffff, #e8e8e8);
         border: 2px solid #555;
@@ -385,21 +385,20 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     }
     .compass-label-n {
         position: absolute;
-        top: 2px;
+        top: 3px;
         font-size: 9px;
         font-weight: bold;
         color: #d32f2f;
     }
     .compass-label-s {
         position: absolute;
-        bottom: 2px;
+        bottom: 3px;
         font-size: 9px;
         font-weight: bold;
         color: #777;
     }
     </style>
     <script>
-    // Aguarda o mapa carregar e injeta a rosa dentro do container do mapa
     document.addEventListener("DOMContentLoaded", function() {
         var mapContainer = document.querySelector(".folium-map");
         if (!mapContainer) {
@@ -423,6 +422,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
 
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
+
 
 
 
