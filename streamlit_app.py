@@ -341,22 +341,83 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         tiles="OpenStreetMap",
         max_bounds=True
     )
+
     plugins.MousePosition(
         position='topright', separator=' | ',
         prefix='Lat/Lon: ', num_digits=5
     ).add_to(m)
     plugins.MeasureControl(position='bottomright').add_to(m)
-    north_html = '''
-    <div style="position:fixed;top:10px;left:10px;width:45px;height:45px;
-        background:linear-gradient(145deg,#f0f0f0,#e6e6e6);
-        border:2px solid #333;border-radius:8px;z-index:1000;
-        box-shadow:0 2px 10px rgba(0,0,0,0.3);
-        display:flex;align-items:center;justify-content:center;
-        font-weight:bold;font-size:18px;">
-        <div style="color:#d32f2f;text-shadow:1px 1px 1px white;">↑</div>
-        <div style="position:absolute;bottom:2px;font-size:9px;color:#333;font-weight:bold;">N</div>
-    </div>'''
-    folium.Element(north_html).add_to(m)
+
+    # ── Rosa dos ventos fixa no canto superior esquerdo ───────────────────────
+    compass_html = """
+    <div style="
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        width: 52px;
+        height: 52px;
+        z-index: 9999;
+        background: linear-gradient(145deg, #ffffff, #e8e8e8);
+        border: 2px solid #555;
+        border-radius: 50%;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: Arial, sans-serif;
+        pointer-events: none;
+    ">
+        <!-- Seta Norte (vermelha) -->
+        <div style="
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 16px solid #d32f2f;
+            margin-bottom: 1px;
+        "></div>
+        <!-- Seta Sul (cinza) -->
+        <div style="
+            width: 0;
+            height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-top: 16px solid #888;
+            margin-top: 1px;
+        "></div>
+        <!-- Letras N e S -->
+        <div style="
+            position: absolute;
+            top: 3px;
+            font-size: 9px;
+            font-weight: bold;
+            color: #d32f2f;
+            letter-spacing: 0;
+        ">N</div>
+        <div style="
+            position: absolute;
+            bottom: 3px;
+            font-size: 9px;
+            font-weight: bold;
+            color: #888;
+        ">S</div>
+    </div>
+    """
+
+    # Injeta via MacroElement para garantir que apareça sobre o mapa
+    from folium.elements import MacroElement
+    from jinja2 import Template
+
+    class FixedDiv(MacroElement):
+        def __init__(self, html):
+            super().__init__()
+            self._template = Template(
+                "{% macro header(this, kwargs) %}" + html + "{% endmacro %}"
+            )
+
+    FixedDiv(compass_html).add_to(m)
+
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
 
