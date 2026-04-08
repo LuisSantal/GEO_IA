@@ -987,36 +987,251 @@ with tab_calor:
 # --- ABA 4: Gráficos ---
 with tab_graficos:
     if not df_filtered.empty:
+
+        st.markdown(
+            f"📋 **{len(df_filtered)} registros** analisados para "
+            f"**{selected_date.strftime('%d/%m/%Y')}** "
+            f"no intervalo **{hora_range[0]:02d}:00 – {hora_range[1]:02d}:59**"
+        )
+        st.markdown("---")
+
+        # =====================================================
+        # GRÁFICO 1 + 2 — lado a lado
+        # =====================================================
         col_g1, col_g2 = st.columns(2)
+
+        # ── Incidentes por Hora ───────────────────────────
         with col_g1:
-            st.subheader("📊 Incidentes por Hora")
+            st.subheader("📊 Incidentes por Hora do Dia")
+            st.caption(
+                "Distribuição dos alertas ao longo das 24 horas. "
+                "Barras mais escuras indicam os horários de maior ocorrência — "
+                "útil para identificar picos de risco no trânsito."
+            )
+
+            hora_counts = (
+                df_filtered['hour']
+                .value_counts()
+                .reindex(range(24), fill_value=0)
+                .reset_index()
+            )
+            hora_counts.columns = ['Hora', 'Quantidade']
+            hora_pico = int(hora_counts.loc[hora_counts['Quantidade'].idxmax(), 'Hora'])
+
             fig_hora = px.bar(
-                df_filtered['hour'].value_counts().sort_index().reset_index(),
-                x='hour', y='count',
-                labels={'hour': 'Hora (Foz UTC-3)', 'count': 'Qtd'},
-                color='count', color_continuous_scale='Reds'
+                hora_counts,
+                x='Hora', y='Quantidade',
+                labels={'Hora': 'Hora do dia (UTC-3 / Foz)', 'Quantidade': 'Nº de Incidentes'},
+                color='Quantidade',
+                color_continuous_scale='Reds',
+                text='Quantidade'
+            )
+            fig_hora.update_traces(
+                textposition='outside',
+                textfont_size=10,
+                marker_line_width=0.5,
+                marker_line_color='white'
+            )
+            fig_hora.add_vline(
+                x=hora_pico,
+                line_dash="dash",
+                line_color="darkred",
+                annotation_text=f"Pico: {hora_pico:02d}h",
+                annotation_position="top right",
+                annotation_font_color="darkred"
+            )
+            fig_hora.update_layout(
+                xaxis=dict(tickmode='linear', tick0=0, dtick=1),
+                coloraxis_showscale=False,
+                margin=dict(t=40, b=40),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                height=360
             )
             st.plotly_chart(fig_hora, use_container_width=True)
+            st.caption(f"🔺 Horário de pico: **{hora_pico:02d}:00 – {hora_pico:02d}:59**")
+
+        # ── Proporção por Tipo ────────────────────────────
         with col_g2:
-            st.subheader("🥧 Proporção por Tipo")
+            st.subheader("🥧 Proporção por Tipo de Incidente")
+            st.caption(
+                "Cada fatia representa a participação percentual de um tipo de incidente "
+                "no total filtrado. Clique em um tipo na legenda para ocultá-lo."
+            )
+
+            CORES_TIPO = {
+                'ACIDENTE':         '#e74c3c',
+                'VIA FECHADA':      '#c0392b',
+                'PERIGO':           '#e67e22',
+                'PERIGO CLIMÁTICO': '#3498db',
+                'CONGESTIONAMENTO': '#f39c12',
+                'ALERTA':           '#9b59b6',
+            }
+            tipo_counts = df_filtered['type'].value_counts().reset_index()
+            tipo_counts.columns = ['Tipo', 'Quantidade']
+            cores_ordem = [CORES_TIPO.get(t, '#95a5a6') for t in tipo_counts['Tipo']]
+
             fig_pie = px.pie(
-                df_filtered, names='type',
-                color_discrete_sequence=px.colors.qualitative.Set3
+                tipo_counts,
+                names='Tipo',
+                values='Quantidade',
+                color='Tipo',
+                color_discrete_sequence=cores_ordem,
+                hole=0.38
+            )
+            fig_pie.update_traces(
+                textposition='outside',
+                textinfo='label+percent',
+                textfont_size=12,
+                pull=[0.05] * len(tipo_counts),
+                marker=dict(line=dict(color='white', width=2))
+            )
+            fig_pie.update_layout(
+                legend=dict(
+                    title="Tipos",
+                    orientation="v",
+                    x=1.02, y=0.5
+                ),
+                margin=dict(t=40, b=40, l=0, r=120),
+                paper_bgcolor='rgba(0,0,0,0)',
+                height=360
             )
             st.plotly_chart(fig_pie, use_container_width=True)
+            tipo_dominante = tipo_counts.iloc[0]['Tipo']
+            pct_dominante  = 100 * tipo_counts.iloc[0]['Quantidade'] / tipo_counts['Quantidade'].sum()
+            st.caption(f"🔺 Tipo predominante: **{tipo_dominante}** ({pct_dominante:.1f}% dos incidentes)")
+
+        st.markdown("---")
+
+        # =====================================================
+        # GRÁFICO 3 — Dia da Semana
+        # =====================================================
         if 'day_of_week' in df_filtered.columns:
             st.subheader("📅 Incidentes por Dia da Semana")
-            order      = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-            dow_counts = df_filtered['day_of_week'].value_counts().reindex(order).dropna().reset_index()
-            dow_counts.columns = ['day_of_week', 'count']
+            st.caption(
+                "Permite identificar quais dias concentram mais ocorrências. "
+                "Dias úteis tendem a ter maior volume por conta do fluxo de veículos "
+                "no corredor Foz–Ciudad del Este."
+            )
+
+            DIAS_PT = {
+                'Monday':    'Segunda',
+                'Tuesday':   'Terça',
+                'Wednesday': 'Quarta',
+                'Thursday':  'Quinta',
+                'Friday':    'Sexta',
+                'Saturday':  'Sábado',
+                'Sunday':    'Domingo'
+            }
+            order = list(DIAS_PT.keys())
+            dow_counts = (
+                df_filtered['day_of_week']
+                .value_counts()
+                .reindex(order, fill_value=0)
+                .reset_index()
+            )
+            dow_counts.columns = ['day_of_week', 'Quantidade']
+            dow_counts['Dia'] = dow_counts['day_of_week'].map(DIAS_PT)
+            dow_counts['Fim de Semana'] = dow_counts['day_of_week'].isin(['Saturday','Sunday'])
+
             fig_dow = px.bar(
-                dow_counts, x='day_of_week', y='count',
-                labels={'day_of_week': 'Dia', 'count': 'Qtd'},
-                color='count', color_continuous_scale='Blues'
+                dow_counts,
+                x='Dia', y='Quantidade',
+                labels={'Dia': 'Dia da Semana', 'Quantidade': 'Nº de Incidentes'},
+                color='Fim de Semana',
+                color_discrete_map={True: '#3498db', False: '#e74c3c'},
+                text='Quantidade',
+                category_orders={'Dia': list(DIAS_PT.values())}
+            )
+            fig_dow.update_traces(
+                textposition='outside',
+                textfont_size=11,
+                marker_line_width=0.5,
+                marker_line_color='white'
+            )
+            fig_dow.update_layout(
+                legend=dict(
+                    title="",
+                    orientation="h",
+                    y=-0.2,
+                    x=0.5,
+                    xanchor='center'
+                ),
+                coloraxis_showscale=False,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=40, b=60),
+                height=380
+            )
+            # Linha de média
+            media_dia = dow_counts['Quantidade'].mean()
+            fig_dow.add_hline(
+                y=media_dia,
+                line_dash="dot",
+                line_color="gray",
+                annotation_text=f"Média: {media_dia:.1f}",
+                annotation_position="top right",
+                annotation_font_color="gray"
             )
             st.plotly_chart(fig_dow, use_container_width=True)
+            st.caption(
+                "🔴 Dias úteis (seg–sex) &nbsp;|&nbsp; 🔵 Fim de semana &nbsp;|&nbsp; "
+                "- - - Média diária do período"
+            )
+
+        st.markdown("---")
+
+        # =====================================================
+        # GRÁFICO 4 — Top 10 Ruas com mais incidentes
+        # =====================================================
+        if 'street' in df_filtered.columns:
+            st.subheader("🛣️ Top 10 Ruas com Mais Incidentes")
+            st.caption(
+                "As vias com maior concentração de alertas no período filtrado. "
+                "Pode indicar trechos que necessitam de atenção especial da gestão viária."
+            )
+
+            rua_counts = (
+                df_filtered[df_filtered['street'].notna() & (df_filtered['street'] != 'N/A')]
+                ['street']
+                .value_counts()
+                .head(10)
+                .reset_index()
+            )
+            rua_counts.columns = ['Rua', 'Quantidade']
+
+            if not rua_counts.empty:
+                fig_ruas = px.bar(
+                    rua_counts.sort_values('Quantidade'),
+                    x='Quantidade', y='Rua',
+                    orientation='h',
+                    labels={'Quantidade': 'Nº de Incidentes', 'Rua': ''},
+                    color='Quantidade',
+                    color_continuous_scale='OrRd',
+                    text='Quantidade'
+                )
+                fig_ruas.update_traces(
+                    textposition='outside',
+                    textfont_size=11,
+                    marker_line_width=0
+                )
+                fig_ruas.update_layout(
+                    coloraxis_showscale=False,
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(t=20, b=20, l=10, r=60),
+                    height=420,
+                    yaxis=dict(autorange='reversed')
+                )
+                st.plotly_chart(fig_ruas, use_container_width=True)
+                rua_top = rua_counts.iloc[0]['Rua']
+                qtd_top = rua_counts.iloc[0]['Quantidade']
+                st.caption(f"🔺 Via mais crítica: **{rua_top}** com **{qtd_top}** ocorrências")
+            else:
+                st.info("Nenhuma rua identificada nos registros filtrados.")
+
     else:
-        st.info("Sem dados para gerar gráficos.")
+        st.info("ℹ️ Sem dados para gerar gráficos. Ajuste os filtros na barra lateral.")
 
 # --- ABA 5: Dados Detalhados ---
 with tab_dados:
