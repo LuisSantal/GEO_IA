@@ -348,80 +348,63 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     ).add_to(m)
     plugins.MeasureControl(position='bottomright').add_to(m)
 
-    # ── Rosa dos ventos — canto inferior ESQUERDO (longe do MeasureControl) ───
-    compass_css_js = """
-    <style>
-    .compass-rose {
-        position: absolute !important;
-        bottom: 30px !important;
-        left: 12px !important;
-        width: 52px !important;
-        height: 52px !important;
-        z-index: 9999 !important;
-        background: linear-gradient(145deg, #ffffff, #e8e8e8);
-        border: 2px solid #555;
-        border-radius: 50%;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.4);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        pointer-events: none;
-        font-family: Arial, sans-serif;
-    }
-    .compass-n {
-        width: 0; height: 0;
-        border-left: 6px solid transparent;
-        border-right: 6px solid transparent;
-        border-bottom: 14px solid #d32f2f;
-        margin-bottom: 1px;
-    }
-    .compass-s {
-        width: 0; height: 0;
-        border-left: 6px solid transparent;
-        border-right: 6px solid transparent;
-        border-top: 14px solid #888;
-        margin-top: 1px;
-    }
-    .compass-label-n {
-        position: absolute;
-        top: 3px;
-        font-size: 9px;
-        font-weight: bold;
-        color: #d32f2f;
-    }
-    .compass-label-s {
-        position: absolute;
-        bottom: 3px;
-        font-size: 9px;
-        font-weight: bold;
-        color: #777;
-    }
-    </style>
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        var mapContainer = document.querySelector(".folium-map");
-        if (!mapContainer) {
-            mapContainer = document.querySelector("#map") || document.body;
-        }
-        var rose = document.createElement("div");
-        rose.className = "compass-rose";
-        rose.innerHTML = `
-            <div class="compass-label-n">N</div>
-            <div class="compass-n"></div>
-            <div class="compass-s"></div>
-            <div class="compass-label-s">S</div>
-        `;
-        mapContainer.style.position = "relative";
-        mapContainer.appendChild(rose);
-    });
-    </script>
+    # ── Rosa dos ventos SVG — injetada direto no HTML do mapa ─────────────────
+    compass_html = """
+    <div style="
+        position:absolute;
+        bottom:40px;
+        left:10px;
+        z-index:9999;
+        pointer-events:none;
+    ">
+      <svg width="54" height="54" viewBox="0 0 54 54"
+           xmlns="http://www.w3.org/2000/svg"
+           style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));">
+
+        <!-- Círculo de fundo -->
+        <circle cx="27" cy="27" r="26" fill="white" stroke="#555" stroke-width="2"/>
+
+        <!-- Seta Norte (vermelha) — aponta para cima -->
+        <polygon points="27,4 22,27 27,22 32,27" fill="#d32f2f"/>
+
+        <!-- Seta Sul (cinza) — aponta para baixo -->
+        <polygon points="27,50 22,27 27,32 32,27" fill="#999"/>
+
+        <!-- Seta Leste (cinza claro) -->
+        <polygon points="50,27 27,22 32,27 27,32" fill="#ccc"/>
+
+        <!-- Seta Oeste (cinza claro) -->
+        <polygon points="4,27 27,22 22,27 27,32" fill="#ccc"/>
+
+        <!-- Círculo central -->
+        <circle cx="27" cy="27" r="4" fill="#555"/>
+
+        <!-- Letra N -->
+        <text x="27" y="16" text-anchor="middle"
+              font-size="9" font-weight="bold"
+              font-family="Arial" fill="#d32f2f">N</text>
+
+        <!-- Letra S -->
+        <text x="27" y="51" text-anchor="middle"
+              font-size="9" font-weight="bold"
+              font-family="Arial" fill="#777">S</text>
+
+        <!-- Letra L (Leste) -->
+        <text x="49" y="30" text-anchor="middle"
+              font-size="8" font-family="Arial" fill="#888">L</text>
+
+        <!-- Letra O (Oeste) -->
+        <text x="6" y="30" text-anchor="middle"
+              font-size="8" font-family="Arial" fill="#888">O</text>
+      </svg>
+    </div>
     """
 
-    m.get_root().html.add_child(folium.Element(compass_css_js))
+    m.get_root().html.add_child(folium.Element(compass_html))
 
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
+
 
 
 
