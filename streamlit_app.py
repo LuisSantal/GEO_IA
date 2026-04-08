@@ -361,7 +361,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     return m
 
 
-@st.cache_resource(ttl=600, show_spinner=False)
+
 def generate_incidents_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
@@ -428,7 +428,7 @@ def generate_incidents_map(df_json):
     return m
 
 
-@st.cache_resource(ttl=600, show_spinner=False)
+
 def generate_jams_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
@@ -518,7 +518,7 @@ def generate_jams_map(df_json):
     return m
 
 
-@st.cache_resource(ttl=600, show_spinner=False)
+
 def generate_heatmap(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
@@ -749,7 +749,7 @@ with tab_inc:
     if not df_filtered.empty:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format='iso'))
         if m_inc:
-            st_folium(m_inc, width="100%", height=500, key="mapa_inc")
+            st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
         else:
             st.info("⚠️ Nenhum incidente dentro da área de Foz do Iguaçu.")
     else:
@@ -775,7 +775,7 @@ with tab_jams:
     if not df_jams_filtered.empty:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format='iso'))
         if m_jam:
-            st_folium(m_jam, width="100%", height=500, key="mapa_jam")
+            st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
             st.markdown("**Legenda:** 🟢 >80 km/h | 🟡 40–80 km/h | 🟠 20–40 km/h | 🔴 <20 km/h")
         else:
             st.warning("⚠️ Nenhum congestionamento na área filtrada.")
@@ -825,9 +825,10 @@ with tab_calor:
                     tiles="OpenStreetMap"
                 )
                 heat_data = [[r['lat'], r['lon']] for _, r in in_bbox.iterrows()]
-                plugins.HeatMap(heat_data, radius=15, blur=10).add_to(m_test)
+                plugins.HeatMap(heat_data, radius=15, blur=10).add_to(m_heat)
                 st.write("**8. Mapa gerado — renderizando:**")
-                st_folium(m_test, width="100%", height=500, key="mapa_calor_teste")
+                st_folium(m_heat, width="100%", height=500, key=f"mapa_calor_{len(df_filtered)}")
+
 
             else:
                 st.error("Coords fora da área de Foz do Iguaçu.")
