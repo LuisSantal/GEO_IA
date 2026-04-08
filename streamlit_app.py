@@ -790,66 +790,35 @@ with tab_jams:
 with tab_calor:
     st.subheader("🔥 Zonas de Concentração de Incidentes")
 
-    # ── DIAGNÓSTICO COMPLETO ────────────────────────────────────────
-    st.write("**1. df_filtered vazio?**", df_filtered.empty)
-    st.write("**2. Total registros:**", len(df_filtered))
-
     if not df_filtered.empty:
-        st.write("**3. Colunas:**", df_filtered.columns.tolist())
-        has_lat = 'lat' in df_filtered.columns
-        has_lon = 'lon' in df_filtered.columns
-        st.write("**4. Tem lat/lon?**", has_lat, "/", has_lon)
+        df_heat = df_filtered[['lat','lon']].dropna()
+        df_heat = df_heat[
+            df_heat['lat'].between(LAT_MIN, LAT_MAX) &
+            df_heat['lon'].between(LON_MIN, LON_MAX)
+        ]
 
-        if has_lat and has_lon:
-            df_validos = df_filtered[['lat','lon']].dropna()
-            st.write("**5. Coords não-nulas:**", len(df_validos))
+        if not df_heat.empty:
+            import folium
+            from folium import plugins
 
-            in_bbox = df_validos[
-                df_validos['lat'].between(-25.70, -25.40) &
-                df_validos['lon'].between(-54.75, -54.45)
-            ]
-            st.write("**6. Dentro da bbox de Foz:**", len(in_bbox))
-
-            if len(in_bbox) > 0:
-                st.write("**7. Amostra de coords:**")
-                st.dataframe(in_bbox.head(10))
-
-                # Tenta gerar o mapa direto aqui sem cache
-                import folium
-                from folium import plugins
-                from streamlit_folium import st_folium
-
-                m_test = folium.Map(
-                    location=[in_bbox['lat'].mean(), in_bbox['lon'].mean()],
-                    zoom_start=13,
-                    tiles="OpenStreetMap"
-                )
-                heat_data = [[r['lat'], r['lon']] for _, r in in_bbox.iterrows()]
-                plugins.HeatMap(heat_data, radius=15, blur=10).add_to(m_heat)
-                st.write("**8. Mapa gerado — renderizando:**")
-                st_folium(m_heat, width="100%", height=500, key=f"mapa_calor_{len(df_filtered)}")
-
-
-            else:
-                st.error("Coords fora da área de Foz do Iguaçu.")
-                st.write("Lat range nos dados:",
-                    round(float(df_validos['lat'].min()), 4), "~",
-                    round(float(df_validos['lat'].max()), 4))
-                st.write("Lon range nos dados:",
-                    round(float(df_validos['lon'].min()), 4), "~",
-                    round(float(df_validos['lon'].max()), 4))
+            m_heat = folium.Map(
+                location=[df_heat['lat'].mean(), df_heat['lon'].mean()],
+                zoom_start=13,
+                tiles="OpenStreetMap"
+            )
+            heat_data = [[row['lat'], row['lon']] for _, row in df_heat.iterrows()]
+            plugins.HeatMap(heat_data, radius=15, blur=10).add_to(m_heat)
+            st_folium(
+                m_heat,
+                width="100%",
+                height=500,
+                key=f"mapa_calor_{len(df_heat)}"
+            )
+            st.caption(f"🔥 {len(df_heat)} pontos plotados na área de Foz do Iguaçu")
         else:
-            st.error("Sem colunas lat/lon — verifique extract_coordinates()")
-            if 'location' in df_filtered.columns:
-                st.write("Amostra de 'location':", df_filtered['location'].iloc[0])
-            elif 'y' in df_filtered.columns:
-                st.write("Amostra de 'y':", df_filtered['y'].iloc[0])
+            st.info("⚠️ Nenhum ponto dentro da área de Foz do Iguaçu.")
     else:
-        st.warning("df_filtered está vazio — verifique os filtros na sidebar.")
-        st.write("df_alerts_raw total:", len(df_alerts_raw))
-        if not df_alerts_raw.empty:
-            st.write("Datas disponíveis:", sorted(df_alerts_raw['date'].unique()))
-            st.write("Data selecionada:", selected_date)
+        st.info("Sem dados suficientes para mapa de calor.")
 
 # --- ABA 4: Gráficos ---
 with tab_graficos:
