@@ -1,70 +1,152 @@
-🚗 GEO_IA: Monitoramento de Tráfego - Foz do Iguaçu
-Este é um dashboard interativo desenvolvido com Streamlit para visualização e análise de dados de tráfego em tempo real e históricos da cidade de Foz do Iguaçu. O projeto integra dados do Waze armazenados no Google Drive para gerar insights sobre mobilidade urbana.
+# 🚗 GEO_IA: Monitoramento de Tráfego — Foz do Iguaçu
 
-🌟 Funcionalidades Atualizadas
-Mapa de Incidentes: Visualização georreferenciada de acidentes, vias fechadas e perigos usando folium.
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)](https://python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red?logo=streamlit)](https://streamlit.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CAPES](https://img.shields.io/badge/Bolsista-CAPES-green)](https://www.gov.br/capes)
 
-Mapa de Congestionamento: Escala dinâmica de cores (Verde para livre, Vermelho para parado) baseada na velocidade real das vias.
+> Dashboard interativo para visualização e análise de dados de tráfego em tempo real e históricos da cidade de Foz do Iguaçu, integrando dados do **Waze for Cities** armazenados no Google Drive.
 
-Indicadores de Performance (KPIs): Painéis que mostram a velocidade média da cidade, temperatura e um índice de gravidade dos incidentes.
+---
 
-Filtros Inteligentes: Filtragem por data (calendário), intervalo de horários, tipo de alerta e busca por nome de rua.
+## 🏛️ Vínculo Institucional
 
-Sincronização com Google Drive: Carregamento automático de arquivos .h5 (HDF5) via Service Account do Google Cloud.
+Este projeto é desenvolvido no âmbito de uma **bolsa de iniciação científica/tecnológica CAPES**, em colaboração com:
 
-Auto-Refresh: O dashboard se atualiza automaticamente a cada 10 minutos para refletir o estado atual do trânsito.
+- 🔬 **Grupo de Pesquisa em Mobilidade e Matriz Energética** — coordenado pelo Prof. Dr. Ricardo Hartmann, vinculado ao [Instituto Latino-Americano de Tecnologia, Infraestrutura e Território (ILATIT)](https://portal.unila.edu.br/institutos/ilatit) da **Universidade Federal da Integração Latino-Americana (UNILA)**.
+- 💻 **Laboratório de Pesquisa em Computação Aplicada (LACA)** — coordenado pelos professores Joylan Nunes Maciel, Willian Zalewski e Marcelo Kapp, localizado no Itaipu Parquetec, Bloco 4, Espaço 1, Sala 2 — [UNILA](https://divulga.unila.edu.br/laca/).
 
-🚀 Como Executar o Projeto
-1. Requisitos de Ambiente
-Para evitar erros de memória (malloc ou segmentation fault), este projeto requer Python 3.11 ou 3.12.
+O projeto visa fornecer à **Foztrans** (Empresa de Transporte e Trânsito de Foz do Iguaçu) e às autoridades municipais uma ferramenta de apoio à decisão baseada em dados geoespaciais de tráfego.
 
-Bash
-# No terminal (Codespace ou Local)
+---
+
+## 🌟 Funcionalidades
+
+### 🗺️ Mapas Interativos
+- **Mapa de Incidentes** — visualização georreferenciada de acidentes, vias fechadas e perigos, com marcadores e popups detalhados via Folium.
+- **Mapa de Congestionamentos** — escala dinâmica de cores (🟢 verde = livre → 🔴 vermelho = parado) baseada na velocidade real medida nas vias.
+- **Mapa de Calor** — densidade espacial de ocorrências por região da cidade.
+- **Rosa dos Ventos** — indicador de orientação geográfica integrado ao mapa.
+
+### 📊 Análise de Dados
+- **Indicadores de Performance (KPIs)** — velocidade média da cidade, temperatura e índice de gravidade dos incidentes.
+- **Gráficos Interativos** — distribuição temporal de eventos, frequência por tipo de alerta e evolução histórica do tráfego via Plotly.
+- **Dados Detalhados** — tabela filtrável com todos os registros brutos coletados.
+
+### 🔍 Filtros Inteligentes
+- Filtragem por **data** (calendário interativo)
+- Filtragem por **intervalo de horário**
+- Filtragem por **tipo de alerta** (acidente, obra, perigo, etc.)
+- **Busca por nome de rua**
+
+### ☁️ Integração com Nuvem
+- Sincronização automática com **Google Drive** via Service Account do Google Cloud
+- Carregamento de arquivos `.h5` (HDF5) com dados históricos e em tempo real
+- **Auto-Refresh** a cada 10 minutos para refletir o estado atual do trânsito
+
+---
+
+## 🚀 Como Executar o Projeto
+
+### 1. Pré-requisitos
+
+> ⚠️ Para evitar erros de memória (`malloc` ou `segmentation fault`), este projeto requer **Python 3.11 ou 3.12**.
+
+```bash
+# Criar e ativar ambiente virtual
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
 
+source .venv/bin/activate      # Linux/macOS
+.venv\Scripts\activate         # Windows
+
+# Instalar dependências
 pip install -r requirements.txt
-2. Configuração de Credenciais
-O app utiliza o sistema de Secrets do Streamlit. Crie um arquivo .streamlit/secrets.toml e adicione suas credenciais do Google Cloud:
+```
 
-Ini, TOML
+### 2. Configuração de Credenciais
+
+O app utiliza o sistema de **Secrets do Streamlit**. Crie o arquivo `.streamlit/secrets.toml` com suas credenciais do Google Cloud:
+
+```toml
 [gcp_service_account]
 type = "service_account"
 project_id = "seu-projeto-id"
+private_key_id = "seu-key-id"
 private_key = "-----BEGIN PRIVATE KEY-----\nSUA_CHAVE\n-----END PRIVATE KEY-----\n"
-client_email = "seu-email-da-service-account@..."
-# ... preencha com os demais campos do seu JSON original
-3. Rodar o Dashboard
-Bash
+client_email = "sua-service-account@seu-projeto.iam.gserviceaccount.com"
+client_id = "seu-client-id"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+```
+
+> 💡 O arquivo `.json` da Service Account pode ser obtido no [Google Cloud Console](https://console.cloud.google.com/).
+
+### 3. Rodar o Dashboard
+
+```bash
 streamlit run streamlit_app.py
-🛠️ Tecnologias e Bibliotecas
-Interface: Streamlit
+```
 
-Mapas: Folium & Streamlit-Folium
+Acesse em: `http://localhost:8501`
 
-Análise de Dados: Pandas, NumPy e PyTables (para arquivos .h5)
+---
 
-Gráficos: Plotly Express
+## 🛠️ Tecnologias e Bibliotecas
 
-Nuvem: Google Drive API v3
+| Categoria | Tecnologia |
+|---|---|
+| Interface | [Streamlit](https://streamlit.io) |
+| Mapas | [Folium](https://python-visualization.github.io/folium/) & [streamlit-folium](https://folium.streamlit.app/) |
+| Análise de Dados | [Pandas](https://pandas.pydata.org/), [NumPy](https://numpy.org/) |
+| Armazenamento | [PyTables](https://www.pytables.org/) (arquivos `.h5` / HDF5) |
+| Gráficos | [Plotly Express](https://plotly.com/python/plotly-express/) |
+| Nuvem | [Google Drive API v3](https://developers.google.com/drive/api/v3/about-sdk) |
+| Fonte de Dados | [Waze for Cities](https://www.waze.com/wazeforcities/) |
 
-⚠️ Notas Técnicas de Estabilidade
-Durante o desenvolvimento no GitHub Codespaces e Streamlit Cloud, aplicamos as seguintes correções de estabilidade:
+---
 
-Versão do Python: Forçada para 3.11 através do arquivo .python-version para evitar conflitos com o motor HDF5 em versões experimentais.
+## 📂 Estrutura do Repositório
 
-Gerenciamento de Memória: Configurado OPENBLAS_NUM_THREADS = 1 para prevenir erros de segmentação em ambientes de container.
+```
+GEO_IA/
+│
+├── streamlit_app.py          # Código principal do dashboard
+├── requirements.txt          # Dependências Python
+├── .python-version           # Versão estável do interpretador (3.11)
+│
+├── .streamlit/
+│   └── secrets.toml          # Credenciais Google Cloud (não versionar!)
+│
+└── README.md
+```
 
-Compatibilidade NumPy: O projeto utiliza numpy < 2.0.0 para garantir que a leitura de arquivos binários .h5 seja estável.
+---
 
-📂 Estrutura do Repositório
-streamlit_app.py: Código principal do dashboard.
+## ⚠️ Notas Técnicas de Estabilidade
 
-requirements.txt: Lista de dependências Python.
+Durante o desenvolvimento no **GitHub Codespaces** e **Streamlit Cloud**, foram aplicadas as seguintes correções de estabilidade:
 
-.python-version: Define a versão estável do interpretador para o deploy.
+| Aspecto | Configuração Aplicada |
+|---|---|
+| Versão Python | Fixada em `3.11` via arquivo `.python-version` |
+| Memória OpenBLAS | `OPENBLAS_NUM_THREADS=1` para prevenir segfaults em containers |
+| Compatibilidade NumPy | `numpy < 2.0.0` para leitura estável de arquivos `.h5` binários |
 
-GEO_IA/: Pasta raiz do workspace no Codespaces.
+---
 
-Desenvolvido para análise geoespacial de tráfego. 🛰️🚦
+## 🤝 Parcerias
+
+- **Foztrans** — Empresa de Transporte e Trânsito de Foz do Iguaçu
+- **Guarda Municipal de Foz do Iguaçu** — Programa Vida no Trânsito
+- **CAPES** — Coordenação de Aperfeiçoamento de Pessoal de Nível Superior
+
+---
+
+## 📄 Licença
+
+Este projeto está licenciado sob a [MIT License](LICENSE).
+
+---
+
+*Desenvolvido para análise geoespacial de tráfego urbano. 🛰️🚦*  
+*Universidade Federal da Integração Latino-Americana (UNILA) — Foz do Iguaçu, PR, Brasil.*
