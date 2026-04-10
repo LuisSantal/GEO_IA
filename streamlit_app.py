@@ -50,25 +50,72 @@ FOLDER_JAMS_ID   = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 # =============================================
 # 5. FUNÇÕES DE CORES
 # =============================================
-def get_congestion_color(speed_kmh):
-    if speed_kmh >= 80:   return '#00AA00'
-    elif speed_kmh >= 60: return '#55DD00'
-    elif speed_kmh >= 40: return '#DDDD00'
-    elif speed_kmh >= 20: return '#FF8800'
-    else:                 return '#FF0000'
 
-def get_danger_color(incident_type):
-    if pd.isna(incident_type) or str(incident_type).strip() == '':
-        return '#0099FF'
-    danger_colors = {
-        'ACIDENTE':         '#FF0000',
-        'VIA FECHADA':      '#FF4400',
-        'CONGESTIONAMENTO': '#FFAA00',
-        'PERIGO':           '#FF6600',
-        'ALERTA':           '#FFDD00',
-        'OBRAS':            '#AAAAAA',
+def get_congestion_color(speed_kmh):
+    """
+    Azul (fluindo) → Verde → Amarelo → Laranja → Vermelho (parado)
+    """
+    if speed_kmh >= 80:   return '#2196F3'   # 🔵 Azul       — livre / fluindo
+    elif speed_kmh >= 60: return '#4CAF50'   # 🟢 Verde       — bom
+    elif speed_kmh >= 40: return '#8BC34A'   # 🟡 Verde claro — moderado
+    elif speed_kmh >= 20: return '#FF9800'   # 🟠 Laranja     — lento
+    elif speed_kmh >= 5:  return '#F44336'   # 🔴 Vermelho    — muito lento
+    else:                 return '#7B1FA2'   # 🟣 Roxo        — parado / travado
+
+
+def get_danger_color(incident_type, subtype=None):
+    """
+    Cores por tipo de ocorrência.
+    Subtipo pode suavizar a cor para ocorrências leves.
+    """
+    # Ocorrências leves — tons mais suaves
+    LEVE_SUBTYPES = {
+        'ACIDENTE LEVE',
+        'TRÂNSITO MODERADO',
+        'PERIGO NA VIA',
+        'OBJETO NA VIA',
+        'ANIMAL NA VIA',
+        'VEÍCULO PARADO',
+        'CONDIÇÕES CLIMÁTICAS',
     }
-    return danger_colors.get(str(incident_type).upper().strip(), '#0099FF')
+
+    t = str(incident_type).upper().strip() if incident_type else ''
+    s = str(subtype).upper().strip()       if subtype       else ''
+
+    is_leve = s in LEVE_SUBTYPES
+
+    color_map = {
+        # Graves — cores fortes
+        'ACIDENTE':          '#F44336' if not is_leve else '#EF9A9A',  # vermelho → rosado
+        'VIA FECHADA':       '#B71C1C',                                 # vermelho escuro
+        'CONGESTIONAMENTO':  '#7B1FA2' if not is_leve else '#CE93D8',  # roxo → lilás
+        # Perigos — laranja
+        'PERIGO':            '#FF9800' if not is_leve else '#FFCC80',  # laranja → pêssego
+        'PERIGO CLIMÁTICO':  '#29B6F6',                                 # azul claro
+        # Obras — cinza
+        'OBRAS':             '#78909C',                                 # cinza azulado
+        # Alerta genérico — amarelo
+        'ALERTA':            '#FDD835',                                 # amarelo
+    }
+
+    # Subtipo com cor específica sobrepõe o tipo
+    subtype_override = {
+        'ACIDENTE GRAVE':    '#B71C1C',   # vermelho escuro
+        'ACIDENTE LEVE':     '#EF9A9A',   # rosado
+        'BURACO NA VIA':     '#FF9800',   # laranja
+        'OBRAS NA VIA':      '#78909C',   # cinza
+        'SEMÁFORO QUEBRADO': '#FDD835',   # amarelo
+        'INUNDAÇÃO':         '#0288D1',   # azul médio
+        'NEBLINA':           '#B0BEC5',   # cinza claro
+        'TRÂNSITO PARADO':   '#7B1FA2',   # roxo
+        'TRÂNSITO PESADO':   '#F44336',   # vermelho
+        'TRÂNSITO MODERADO': '#FF9800',   # laranja
+    }
+
+    if s in subtype_override:
+        return subtype_override[s]
+
+    return color_map.get(t, '#90A4AE')   # fallback cinza claro
 
 # =============================================
 # 6. CONEXÃO COM GOOGLE DRIVE
@@ -447,7 +494,7 @@ def generate_incidents_map(df_json):
             tipo    = str(row.get('type', '?'))
             subtipo = str(row.get('subtype', ''))
             rua     = str(row.get('street', 'N/A'))
-            color   = get_danger_color(tipo)
+            color = get_danger_color(tipo, row.get('subtype'))
             ts_raw  = row.get('timestamp')
             ts      = pd.to_datetime(ts_raw).strftime('%H:%M') if pd.notna(ts_raw) else '--'
             lat_val = float(row['lat'])
@@ -912,6 +959,18 @@ with tab_inc:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format='iso'))
         if m_inc:
             st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
+            # ── Legenda ──────────────────────────────────────────────────────────
+            st.markdown("""
+            | Cor | Tipo | Natureza |
+            |---|---|---|
+            | 🔴 | Acidente grave | Alta gravidade |
+            | 🩷 | Acidente leve | Baixa gravidade |
+            | 🟤 | Via fechada / Obras | Bloqueio total |
+            | 🟠 | Perigo / Buraco na via | Risco moderado |
+            | 🟡 | Alerta / Semáforo | Atenção |
+            | 🩵 | Perigo climático | Condições adversas |
+            | 🟣 | Congestionamento | Trânsito parado |
+            """)
         else:
             st.info("⚠️ Nenhum incidente dentro da área de Foz do Iguaçu.")
     else:
@@ -938,7 +997,17 @@ with tab_jams:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format='iso'))
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
-            st.markdown("**Legenda:** 🟢 >80 km/h | 🟡 40–80 km/h | 🟠 20–40 km/h | 🔴 <20 km/h")
+            # ── Legenda ──────────────────────────────────────────────────────────
+            st.markdown("""
+            | Cor | Velocidade | Status |
+            |---|---|---|
+            | 🔵 | ≥ 80 km/h | Livre / Fluindo |
+            | 🟢 | 60–80 km/h | Bom |
+            | 🟡 | 40–60 km/h | Moderado |
+            | 🟠 | 20–40 km/h | Lento |
+            | 🔴 | 5–20 km/h | Muito lento |
+            | 🟣 | < 5 km/h | Parado / Travado |
+            """)
         else:
             st.warning("⚠️ Nenhum congestionamento na área filtrada.")
             cols_diag = [c for c in ['lat','lon','line','speed','street'] if c in df_jams_filtered.columns]
@@ -1011,7 +1080,8 @@ with tab_calor:
                     lon_val = float(row['lon'])
 
                     icon_name, icon_color, emoji = ICON_MAP.get(tipo, ('info-sign', 'cadetblue', 'ℹ️'))
-                    danger_cor = get_danger_color(tipo)
+                    danger_cor = get_danger_color(tipo, row.get('subtype'))
+
 
                     # ── Popup rico ────────────────────────────────────────────
                     popup_html = f"""
@@ -1082,7 +1152,8 @@ with tab_calor:
                     tipo    = str(row.get('type', '?'))
                     rua     = str(row.get('street', ''))
                     emoji   = ICON_MAP.get(tipo, ('','','ℹ️'))[2]
-                    cor     = get_danger_color(tipo)
+                    cor     = get_danger_color(tipo, row.get('subtype'))
+
                     label   = f"{emoji} {tipo}"
                     if rua and rua not in ('N/A', 'nan', ''):
                         label += f"\n{rua[:25]}"
@@ -1124,10 +1195,14 @@ with tab_calor:
                 key=f"mapa_calor_{len(df_heat)}"
             )
 
-            # ── Legenda abaixo do mapa ────────────────────────────────────────
+           # ── Legenda ──────────────────────────────────────────────────────────
             st.markdown("""
-            **Legenda do Gradiente de Calor:**
-            🟡 Baixa concentração → 🟠 Média → 🔴 Alta concentração → 🟣 Crítica
+            | Cor | Concentração |
+            |---|---|
+            | 🟡 Amarelo claro | Baixa — poucos registros |
+            | 🟠 Laranja | Média — atenção |
+            | 🔴 Vermelho | Alta — ponto crítico |
+            | 🟤 Bordô | Crítica — intervenção necessária |
             """)
 
             tipos_no_mapa = df_heat['type'].value_counts().reset_index()
