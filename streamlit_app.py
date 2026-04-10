@@ -793,16 +793,17 @@ else:
     label_tipo = "Todos"
 
 # Resumo do subtipo selecionado
-if filtro_subtipo and subtipos_disponiveis and len(filtro_subtipo) < len(subtipos_disponiveis):
-    label_subtipo = ", ".join(filtro_subtipo) if len(filtro_subtipo) <= 2 else f"{len(filtro_subtipo)} subtipos"
+if filtro_tipo and len(filtro_tipo) < len(tipos_na_data):
+    label_tipo = ", ".join(filtro_tipo) if len(filtro_tipo) <= 2 else f"{len(filtro_tipo)} tipos"
 else:
-    label_subtipo = "Todos"
+    label_tipo = "Todos"
 
-col_f1.metric("📅 Data",      selected_date.strftime("%d/%m/%Y"))
-col_f2.metric("🚨 Tipo",      label_tipo)
-col_f3.metric("🔎 Subtipo",   label_subtipo)
-col_f4.metric("🛣️ Rua",       filtro_rua if filtro_rua else "Todas")
-col_f5.metric("⏰ Horário",   f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
+col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+
+col_f1.metric("📅 Data",     selected_date.strftime("%d/%m/%Y"))
+col_f2.metric("🚨 Tipo",     label_tipo)
+col_f3.metric("🛣️ Rua",      filtro_rua if filtro_rua else "Todas")
+col_f4.metric("⏰ Horário",  f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
 
 # Barra de contexto compacta com total de registros exibidos
 st.caption(
