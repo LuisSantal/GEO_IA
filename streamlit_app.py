@@ -312,27 +312,50 @@ TYPE_MAP = {
     'JAM':                      'CONGESTIONAMENTO',
     'WEATHERHAZARD':            'PERIGO CLIMÁTICO',
 }
+
 SUBTYPE_MAP = {
-    'ROAD_CLOSED_CONSTRUCTION':          'OBRAS',
-    'ROAD_CLOSED_EVENT':                 'EVENTO',
-    'HAZARD_ON_ROAD':                    'PERIGO NA VIA',
-    'HAZARD_ON_SHOULDER':                'PERIGO NO ACOSTAMENTO',
-    'HAZARD_WEATHER':                    'CONDIÇÕES CLIMÁTICAS',
-    'HAZARD_ON_ROAD_POT_HOLE':           'BURACO NA VIA',
-    'HAZARD_ON_ROAD_ROAD_KILL':          'ANIMAL NA VIA',
-    'HAZARD_ON_ROAD_CAR_STOPPED':        'VEÍCULO PARADO',
-    'HAZARD_ON_ROAD_CONSTRUCTION':       'OBRAS NA VIA',
-    'HAZARD_ON_ROAD_OBJECT':             'OBJETO NA VIA',
-    'HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT':'SEMÁFORO QUEBRADO',
-    'HAZARD_WEATHER_FOG':                'NEBLINA',
-    'HAZARD_WEATHER_HAIL':               'GRANIZO',
-    'HAZARD_WEATHER_HEAVY_RAIN':         'CHUVA FORTE',
-    'HAZARD_WEATHER_FLOOD':              'INUNDAÇÃO',
-    'ACCIDENT_MAJOR':                    'ACIDENTE GRAVE',
-    'ACCIDENT_MINOR':                    'ACIDENTE LEVE',
-    'JAM_HEAVY_TRAFFIC':                 'TRÂNSITO PESADO',
-    'JAM_MODERATE_TRAFFIC':              'TRÂNSITO MODERADO',
-    'JAM_STAND_STILL_TRAFFIC':           'TRÂNSITO PARADO',
+    # ── Vias fechadas ─────────────────────────────────────────────────────────
+    'ROAD_CLOSED_CONSTRUCTION':               'OBRAS',
+    'ROAD_CLOSED_EVENT':                      'EVENTO',
+
+    # ── Perigos na pista ──────────────────────────────────────────────────────
+    'HAZARD_ON_ROAD':                         'PERIGO NA VIA',
+    'HAZARD_ON_ROAD_POT_HOLE':                'BURACO NA VIA',
+    'HAZARD_ON_ROAD_ROAD_KILL':               'ANIMAL NA VIA',
+    'HAZARD_ON_ROAD_CAR_STOPPED':             'VEÍCULO PARADO NA VIA',
+    'HAZARD_ON_ROAD_CONSTRUCTION':            'OBRAS NA VIA',
+    'HAZARD_ON_ROAD_OBJECT':                  'OBJETO NA VIA',
+    'HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT':     'SEMÁFORO QUEBRADO',
+    'HAZARD_ON_ROAD_ICE':                     'PISTA COM GELO',
+    'HAZARD_ON_ROAD_LANE_CLOSED':             'FAIXA INTERDITADA',
+
+    # ── Perigos no acostamento ────────────────────────────────────────────────
+    'HAZARD_ON_SHOULDER':                     'PERIGO NO ACOSTAMENTO',
+    'HAZARD_ON_SHOULDER_CAR_STOPPED':         'VEÍCULO PARADO NO ACOSTAMENTO',
+    'HAZARD_ON_SHOULDER_ANIMALS':             'ANIMAIS NO ACOSTAMENTO',
+    'HAZARD_ON_SHOULDER_MISSING_SIGN':        'SINALIZAÇÃO AUSENTE',
+
+    # ── Condições climáticas ──────────────────────────────────────────────────
+    'HAZARD_WEATHER':                         'CONDIÇÕES CLIMÁTICAS',
+    'HAZARD_WEATHER_FOG':                     'NEBLINA',
+    'HAZARD_WEATHER_HAIL':                    'GRANIZO',
+    'HAZARD_WEATHER_HEAVY_RAIN':              'CHUVA FORTE',
+    'HAZARD_WEATHER_FLOOD':                   'INUNDAÇÃO',
+    'HAZARD_WEATHER_MONSOON':                 'TEMPORAL',
+    'HAZARD_WEATHER_TORNADO':                 'TORNADO',
+    'HAZARD_WEATHER_HEAT_WAVE':               'ONDA DE CALOR',
+    'HAZARD_WEATHER_HEAVY_SNOW':              'NEVE INTENSA',
+    'HAZARD_WEATHER_FREEZING_RAIN':           'CHUVA COM GELO',
+
+    # ── Acidentes ─────────────────────────────────────────────────────────────
+    'ACCIDENT_MAJOR':                         'ACIDENTE GRAVE',
+    'ACCIDENT_MINOR':                         'ACIDENTE LEVE',
+
+    # ── Congestionamentos ─────────────────────────────────────────────────────
+    'JAM_HEAVY_TRAFFIC':                      'TRÂNSITO PESADO',
+    'JAM_MODERATE_TRAFFIC':                   'TRÂNSITO MODERADO',
+    'JAM_STAND_STILL_TRAFFIC':                'TRÂNSITO PARADO',
+    'JAM_LIGHT_TRAFFIC':                      'TRÂNSITO LEVE',
 }
 
 def translate_dataframe(df):
@@ -343,6 +366,15 @@ def translate_dataframe(df):
         df['type'] = df['type'].replace(TYPE_MAP)
     if 'subtype' in df.columns:
         df['subtype'] = df['subtype'].replace(SUBTYPE_MAP)
+        # Fallback: formata códigos desconhecidos removendo prefixo e underscores
+        known = set(SUBTYPE_MAP.values())
+        mask  = df['subtype'].notna() & ~df['subtype'].isin(known)
+        df.loc[mask, 'subtype'] = (
+            df.loc[mask, 'subtype']
+            .str.replace(r'^(HAZARD_ON_ROAD_|HAZARD_ON_SHOULDER_|HAZARD_WEATHER_|HAZARD_|ACCIDENT_|JAM_|ROAD_CLOSED_)', '', regex=True)
+            .str.replace('_', ' ', regex=False)
+            .str.title()
+        )
     return df
 
 # =============================================
