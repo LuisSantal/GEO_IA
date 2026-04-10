@@ -631,16 +631,17 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
 today_foz = hora_foz_atual.date()
+
 # ── 1. DATA (âncora de todos os filtros) ──────────────────────────────────────
 all_dates = set()
 if not df_alerts_raw.empty:
-    all_dates.update(df_alerts_raw["date"].unique())
+    all_dates.update(pd.to_datetime(df_alerts_raw["date"]).dt.date.unique())
 if not df_jams_raw.empty:
-    all_dates.update(df_jams_raw["date"].unique())
+    all_dates.update(pd.to_datetime(df_jams_raw["date"]).dt.date.unique())
 
 if all_dates:
-    min_date  = min(all_dates)
-    max_date  = max(all_dates)
+    min_date     = min(all_dates)
+    max_date     = max(all_dates)
     default_date = today_foz if today_foz in all_dates else max_date
 else:
     min_date = max_date = default_date = today_foz
@@ -655,15 +656,14 @@ selected_date = st.sidebar.date_input(
 # ── 2. HORÁRIO ────────────────────────────────────────────────────────────────
 hora_range = st.sidebar.slider("🕐 Horário", 0, 23, (0, 23))
 
-# ── 3. TIPOS DE OCORRÊNCIA (atrelado à data) ──────────────────────────────────
-tipos_na_data = (
-    sorted(
+# ── 3. TIPO DE OCORRÊNCIA (atrelado à data) ───────────────────────────────────
+tipos_na_data = []
+if not df_alerts_raw.empty:
+    tipos_na_data = sorted(
         df_alerts_raw.loc[df_alerts_raw["date"] == selected_date, "type"]
         .dropna().unique().tolist()
     )
-    if not df_alerts_raw.empty else []
-)
-if not tipos_na_data:   # fallback: todos os tipos disponíveis
+if not tipos_na_data:  # fallback
     tipos_na_data = sorted(df_alerts_raw["type"].dropna().unique().tolist()) if not df_alerts_raw.empty else []
 
 filtro_tipo = st.sidebar.multiselect(
@@ -672,16 +672,36 @@ filtro_tipo = st.sidebar.multiselect(
     default=tipos_na_data,
 )
 
-# ── 4. RUA / VIA (selectbox com ruas reais da data) ───────────────────────────
+# ── 4. NATUREZA DA OCORRÊNCIA (atrelado ao tipo selecionado + data) ───────────
+naturezas_na_data = []
+if not df_alerts_raw.empty and "subtype" in df_alerts_raw.columns:
+    mask_natureza = (df_alerts_raw["date"] == selected_date)
+    if filtro_tipo:
+        mask_natureza &= df_alerts_raw["type"].isin(filtro_tipo)
+    naturezas_na_data = sorted(
+        df_alerts_raw.loc[mask_natureza, "subtype"]
+        .dropna()
+        .loc[lambda s: ~s.isin(["nan", ""])]
+        .unique().tolist()
+    )
+
+filtro_natureza = st.sidebar.multiselect(
+    "🔍 Natureza da Ocorrência",
+    options=naturezas_na_data,
+    default=naturezas_na_data,
+)
+
+# ── 5. RUA / VIA (atrelado à data + tipo) ─────────────────────────────────────
 ruas_na_data = []
 if not df_alerts_raw.empty and "street" in df_alerts_raw.columns:
-    ruas_na_data = sorted(
-        df_alerts_raw.loc[
-            (df_alerts_raw["date"] == selected_date) &
-            (df_alerts_raw["street"].notna()) &
-            (~df_alerts_raw["street"].isin(["NA", "nan", ""]))
-        , "street"].unique().tolist()
+    mask_rua = (
+        (df_alerts_raw["date"] == selected_date) &
+        (df_alerts_raw["street"].notna()) &
+        (~df_alerts_raw["street"].isin(["NA", "nan", ""]))
     )
+    if filtro_tipo:
+        mask_rua &= df_alerts_raw["type"].isin(filtro_tipo)
+    ruas_na_data = sorted(df_alerts_raw.loc[mask_rua, "street"].unique().tolist())
 
 filtro_rua = st.sidebar.selectbox(
     "🛣️ Rua / Via",
@@ -690,13 +710,10 @@ filtro_rua = st.sidebar.selectbox(
 )
 filtro_rua = "" if filtro_rua == "(Todas)" else filtro_rua
 
-# ── 5. FAIXA DE VELOCIDADE — congestionamentos (atrelado à data) ──────────────
+# ── 6. FAIXA DE VELOCIDADE — congestionamentos (atrelado à data) ──────────────
 vel_min_data, vel_max_data = 0.0, 120.0
 if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
-    speeds_na_data = (
-        df_jams_raw.loc[df_jams_raw["date"] == selected_date, "speed"]
-        .dropna()
-    )
+    speeds_na_data = df_jams_raw.loc[df_jams_raw["date"] == selected_date, "speed"].dropna()
     if not speeds_na_data.empty:
         vel_min_data = float((speeds_na_data * 3.6).min())
         vel_max_data = float((speeds_na_data * 3.6).max())
@@ -709,7 +726,7 @@ vel_range = st.sidebar.slider(
     step=5.0,
 )
 
-# ── 6. PAINEL DE CONGESTIONAMENTO (atrelado à data) ───────────────────────────
+# ── 7. PAINEL DE CONGESTIONAMENTO (atrelado à data) ───────────────────────────
 if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
     jams_data = df_jams_raw[df_jams_raw["date"] == selected_date]
     if not jams_data.empty and jams_data["speed"].notna().any():
@@ -723,7 +740,7 @@ if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
         )
         st.sidebar.markdown("---")
         st.sidebar.markdown("**📊 Congestionamentos em** " + selected_date.strftime("%d/%m"))
-        st.sidebar.metric("Vel. Média", f"{media_vel:.1f} km/h", delta=status_label)
+        st.sidebar.metric("Vel. Média",    f"{media_vel:.1f} km/h", delta=status_label)
         st.sidebar.metric("Total de Jams", total_jams)
     else:
         st.sidebar.info(f"Sem dados de congestionamento em {selected_date.strftime('%d/%m')}.")
@@ -733,41 +750,41 @@ if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
 # =============================================
 df_filtered = pd.DataFrame()
 if not df_alerts_raw.empty:
-
     df_filtered = df_alerts_raw[
-        (df_alerts_raw['date'] == selected_date) &
-        (df_alerts_raw['type'].isin(filtro_tipo) if filtro_tipo else True) &
-        (df_alerts_raw['hour'].between(hora_range[0], hora_range[1]))
+        (df_alerts_raw["date"] == selected_date) &
+        (df_alerts_raw["hour"].between(hora_range[0], hora_range[1])) &
+        (df_alerts_raw["type"].isin(filtro_tipo) if filtro_tipo else True)
     ].copy()
 
+    if filtro_natureza and "subtype" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["subtype"].isin(filtro_natureza)]
 
-    # Aplica rua (seleção exata, não busca livre)
-    if filtro_rua and 'street' in df_filtered.columns:
-        df_filtered = df_filtered[df_filtered['street'] == filtro_rua]
+    if filtro_rua and "street" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["street"] == filtro_rua]
 
-    # Fallback: se filtros zeraram os resultados
+    # Fallback 1: zera tipo/natureza/rua mas mantém data + hora
     if df_filtered.empty:
-        st.sidebar.warning("⚠️ Sem dados para essa combinação. Exibindo dados da data sem filtro de tipo/subtipo/rua.")
+        st.sidebar.warning("⚠️ Sem dados para essa combinação. Exibindo todos os registros da data.")
         df_filtered = df_alerts_raw[
-            (df_alerts_raw['date'] == selected_date) &
-            (df_alerts_raw['hour'].between(hora_range[0], hora_range[1]))
+            (df_alerts_raw["date"] == selected_date) &
+            (df_alerts_raw["hour"].between(hora_range[0], hora_range[1]))
         ].copy()
-        # Segundo fallback: sem data também
-        if df_filtered.empty:
-            df_filtered = df_alerts_raw[
-                df_alerts_raw['hour'].between(hora_range[0], hora_range[1])
-            ].copy()
+    # Fallback 2: ignora data também
+    if df_filtered.empty:
+        df_filtered = df_alerts_raw[
+            df_alerts_raw["hour"].between(hora_range[0], hora_range[1])
+        ].copy()
 
 df_jams_filtered = pd.DataFrame()
 if not df_jams_raw.empty:
     df_jams_filtered = df_jams_raw[
-        (df_jams_raw['date'] == selected_date) &
-        (df_jams_raw['hour'].between(hora_range[0], hora_range[1])) &
-        (df_jams_raw["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1])
+        (df_jams_raw["date"] == selected_date) &
+        (df_jams_raw["hour"].between(hora_range[0], hora_range[1])) &
+        ((df_jams_raw["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1]))
     ].copy()
     if df_jams_filtered.empty:
         df_jams_filtered = df_jams_raw[
-            df_jams_raw['hour'].between(hora_range[0], hora_range[1])
+            df_jams_raw["hour"].between(hora_range[0], hora_range[1])
         ].copy()
 
 # =============================================
@@ -784,32 +801,28 @@ st.markdown("---")
 # =============================================
 # 19. RESUMO DOS FILTROS ATIVOS
 # =============================================
+label_tipo = (
+    ", ".join(filtro_tipo) if filtro_tipo and len(filtro_tipo) <= 2
+    else f"{len(filtro_tipo)} tipos" if filtro_tipo and len(filtro_tipo) < len(tipos_na_data)
+    else "Todos"
+)
+label_natureza = (
+    ", ".join(filtro_natureza) if filtro_natureza and len(filtro_natureza) <= 2
+    else f"{len(filtro_natureza)} naturezas" if filtro_natureza and len(filtro_natureza) < len(naturezas_na_data)
+    else "Todas"
+)
+
 col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+col_f1.metric("📅 Data",       selected_date.strftime("%d/%m/%Y"))
+col_f2.metric("🚨 Tipo",       label_tipo)
+col_f3.metric("🔍 Natureza",   label_natureza)
+col_f4.metric("🛣️ Rua",        filtro_rua if filtro_rua else "Todas")
+col_f5.metric("⏰ Horário",    f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
 
-# Resumo do tipo selecionado
-if filtro_tipo and len(filtro_tipo) < len(tipos_na_data):
-    label_tipo = ", ".join(filtro_tipo) if len(filtro_tipo) <= 2 else f"{len(filtro_tipo)} tipos"
-else:
-    label_tipo = "Todos"
-
-# Resumo do subtipo selecionado
-if filtro_tipo and len(filtro_tipo) < len(tipos_na_data):
-    label_tipo = ", ".join(filtro_tipo) if len(filtro_tipo) <= 2 else f"{len(filtro_tipo)} tipos"
-else:
-    label_tipo = "Todos"
-
-col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-
-col_f1.metric("📅 Data",     selected_date.strftime("%d/%m/%Y"))
-col_f2.metric("🚨 Tipo",     label_tipo)
-col_f3.metric("🛣️ Rua",      filtro_rua if filtro_rua else "Todas")
-col_f4.metric("⏰ Horário",  f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
-
-# Barra de contexto compacta com total de registros exibidos
 st.caption(
     f"🔍 Filtros ativos → "
     f"**{len(df_filtered)} incidente(s)** exibidos "
-    f"{'de ' + selected_date.strftime('%d/%m/%Y') if not df_filtered.empty else '(fallback: dados mais recentes)'} "
+    f"{'em ' + selected_date.strftime('%d/%m/%Y') if not df_filtered.empty else '(fallback: dados mais recentes)'} "
     f"| Congestionamentos: **{len(df_jams_filtered)}**"
 )
 st.markdown("---")
