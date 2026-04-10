@@ -630,7 +630,6 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
 # 16. FILTROS NA SIDEBAR — CASCATA INTELIGENTE
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
-horafozatual = nowfoz()
 today_foz = horafozatual.date()
 
 # ── 1. DATA (âncora de todos os filtros) ──────────────────────────────────────
