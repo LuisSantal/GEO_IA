@@ -395,15 +395,6 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         prefix='Lat/Lon: ', num_digits=5
     ).add_to(m)
 
-    # ── Ferramenta de medição ─────────────────────────────────────────────────
-    plugins.MeasureControl(
-        position='bottomright',
-        primary_length_unit='meters',
-        secondary_length_unit='kilometers',
-        primary_area_unit='sqmeters',
-        secondary_area_unit='sqkilometers'
-    ).add_to(m)
-
     # ── Tela cheia ────────────────────────────────────────────────────────────
     plugins.Fullscreen(
         position='topleft',
@@ -412,7 +403,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         force_separate_button=True
     ).add_to(m)
 
-    # ── Barra de escala gráfica via Leaflet (sempre visível, atualiza com zoom)
+    # ── Barra de escala gráfica (atualiza com zoom) ───────────────────────────
     scale_js = """
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -421,12 +412,41 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
                 return v && v._leaflet_id && typeof v.addControl === 'function';
             });
             maps.forEach(function(map) {
+                // Barra de escala métrica
                 L.control.scale({
                     position: 'bottomleft',
                     metric: true,
                     imperial: false,
-                    maxWidth: 150
+                    maxWidth: 120
                 }).addTo(map);
+
+                // ── Indicador de nível de zoom ────────────────────────────
+                var ZoomIndicator = L.Control.extend({
+                    options: { position: 'bottomleft' },
+                    onAdd: function(map) {
+                        var div = L.DomUtil.create('div');
+                        div.style.cssText = [
+                            'background:white',
+                            'border:2px solid #555',
+                            'border-radius:6px',
+                            'padding:3px 8px',
+                            'font-size:12px',
+                            'font-family:Arial,sans-serif',
+                            'font-weight:bold',
+                            'color:#333',
+                            'box-shadow:0 2px 6px rgba(0,0,0,0.3)',
+                            'min-width:64px',
+                            'text-align:center',
+                            'margin-bottom:4px'
+                        ].join(';');
+                        div.innerHTML = '🔍 Zoom: ' + map.getZoom();
+                        map.on('zoomend', function() {
+                            div.innerHTML = '🔍 Zoom: ' + map.getZoom();
+                        });
+                        return div;
+                    }
+                });
+                new ZoomIndicator().addTo(map);
             });
         }, 800);
     });
@@ -438,7 +458,7 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     compass_html = """
     <div style="
         position:absolute;
-        bottom:90px;
+        bottom:110px;
         left:10px;
         z-index:9999;
         pointer-events:none;
