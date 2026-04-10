@@ -11,24 +11,45 @@
 
 ## 🏛️ Vínculo Institucional
 
-Este projeto é desenvolvido no âmbito de uma **bolsa de iniciação científica/tecnológica CAPES**, em colaboração com:
+Este projeto é desenvolvido no âmbito do **Plano de Trabalho PID4021-2025**, vinculado ao programa de bolsas de iniciação científica **CAPES**, intitulado:
 
-- 🔬 **Grupo de Pesquisa em Mobilidade e Matriz Energética** — coordenado pelo Prof. Dr. Ricardo Hartmann, vinculado ao [Instituto Latino-Americano de Tecnologia, Infraestrutura e Território (ILATIT)](https://portal.unila.edu.br/institutos/ilatit) da **Universidade Federal da Integração Latino-Americana (UNILA)**.
-- 💻 **Laboratório de Pesquisa em Computação Aplicada (LACA)** — coordenado pelos professores Joylan Nunes Maciel, Willian Zalewski e Marcelo Kapp, localizado no Itaipu Parquetec, Bloco 4, Espaço 1, Sala 2 — [UNILA](https://divulga.unila.edu.br/laca/).
+> *"Exploração de Dados Disponíveis na Plataforma Waze Partner Hub para Análise de Mobilidade Urbana"*
 
-O projeto é open source e voltado para qualquer pessoa ou organização interessada em analisar dados de mobilidade urbana. As possíveis aplicações incluem:
+| | |
+|---|---|
+| **Bolsista** | Luis Enrique Santacruz Alvarez |
+| **Orientador** | Prof. Diego Moraes Flores |
+| **Coorientador** | Prof. Dr. Ricardo Morel Hartmann |
+| **Instituição** | [Universidade Federal da Integração Latino-Americana (UNILA)](https://portal.unila.edu.br) |
+| **Instituto** | [ILATIT — Instituto Latino-Americano de Tecnologia, Infraestrutura e Território](https://portal.unila.edu.br/institutos/ilatit) |
+| **Grande Área / Área** | Ciências Exatas e da Terra / Geociências — Geocartografia |
+| **Status** | 🟡 Em andamento |
 
-🏙️ Gestão pública de trânsito — apoio à tomada de decisão por órgãos municipais sobre sinalização, rotas alternativas e planejamento viário
+O projeto também conta com suporte do **Laboratório de Pesquisa em Computação Aplicada (LACA/UNILA)**, coordenado pelos professores Joylan Nunes Maciel, Willian Zalewski e Marcelo Kapp, localizado no Itaipu Parquetec — [LACA](https://divulga.unila.edu.br/laca/).
 
-🎓 Pesquisa acadêmica — estudos sobre mobilidade urbana, padrões de congestionamento e cidades de fronteira
+---
 
-🏗️ Planejamento urbano — identificação de pontos críticos para obras e melhorias de infraestrutura
+## 🎯 Objetivos do Projeto
 
-🚑 Segurança pública — análise de acidentes para ações preventivas pelas autoridades
+O projeto propõe a exploração aprofundada dos dados da plataforma **Waze Partner Hub** para compreender padrões de mobilidade urbana e propor aplicações práticas. Os objetivos específicos são:
 
-📦 Logística e entregas — otimização de rotas com base em dados históricos
+- 📌 Mapear os tipos de dados disponíveis no Waze Partner Hub (tráfego, incidentes, rotas, etc.)
+- 📊 Identificar padrões de congestionamento e eventos recorrentes
+- 🗺️ Desenvolver visualizações que facilitem a interpretação dos dados
+- 🏛️ Propor aplicações para gestores públicos e empresas de transporte
 
-🗺️ Turismo e mobilidade regional — mapeamento de fluxos em uma das cidades mais visitadas do Brasil
+---
+
+## 🌍 Aplicações dos Dados
+
+O projeto é **open source** e voltado para qualquer pessoa ou organização interessada em mobilidade urbana. Algumas das possíveis aplicações:
+
+- 🏙️ **Gestão pública de trânsito** — apoio à tomada de decisão sobre sinalização, rotas alternativas e planejamento viário
+- 🎓 **Pesquisa acadêmica** — estudos de mobilidade em cidades de fronteira e análise de séries temporais de tráfego
+- 🏗️ **Planejamento urbano** — identificação de pontos críticos para obras e melhorias de infraestrutura
+- 🚑 **Segurança pública** — análise georreferenciada de acidentes para ações preventivas
+- 📦 **Logística e entregas** — otimização de rotas com base em dados históricos de congestionamento
+- 🗺️ **Turismo e mobilidade regional** — mapeamento de fluxos em uma das cidades mais visitadas do Brasil
 
 ---
 
@@ -153,6 +174,17 @@ Durante o desenvolvimento no **GitHub Codespaces** e **Streamlit Cloud**, foram 
 - **CAPES** — Coordenação de Aperfeiçoamento de Pessoal de Nível Superior
 
 ---
+
+
+## 📚 Referências
+
+- Waze Partner Hub. (2025). *Waze Partner Hub Documentation*. Disponível em: https://www.waze.com/partner-hub
+- Banister, D. (2008). The sustainable mobility paradigm. *Transport Policy*, 15(2), 73–80.
+- Goodchild, M. F. (2007). Citizens as sensors: The world of volunteered geography. *GeoJournal*, 69(4), 211–221.
+- Zhang, L., et al. (2011). Big data for urban transportation. *IEEE Intelligent Transportation Systems Magazine*, 3(4), 22–32.
+- Bucsky, P. (2020). Crowdsourced traffic data. *Transportation Research Part A*, 137, 385–397.
+- Gonzalez, H., et al. (2008). Adaptive real-time traffic prediction using Waze data. *Transportation Research Part C*, 16(6), 673–695.
+- Herrera, J. C., et al. (2010). Evaluation of traffic data via GPS-enabled mobile phones. *Transportation Research Part C*, 18(4), 568–583.
 
 ## 📄 Licença
 
