@@ -630,7 +630,7 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
 # 16. FILTROS NA SIDEBAR — CASCATA INTELIGENTE
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
-
+today_foz = hora_foz_atual.date()
 # ── 1. DATA (âncora de todos os filtros) ──────────────────────────────────────
 all_dates = set()
 if not df_alerts_raw.empty:
@@ -740,9 +740,6 @@ if not df_alerts_raw.empty:
         (df_alerts_raw['hour'].between(hora_range[0], hora_range[1]))
     ].copy()
 
-    # Aplica subtipo
-    if filtro_subtipo and 'subtype' in df_filtered.columns:
-        df_filtered = df_filtered[df_filtered['subtype'].isin(filtro_subtipo)]
 
     # Aplica rua (seleção exata, não busca livre)
     if filtro_rua and 'street' in df_filtered.columns:
@@ -765,7 +762,7 @@ df_jams_filtered = pd.DataFrame()
 if not df_jams_raw.empty:
     df_jams_filtered = df_jams_raw[
         (df_jams_raw['date'] == selected_date) &
-        (df_jams_raw['hour'].between(hora_range[0], hora_range[1]))
+        (df_jams_raw['hour'].between(hora_range[0], hora_range[1])) &
         (df_jams_raw["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1])
     ].copy()
     if df_jams_filtered.empty:
@@ -790,7 +787,7 @@ st.markdown("---")
 col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
 
 # Resumo do tipo selecionado
-if filtro_tipo and len(filtro_tipo) < len(tipos_disponiveis):
+if filtro_tipo and len(filtro_tipo) < len(tipos_na_data):
     label_tipo = ", ".join(filtro_tipo) if len(filtro_tipo) <= 2 else f"{len(filtro_tipo)} tipos"
 else:
     label_tipo = "Todos"
