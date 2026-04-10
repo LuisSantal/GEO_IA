@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-red?logo=streamlit)](https://streamlit.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CAPES](https://img.shields.io/badge/Bolsista-CAPES-green)](https://www.gov.br/capes)
+[![CNPq](https://img.shields.io/badge/Bolsista-CNPq-green)](https://www.gov.br/cnpq)
 
 > Dashboard interativo para visualização e análise de dados de tráfego em tempo real e históricos da cidade de Foz do Iguaçu, integrando dados do **Waze for Cities** armazenados no Google Drive.
 
@@ -11,7 +11,7 @@
 
 ## 🏛️ Vínculo Institucional
 
-Este projeto é desenvolvido no âmbito do **Plano de Trabalho PID4021-2025**, vinculado ao programa de bolsas de iniciação científica **CAPES**, intitulado:
+Este projeto é desenvolvido no âmbito do **Plano de Trabalho PID4021-2025**, programa de bolsas de iniciação científica **CNPq**, intitulado:
 
 > *"Exploração de Dados Disponíveis na Plataforma Waze Partner Hub para Análise de Mobilidade Urbana"*
 
