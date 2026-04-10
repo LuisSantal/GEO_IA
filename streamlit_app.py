@@ -768,7 +768,7 @@ if not df_jams_raw.empty:
     df_jams_filtered = df_jams_raw[
         (df_jams_raw['date'] == selected_date) &
         (df_jams_raw['hour'].between(hora_range[0], hora_range[1]))
-        (df_jams_raw["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1]
+        (df_jams_raw["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1])
     ].copy()
     if df_jams_filtered.empty:
         df_jams_filtered = df_jams_raw[
