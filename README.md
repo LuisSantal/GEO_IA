@@ -16,7 +16,19 @@ Este projeto é desenvolvido no âmbito de uma **bolsa de iniciação científic
 - 🔬 **Grupo de Pesquisa em Mobilidade e Matriz Energética** — coordenado pelo Prof. Dr. Ricardo Hartmann, vinculado ao [Instituto Latino-Americano de Tecnologia, Infraestrutura e Território (ILATIT)](https://portal.unila.edu.br/institutos/ilatit) da **Universidade Federal da Integração Latino-Americana (UNILA)**.
 - 💻 **Laboratório de Pesquisa em Computação Aplicada (LACA)** — coordenado pelos professores Joylan Nunes Maciel, Willian Zalewski e Marcelo Kapp, localizado no Itaipu Parquetec, Bloco 4, Espaço 1, Sala 2 — [UNILA](https://divulga.unila.edu.br/laca/).
 
-O projeto visa fornecer à **Foztrans** (Empresa de Transporte e Trânsito de Foz do Iguaçu) e às autoridades municipais uma ferramenta de apoio à decisão baseada em dados geoespaciais de tráfego.
+O projeto é open source e voltado para qualquer pessoa ou organização interessada em analisar dados de mobilidade urbana. As possíveis aplicações incluem:
+
+🏙️ Gestão pública de trânsito — apoio à tomada de decisão por órgãos municipais sobre sinalização, rotas alternativas e planejamento viário
+
+🎓 Pesquisa acadêmica — estudos sobre mobilidade urbana, padrões de congestionamento e cidades de fronteira
+
+🏗️ Planejamento urbano — identificação de pontos críticos para obras e melhorias de infraestrutura
+
+🚑 Segurança pública — análise de acidentes para ações preventivas pelas autoridades
+
+📦 Logística e entregas — otimização de rotas com base em dados históricos
+
+🗺️ Turismo e mobilidade regional — mapeamento de fluxos em uma das cidades mais visitadas do Brasil
 
 ---
 
