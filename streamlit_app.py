@@ -389,17 +389,56 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         max_bounds=True
     )
 
+    # ── Posição do cursor ──────────────────────────────────────────────────────
     plugins.MousePosition(
         position='topright', separator=' | ',
         prefix='Lat/Lon: ', num_digits=5
     ).add_to(m)
-    plugins.MeasureControl(position='bottomright').add_to(m)
 
-    # ── Rosa dos ventos SVG — injetada direto no HTML do mapa ─────────────────
+    # ── Ferramenta de medição ─────────────────────────────────────────────────
+    plugins.MeasureControl(
+        position='bottomright',
+        primary_length_unit='meters',
+        secondary_length_unit='kilometers',
+        primary_area_unit='sqmeters',
+        secondary_area_unit='sqkilometers'
+    ).add_to(m)
+
+    # ── Tela cheia ────────────────────────────────────────────────────────────
+    plugins.Fullscreen(
+        position='topleft',
+        title='Expandir mapa',
+        title_cancel='Sair da tela cheia',
+        force_separate_button=True
+    ).add_to(m)
+
+    # ── Barra de escala gráfica via Leaflet (sempre visível, atualiza com zoom)
+    scale_js = """
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        setTimeout(function() {
+            var maps = Object.values(window).filter(function(v) {
+                return v && v._leaflet_id && typeof v.addControl === 'function';
+            });
+            maps.forEach(function(map) {
+                L.control.scale({
+                    position: 'bottomleft',
+                    metric: true,
+                    imperial: false,
+                    maxWidth: 150
+                }).addTo(map);
+            });
+        }, 800);
+    });
+    </script>
+    """
+    m.get_root().html.add_child(folium.Element(scale_js))
+
+    # ── Rosa dos ventos SVG ────────────────────────────────────────────────────
     compass_html = """
     <div style="
         position:absolute;
-        bottom:40px;
+        bottom:90px;
         left:10px;
         z-index:9999;
         pointer-events:none;
@@ -407,50 +446,28 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
       <svg width="54" height="54" viewBox="0 0 54 54"
            xmlns="http://www.w3.org/2000/svg"
            style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));">
-
-        <!-- Círculo de fundo -->
         <circle cx="27" cy="27" r="26" fill="white" stroke="#555" stroke-width="2"/>
-
-        <!-- Seta Norte (vermelha) — aponta para cima -->
         <polygon points="27,4 22,27 27,22 32,27" fill="#d32f2f"/>
-
-        <!-- Seta Sul (cinza) — aponta para baixo -->
         <polygon points="27,50 22,27 27,32 32,27" fill="#999"/>
-
-        <!-- Seta Leste (cinza claro) -->
         <polygon points="50,27 27,22 32,27 27,32" fill="#ccc"/>
-
-        <!-- Seta Oeste (cinza claro) -->
         <polygon points="4,27 27,22 22,27 27,32" fill="#ccc"/>
-
-        <!-- Círculo central -->
         <circle cx="27" cy="27" r="4" fill="#555"/>
-
-        <!-- Letra N -->
-        <text x="27" y="16" text-anchor="middle"
-              font-size="9" font-weight="bold"
+        <text x="27" y="16" text-anchor="middle" font-size="9" font-weight="bold"
               font-family="Arial" fill="#d32f2f">N</text>
-
-        <!-- Letra S -->
-        <text x="27" y="51" text-anchor="middle"
-              font-size="9" font-weight="bold"
+        <text x="27" y="51" text-anchor="middle" font-size="9" font-weight="bold"
               font-family="Arial" fill="#777">S</text>
-
-        <!-- Letra L (Leste) -->
-        <text x="49" y="30" text-anchor="middle"
-              font-size="8" font-family="Arial" fill="#888">L</text>
-
-        <!-- Letra O (Oeste) -->
-        <text x="6" y="30" text-anchor="middle"
-              font-size="8" font-family="Arial" fill="#888">O</text>
+        <text x="49" y="30" text-anchor="middle" font-size="8"
+              font-family="Arial" fill="#888">L</text>
+        <text x="6"  y="30" text-anchor="middle" font-size="8"
+              font-family="Arial" fill="#888">O</text>
       </svg>
     </div>
     """
-
     m.get_root().html.add_child(folium.Element(compass_html))
 
     folium.LayerControl(position='topright', collapsed=True).add_to(m)
     return m
+
 
 
 
