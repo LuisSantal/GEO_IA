@@ -380,9 +380,7 @@ def translate_dataframe(df):
         )
     return df
 
-Sim, é exatamente essa seção. Substitua por esta versão completa:
 
-python
 # =============================================
 # 11. PIPELINE PRINCIPAL DE DADOS
 # =============================================
