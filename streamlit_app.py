@@ -46,6 +46,9 @@ tempo_total        = int(tempo_sessao)
 # =============================================
 FOLDER_ALERTS_ID = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
 FOLDER_JAMS_ID   = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
+# ── Pastas secundárias (novos dados — mesmo formato) ──────────────────────────
+FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"   # ← substitua pelo ID real
+FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"     # ← substitua pelo ID real
 
 # =============================================
 # 5. FUNÇÕES DE CORES
@@ -377,27 +380,56 @@ def translate_dataframe(df):
         )
     return df
 
+Sim, é exatamente essa seção. Substitua por esta versão completa:
+
+python
 # =============================================
-# 11. PIPELINE PRINCIPAL DE DADOS  ← CORRIGIDO
+# 11. PIPELINE PRINCIPAL DE DADOS
 # =============================================
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
 def load_all_data():
-    alerts_id = get_latest_h5_id(FOLDER_ALERTS_ID)
-    jams_id   = get_latest_h5_id(FOLDER_JAMS_ID)
 
-    df_alerts = load_hdf_from_drive(alerts_id) if alerts_id else pd.DataFrame()
-    df_jams   = load_hdf_from_drive(jams_id)   if jams_id   else pd.DataFrame()
+    # ── Busca o arquivo mais recente em cada pasta ────────────────────────────
+    alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
+    alerts_id2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
+    jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
+    jams_id2   = get_latest_h5_id(FOLDER_JAMS_ID2)
 
+    # ── Carrega e mescla alertas ──────────────────────────────────────────────
+    frames_alerts = []
+    if alerts_id:  frames_alerts.append(load_hdf_from_drive(alerts_id))
+    if alerts_id2: frames_alerts.append(load_hdf_from_drive(alerts_id2))
+
+    if frames_alerts:
+        df_alerts = pd.concat(frames_alerts, ignore_index=True)
+        dedup_cols = ['uuid'] if 'uuid' in df_alerts.columns else ['pubMillis', 'street']
+        df_alerts  = df_alerts.drop_duplicates(subset=dedup_cols)
+    else:
+        df_alerts = pd.DataFrame()
+
+    # ── Carrega e mescla jams ─────────────────────────────────────────────────
+    frames_jams = []
+    if jams_id:  frames_jams.append(load_hdf_from_drive(jams_id))
+    if jams_id2: frames_jams.append(load_hdf_from_drive(jams_id2))
+
+    if frames_jams:
+        df_jams   = pd.concat(frames_jams, ignore_index=True)
+        dedup_cols = ['uuid'] if 'uuid' in df_jams.columns else ['pubMillis', 'street']
+        df_jams   = df_jams.drop_duplicates(subset=dedup_cols)
+    else:
+        df_jams = pd.DataFrame()
+
+    # ── Pipeline de normalização (inalterado) ─────────────────────────────────
     if not df_alerts.empty:
         df_alerts = normalize_timestamps(df_alerts)
-        df_alerts = extract_coordinates(df_alerts)       # alertas usam 'location'
+        df_alerts = extract_coordinates(df_alerts)   # alertas usam 'location'
         df_alerts = translate_dataframe(df_alerts)
         if 'street' not in df_alerts.columns:
             df_alerts['street'] = 'N/A'
 
     if not df_jams.empty:
         df_jams = normalize_timestamps(df_jams)
-        df_jams = extract_jams_coordinates(df_jams)      # ← CORRIGIDO: usa 'line'
+        df_jams = extract_jams_coordinates(df_jams)  # jams usam 'line'
         df_jams = normalize_speed(df_jams)
         if 'street' not in df_jams.columns:
             df_jams['street'] = 'Via'
