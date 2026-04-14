@@ -171,7 +171,7 @@ Durante o desenvolvimento no **GitHub Codespaces** e **Streamlit Cloud**, foram 
 
 - **Foztrans** — Empresa de Transporte e Trânsito de Foz do Iguaçu
 - **Guarda Municipal de Foz do Iguaçu** — Programa Vida no Trânsito
-- **CAPES** — Coordenação de Aperfeiçoamento de Pessoal de Nível Superior
+- **CNPQ** — Conselho Nacional de Desenvolvimento Científico e Tecnológico
 
 ---
 
