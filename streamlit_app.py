@@ -1439,9 +1439,7 @@ with tab_graficos:
 
         st.markdown("---")
 
-Sim, é exatamente esse bloco. Substitua por:
 
-python
 # =====================================================
 # GRÁFICO 3 — Dia da Semana (histórico completo)
 # =====================================================
