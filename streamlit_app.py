@@ -1468,16 +1468,28 @@ with tab_graficos:
                 category_orders={'Dia': list(DIAS_PT.values())}
             )
 
-            # Linha do dia atual
+            # Linha do dia atual — compatível com eixo categórico
             dia_hoje_en = hora_foz_atual.strftime('%A')
             dia_hoje_pt = DIAS_PT.get(dia_hoje_en, '')
-            if dia_hoje_pt:
-                fig_dow.add_vline(
-                    x=dia_hoje_pt, line_dash='dot', line_color='gold', line_width=2,
-                    annotation_text=f'Hoje ({dia_hoje_pt})',
-                    annotation_position='top left', annotation_font_color='gold'
+            if dia_hoje_pt and dia_hoje_pt in dow_counts['Dia'].values:
+                idx_hoje = list(DIAS_PT.values()).index(dia_hoje_pt)
+                fig_dow.add_shape(
+                    type='line',
+                    x0=idx_hoje, x1=idx_hoje,
+                    y0=0, y1=1,
+                    xref='x', yref='paper',
+                    line=dict(color='gold', width=2, dash='dot')
                 )
-
+                fig_dow.add_annotation(
+                    x=idx_hoje,
+                    y=1,
+                    xref='x', yref='paper',
+                    text=f'Hoje ({dia_hoje_pt})',
+                    showarrow=False,
+                    font=dict(color='gold', size=11),
+                    xanchor='left',
+                    yanchor='top'
+                )
             # Linha de média
             media_dia = dow_counts['Quantidade'].mean()
             fig_dow.add_hline(
