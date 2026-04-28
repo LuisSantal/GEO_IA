@@ -1320,6 +1320,9 @@ with tab_calor:
     else:
         st.info("Sem dados suficientes para mapa de calor.")
 
+O problema é claro — o Gráfico 3 saiu do with tab_graficos: e do if not df_filtered.empty:. Aqui está a aba completa corrigida com indentação consistente:
+
+python
 # --- ABA 4: Gráficos ---
 with tab_graficos:
     if not df_filtered.empty:
@@ -1344,7 +1347,6 @@ with tab_graficos:
                 "Barras mais escuras indicam os horários de maior ocorrência — "
                 "útil para identificar picos de risco no trânsito."
             )
-
             hora_counts = (
                 df_filtered['hour']
                 .value_counts()
@@ -1363,15 +1365,11 @@ with tab_graficos:
                 text='Quantidade'
             )
             fig_hora.update_traces(
-                textposition='outside',
-                textfont_size=10,
-                marker_line_width=0.5,
-                marker_line_color='white'
+                textposition='outside', textfont_size=10,
+                marker_line_width=0.5, marker_line_color='white'
             )
             fig_hora.add_vline(
-                x=hora_pico,
-                line_dash="dash",
-                line_color="darkred",
+                x=hora_pico, line_dash="dash", line_color="darkred",
                 annotation_text=f"Pico: {hora_pico:02d}h",
                 annotation_position="top right",
                 annotation_font_color="darkred"
@@ -1394,7 +1392,6 @@ with tab_graficos:
                 "Cada fatia representa a participação percentual de um tipo de incidente "
                 "no total filtrado. Clique em um tipo na legenda para ocultá-lo."
             )
-
             CORES_TIPO = {
                 'ACIDENTE':         '#e74c3c',
                 'VIA FECHADA':      '#c0392b',
@@ -1408,26 +1405,16 @@ with tab_graficos:
             cores_ordem = [CORES_TIPO.get(t, '#95a5a6') for t in tipo_counts['Tipo']]
 
             fig_pie = px.pie(
-                tipo_counts,
-                names='Tipo',
-                values='Quantidade',
-                color='Tipo',
-                color_discrete_sequence=cores_ordem,
-                hole=0.38
+                tipo_counts, names='Tipo', values='Quantidade',
+                color='Tipo', color_discrete_sequence=cores_ordem, hole=0.38
             )
             fig_pie.update_traces(
-                textposition='outside',
-                textinfo='label+percent',
-                textfont_size=12,
+                textposition='outside', textinfo='label+percent', textfont_size=12,
                 pull=[0.05] * len(tipo_counts),
                 marker=dict(line=dict(color='white', width=2))
             )
             fig_pie.update_layout(
-                legend=dict(
-                    title="Tipos",
-                    orientation="v",
-                    x=1.02, y=0.5
-                ),
+                legend=dict(title="Tipos", orientation="v", x=1.02, y=0.5),
                 margin=dict(t=40, b=40, l=0, r=120),
                 paper_bgcolor='rgba(0,0,0,0)',
                 height=360
@@ -1439,103 +1426,87 @@ with tab_graficos:
 
         st.markdown("---")
 
+        # =====================================================
+        # GRÁFICO 3 — Dia da Semana (histórico completo)
+        # =====================================================
+        if 'day_of_week' in df_alerts_raw.columns:
+            st.subheader("📅 Incidentes por Dia da Semana")
+            st.caption(
+                "Distribuição histórica de todos os dados coletados — não se limita à data selecionada. "
+                "Permite identificar quais dias concentram mais ocorrências ao longo do tempo."
+            )
+            DIAS_PT = {
+                'Monday': 'Segunda', 'Tuesday': 'Terça',  'Wednesday': 'Quarta',
+                'Thursday': 'Quinta', 'Friday': 'Sexta',
+                'Saturday': 'Sábado', 'Sunday': 'Domingo'
+            }
+            order = list(DIAS_PT.keys())
 
-# =====================================================
-# GRÁFICO 3 — Dia da Semana (histórico completo)
-# =====================================================
-if 'day_of_week' in df_alerts_raw.columns:
-    st.subheader("📅 Incidentes por Dia da Semana")
-    st.caption(
-        "Distribuição histórica de todos os dados coletados — não se limita à data selecionada. "
-        "Permite identificar quais dias concentram mais ocorrências ao longo do tempo."
-    )
+            # Base histórica: todos os dados, filtra só tipo/natureza/rua
+            df_historico = df_alerts_raw.copy()
+            if filtro_tipo:
+                df_historico = df_historico[df_historico['type'].isin(filtro_tipo)]
+            if filtro_natureza and 'subtype' in df_historico.columns:
+                df_historico = df_historico[df_historico['subtype'].isin(filtro_natureza)]
+            if filtro_rua and 'street' in df_historico.columns:
+                df_historico = df_historico[df_historico['street'] == filtro_rua]
 
-    DIAS_PT = {
-        'Monday':    'Segunda',
-        'Tuesday':   'Terça',
-        'Wednesday': 'Quarta',
-        'Thursday':  'Quinta',
-        'Friday':    'Sexta',
-        'Saturday':  'Sábado',
-        'Sunday':    'Domingo'
-    }
-    order = list(DIAS_PT.keys())
+            dow_counts = (
+                df_historico['day_of_week']
+                .value_counts()
+                .reindex(order, fill_value=0)
+                .reset_index()
+            )
+            dow_counts.columns          = ['day_of_week', 'Quantidade']
+            dow_counts['Dia']           = dow_counts['day_of_week'].map(DIAS_PT)
+            dow_counts['Fim de Semana'] = dow_counts['day_of_week'].isin(['Saturday', 'Sunday'])
 
-    # ── Base histórica: todos os dados, filtra só tipo/natureza/rua ───────────
-    df_historico = df_alerts_raw.copy()
+            fig_dow = px.bar(
+                dow_counts, x='Dia', y='Quantidade',
+                labels={'Dia': 'Dia da Semana', 'Quantidade': 'Nº de Incidentes'},
+                color='Fim de Semana',
+                color_discrete_map={True: '#3498db', False: '#e74c3c'},
+                text='Quantidade',
+                category_orders={'Dia': list(DIAS_PT.values())}
+            )
 
-    if filtro_tipo:
-        df_historico = df_historico[df_historico['type'].isin(filtro_tipo)]
-    if filtro_natureza and 'subtype' in df_historico.columns:
-        df_historico = df_historico[df_historico['subtype'].isin(filtro_natureza)]
-    if filtro_rua and 'street' in df_historico.columns:
-        df_historico = df_historico[df_historico['street'] == filtro_rua]
+            # Linha do dia atual
+            dia_hoje_en = hora_foz_atual.strftime('%A')
+            dia_hoje_pt = DIAS_PT.get(dia_hoje_en, '')
+            if dia_hoje_pt:
+                fig_dow.add_vline(
+                    x=dia_hoje_pt, line_dash='dot', line_color='gold', line_width=2,
+                    annotation_text=f'Hoje ({dia_hoje_pt})',
+                    annotation_position='top left', annotation_font_color='gold'
+                )
 
-    dow_counts = (
-        df_historico['day_of_week']
-        .value_counts()
-        .reindex(order, fill_value=0)
-        .reset_index()
-    )
-    dow_counts.columns      = ['day_of_week', 'Quantidade']
-    dow_counts['Dia']         = dow_counts['day_of_week'].map(DIAS_PT)
-    dow_counts['Fim de Semana'] = dow_counts['day_of_week'].isin(['Saturday', 'Sunday'])
+            # Linha de média
+            media_dia = dow_counts['Quantidade'].mean()
+            fig_dow.add_hline(
+                y=media_dia, line_dash='dot', line_color='gray',
+                annotation_text=f'Média: {media_dia:.1f}',
+                annotation_position='top right', annotation_font_color='gray'
+            )
+            fig_dow.update_traces(
+                textposition='outside', textfont_size=11,
+                marker_line_width=0.5, marker_line_color='white'
+            )
+            fig_dow.update_layout(
+                legend=dict(title='', orientation='h', y=-0.2, x=0.5, xanchor='center'),
+                coloraxis_showscale=False,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=40, b=60),
+                height=380
+            )
+            total_historico = int(dow_counts['Quantidade'].sum())
+            st.plotly_chart(fig_dow, use_container_width=True)
+            st.caption(
+                f"🔴 Dias úteis (seg–sex) &nbsp;|&nbsp; 🔵 Fim de semana &nbsp;|&nbsp; "
+                f"- - - Média diária &nbsp;|&nbsp; 📊 Total histórico: **{total_historico}** incidentes"
+            )
 
-    fig_dow = px.bar(
-        dow_counts,
-        x='Dia', y='Quantidade',
-        labels={'Dia': 'Dia da Semana', 'Quantidade': 'Nº de Incidentes'},
-        color='Fim de Semana',
-        color_discrete_map={True: '#3498db', False: '#e74c3c'},
-        text='Quantidade',
-        category_orders={'Dia': list(DIAS_PT.values())}
-    )
-
-    # Destaca o dia atual com linha vertical dourada
-    dia_hoje_en = hora_foz_atual.strftime('%A')   # ex: 'Tuesday'
-    dia_hoje_pt = DIAS_PT.get(dia_hoje_en, '')
-    if dia_hoje_pt:
-        fig_dow.add_vline(
-            x=dia_hoje_pt,
-            line_dash='dot', line_color='gold', line_width=2,
-            annotation_text=f'Hoje ({dia_hoje_pt})',
-            annotation_position='top left',
-            annotation_font_color='gold'
-        )
-
-    # Linha de média
-    media_dia = dow_counts['Quantidade'].mean()
-    fig_dow.add_hline(
-        y=media_dia,
-        line_dash='dot', line_color='gray',
-        annotation_text=f'Média: {media_dia:.1f}',
-        annotation_position='top right',
-        annotation_font_color='gray'
-    )
-
-    fig_dow.update_traces(
-        textposition='outside',
-        textfont_size=11,
-        marker_line_width=0.5,
-        marker_line_color='white'
-    )
-    fig_dow.update_layout(
-        legend=dict(title='', orientation='h', y=-0.2, x=0.5, xanchor='center'),
-        coloraxis_showscale=False,
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=40, b=60),
-        height=380
-    )
-
-    total_historico = int(dow_counts['Quantidade'].sum())
-    st.plotly_chart(fig_dow, use_container_width=True)
-    st.caption(
-        f"🔴 Dias úteis (seg–sex) &nbsp;|&nbsp; 🔵 Fim de semana &nbsp;|&nbsp; "
-        f"- - - Média diária &nbsp;|&nbsp; 📊 Total histórico: **{total_historico}** incidentes"
-    )
-
-st.markdown("---")
+        st.markdown("---")
 
         # =====================================================
         # GRÁFICO 4 — Top 10 Ruas com mais incidentes
@@ -1546,30 +1517,22 @@ st.markdown("---")
                 "As vias com maior concentração de alertas no período filtrado. "
                 "Pode indicar trechos que necessitam de atenção especial da gestão viária."
             )
-
             rua_counts = (
                 df_filtered[df_filtered['street'].notna() & (df_filtered['street'] != 'N/A')]
-                ['street']
-                .value_counts()
-                .head(10)
-                .reset_index()
+                ['street'].value_counts().head(10).reset_index()
             )
             rua_counts.columns = ['Rua', 'Quantidade']
 
             if not rua_counts.empty:
                 fig_ruas = px.bar(
                     rua_counts.sort_values('Quantidade'),
-                    x='Quantidade', y='Rua',
-                    orientation='h',
+                    x='Quantidade', y='Rua', orientation='h',
                     labels={'Quantidade': 'Nº de Incidentes', 'Rua': ''},
-                    color='Quantidade',
-                    color_continuous_scale='OrRd',
+                    color='Quantidade', color_continuous_scale='OrRd',
                     text='Quantidade'
                 )
                 fig_ruas.update_traces(
-                    textposition='outside',
-                    textfont_size=11,
-                    marker_line_width=0
+                    textposition='outside', textfont_size=11, marker_line_width=0
                 )
                 fig_ruas.update_layout(
                     coloraxis_showscale=False,
