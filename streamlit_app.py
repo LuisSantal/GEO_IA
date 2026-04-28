@@ -1689,21 +1689,25 @@ with tab_graficos:
                 textposition='middle center',
                 textfont=dict(size=11, color='white', family='Arial Black')
             )
-            # Destaca o dia atual com fundo
+            # Destaca o dia atual — compatível com eixo categórico
             dia_hoje_pt = DIAS_PT.get(hora_foz_atual.strftime('%A'), '')
-            if dia_hoje_pt:
-                fig_b1.add_vline(
-                    x=dia_hoje_pt, line_dash='dot', line_color='gold', line_width=2,
-                    annotation_text='Hoje', annotation_font_color='gold',
-                    annotation_position='top'
+            if dia_hoje_pt and dia_hoje_pt in list(DIAS_PT.values()):
+                idx_hoje = list(DIAS_PT.values()).index(dia_hoje_pt)
+                fig_b1.add_shape(
+                    type='line',
+                    x0=idx_hoje, x1=idx_hoje,
+                    y0=0, y1=1,
+                    xref='x', yref='paper',
+                    line=dict(color='gold', width=2, dash='dot')
                 )
-            fig_b1.update_layout(
-                xaxis=dict(title='', tickfont=dict(size=13)),
-                yaxis=dict(title='', tickfont=dict(size=12), autorange='reversed'),
-                legend=dict(title='Nível', orientation='h', y=-0.18, x=0.5, xanchor='center'),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(t=30, b=60, l=10, r=20), height=440
-            )
+                fig_b1.add_annotation(
+                    x=idx_hoje, y=1.05,
+                    xref='x', yref='paper',
+                    text='Hoje',
+                    showarrow=False,
+                    font=dict(color='gold', size=11, family='Arial'),
+                    xanchor='center'
+                )
             st.plotly_chart(fig_b1, use_container_width=True)
             st.caption("💡 O número dentro da bolha é a quantidade de incidentes naquele dia.")
 
