@@ -1638,10 +1638,13 @@ with tab_graficos:
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 5 — Heatmap Rua × Dia da Semana
+        # GRÁFICO 5 — Concentração Rua × Dia da Semana
         # =====================================================
-        st.subheader("🗓️ Concentração por Rua × Dia da Semana")
-        st.caption("Células mais escuras = maior recorrência naquele dia.")
+        st.subheader("🗓️ Quais dias cada rua tem mais problemas?")
+        st.caption(
+            "Quanto mais escura a célula, mais incidentes aconteceram naquele dia. "
+            "Use para saber em quais dias fiscalizar cada via."
+        )
 
         if top_ruas_lista and 'day_of_week' in df_hist.columns:
             import plotly.graph_objects as go
@@ -1653,25 +1656,69 @@ with tab_graficos:
                     .reindex(columns=order_dow, fill_value=0)
                 )
                 pivot.columns = [DIAS_PT.get(c, c) for c in pivot.columns]
+
+                # Rótulos descritivos por célula
+                def nivel(v, vmax):
+                    if v == 0:           return "Nenhum"
+                    elif v <= vmax*0.25: return f"{v} — Baixo"
+                    elif v <= vmax*0.60: return f"{v} — Médio"
+                    else:                return f"{v} — ⚠️ Alto"
+
+                vmax = pivot.values.max() if pivot.values.max() > 0 else 1
+                texto = [[nivel(v, vmax) for v in row] for row in pivot.values]
+
                 fig_hm = go.Figure(data=go.Heatmap(
-                    z=pivot.values, x=pivot.columns.tolist(), y=pivot.index.tolist(),
-                    colorscale='YlOrRd', text=pivot.values,
-                    texttemplate='%{text}', textfont=dict(size=11)
+                    z=pivot.values,
+                    x=pivot.columns.tolist(),
+                    y=pivot.index.tolist(),
+                    colorscale=[
+                        [0.0,  '#f0f9e8'],   # branco-verde = nenhum
+                        [0.25, '#bae4bc'],   # verde claro  = baixo
+                        [0.60, '#f7cb45'],   # amarelo       = médio
+                        [0.85, '#f97b2c'],   # laranja       = alto
+                        [1.0,  '#d73027'],   # vermelho      = crítico
+                    ],
+                    text=texto,
+                    texttemplate='%{text}',
+                    textfont=dict(size=11, color='#333'),
+                    hoverongaps=False,
+                    showscale=True,
+                    colorbar=dict(
+                        title='Incidentes',
+                        tickvals=[0, vmax*0.25, vmax*0.60, vmax*0.85, vmax],
+                        ticktext=['Nenhum', 'Baixo', 'Médio', 'Alto', 'Crítico'],
+                        len=0.8
+                    )
                 ))
                 fig_hm.update_layout(
-                    xaxis_title='Dia da Semana', yaxis_title='',
-                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=20, b=40), height=400
+                    xaxis=dict(title='Dia da Semana', side='top',
+                               tickfont=dict(size=13, color='#222')),
+                    yaxis=dict(title='', tickfont=dict(size=12)),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(t=60, b=20, l=10, r=20),
+                    height=420
                 )
                 st.plotly_chart(fig_hm, use_container_width=True)
+
+                # Mini legenda textual
+                st.markdown(
+                    "🟢 **Nenhum** — sem ocorrências &nbsp;|&nbsp; "
+                    "🟡 **Médio** — atenção &nbsp;|&nbsp; "
+                    "🟠 **Alto** — fiscalizar &nbsp;|&nbsp; "
+                    "🔴 **Crítico** — intervenção necessária"
+                )
 
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 6 — Heatmap Rua × Hora
+        # GRÁFICO 6 — Concentração Rua × Hora
         # =====================================================
-        st.subheader("⏰ Concentração por Rua × Hora do Dia")
-        st.caption("Identifica os horários críticos de cada via.")
+        st.subheader("⏰ Em quais horários cada rua tem mais problemas?")
+        st.caption(
+            "Cada coluna é uma hora do dia. Quanto mais escura, mais incidentes naquele horário. "
+            "Útil para definir horários de patrulhamento ou sinalização extra."
+        )
 
         if top_ruas_lista and 'hour' in df_hist.columns:
             df_hh = df_hist[df_hist['street'].isin(top_ruas_lista)].copy()
@@ -1681,21 +1728,74 @@ with tab_graficos:
                     .unstack(fill_value=0)
                     .reindex(columns=range(24), fill_value=0)
                 )
+
+                vmax2 = pivot2.values.max() if pivot2.values.max() > 0 else 1
+                texto2 = [
+                    [nivel(v, vmax2) for v in row]
+                    for row in pivot2.values
+                ]
+
+                # Agrupa horas em períodos para o eixo X
+                labels_hora = []
+                for h in range(24):
+                    if h < 6:    labels_hora.append(f"{h:02d}h 🌙")
+                    elif h < 12: labels_hora.append(f"{h:02d}h 🌅")
+                    elif h < 18: labels_hora.append(f"{h:02d}h ☀️")
+                    else:        labels_hora.append(f"{h:02d}h 🌆")
+
                 fig_hm2 = go.Figure(data=go.Heatmap(
                     z=pivot2.values,
-                    x=[f"{h:02d}h" for h in range(24)],
+                    x=labels_hora,
                     y=pivot2.index.tolist(),
-                    colorscale='Blues', text=pivot2.values,
-                    texttemplate='%{text}', textfont=dict(size=9)
+                    colorscale=[
+                        [0.0,  '#eaf4fb'],
+                        [0.25, '#aed6f1'],
+                        [0.60, '#f7cb45'],
+                        [0.85, '#f97b2c'],
+                        [1.0,  '#d73027'],
+                    ],
+                    text=texto2,
+                    texttemplate='%{text}',
+                    textfont=dict(size=9, color='#333'),
+                    hoverongaps=False,
+                    showscale=True,
+                    colorbar=dict(
+                        title='Incidentes',
+                        tickvals=[0, vmax2*0.25, vmax2*0.60, vmax2*0.85, vmax2],
+                        ticktext=['Nenhum', 'Baixo', 'Médio', 'Alto', 'Crítico'],
+                        len=0.8
+                    )
                 ))
+
+                # Linhas verticais separando os períodos do dia
+                for x_sep in [5.5, 11.5, 17.5]:
+                    fig_hm2.add_shape(
+                        type='line', x0=x_sep, x1=x_sep, y0=-0.5,
+                        y1=len(pivot2)-0.5, xref='x', yref='y',
+                        line=dict(color='white', width=2, dash='dot')
+                    )
+
                 fig_hm2.update_layout(
-                    xaxis_title='Hora do Dia', yaxis_title='',
-                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=20, b=40), height=400
+                    xaxis=dict(
+                        title='Hora do Dia',
+                        side='top',
+                        tickfont=dict(size=10, color='#222'),
+                        tickangle=-45
+                    ),
+                    yaxis=dict(title='', tickfont=dict(size=12)),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(t=80, b=20, l=10, r=20),
+                    height=440
                 )
                 st.plotly_chart(fig_hm2, use_container_width=True)
 
-        st.markdown("---")
+                st.markdown(
+                    "🌙 **Madrugada** (00–05h) &nbsp;|&nbsp; "
+                    "🌅 **Manhã** (06–11h) &nbsp;|&nbsp; "
+                    "☀️ **Tarde** (12–17h) &nbsp;|&nbsp; "
+                    "🌆 **Noite** (18–23h)"
+                )
 
         # =====================================================
         # GRÁFICO 7 — Natureza Top 10 com barras por Tipo
