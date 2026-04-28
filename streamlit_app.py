@@ -1386,29 +1386,113 @@ with tab_graficos:
             st.caption(f"🔺 Pico: **{hora_pico:02d}:00 – {hora_pico:02d}:59**")
 
         with col_g2:
-            st.subheader("🥧 Proporção por Tipo de Incidente")
-            st.caption("Participação percentual de cada tipo no dia selecionado.")
-            tipo_counts = df_filtered['type'].value_counts().reset_index()
-            tipo_counts.columns = ['Tipo', 'Quantidade']
-            cores_ordem = [CORES_TIPO.get(t, '#95a5a6') for t in tipo_counts['Tipo']]
-            fig_pie = px.pie(tipo_counts, names='Tipo', values='Quantidade',
-                             color='Tipo', color_discrete_sequence=cores_ordem, hole=0.38)
+            st.subheader("🥧 Natureza das Ocorrências")
+            st.caption(
+                "Distribuição por subtipo de todos os incidentes do dia selecionado. "
+                "Detalha a natureza real de cada ocorrência além do tipo genérico."
+            )
+
+            # ── Tenta usar subtipo; fallback para tipo se subtipo vazio ──────
+            tem_subtipo = (
+                'subtype' in df_filtered.columns and
+                df_filtered['subtype'].notna().any() and
+                (~df_filtered['subtype'].isin(['nan', ''])).any()
+            )
+
+            if tem_subtipo:
+                df_sub = df_filtered[
+                    df_filtered['subtype'].notna() &
+                    (~df_filtered['subtype'].isin(['nan', '']))
+                ].copy()
+                # Adiciona o tipo como prefixo quando o subtipo for genérico
+                df_sub['label'] = df_sub.apply(
+                    lambda r: r['subtype']
+                    if r['subtype'] != r['type']
+                    else r['type'],
+                    axis=1
+                )
+                sub_counts = df_sub['label'].value_counts().reset_index()
+                sub_counts.columns = ['Natureza', 'Quantidade']
+                dimensao = "subtipo"
+            else:
+                # Fallback: agrupa por tipo
+                sub_counts = df_filtered['type'].value_counts().reset_index()
+                sub_counts.columns = ['Natureza', 'Quantidade']
+                dimensao = "tipo"
+
+            CORES_NATUREZA = {
+                # Acidentes
+                'ACIDENTE GRAVE':                 '#b71c1c',
+                'ACIDENTE LEVE':                  '#ef9a9a',
+                'ACIDENTE':                       '#e74c3c',
+                # Vias fechadas
+                'VIA FECHADA':                    '#c0392b',
+                'OBRAS':                          '#78909c',
+                'EVENTO':                         '#ab47bc',
+                # Perigos na pista
+                'BURACO NA VIA':                  '#e67e22',
+                'PERIGO NA VIA':                  '#f39c12',
+                'OBJETO NA VIA':                  '#d35400',
+                'ANIMAL NA VIA':                  '#27ae60',
+                'VEÍCULO PARADO NA VIA':          '#c0392b',
+                'VEÍCULO PARADO NO ACOSTAMENTO':  '#e74c3c',
+                'OBRAS NA VIA':                   '#7f8c8d',
+                'SEMÁFORO QUEBRADO':              '#f1c40f',
+                'FAIXA INTERDITADA':              '#8e44ad',
+                'PISTA COM GELO':                 '#3498db',
+                # Acostamento
+                'PERIGO NO ACOSTAMENTO':          '#ff8c00',
+                'ANIMAIS NO ACOSTAMENTO':         '#2ecc71',
+                'SINALIZAÇÃO AUSENTE':            '#95a5a6',
+                # Climáticos
+                'NEBLINA':                        '#bdc3c7',
+                'CHUVA FORTE':                    '#2980b9',
+                'INUNDAÇÃO':                      '#1a5276',
+                'GRANIZO':                        '#5dade2',
+                'TEMPORAL':                       '#1abc9c',
+                'ONDA DE CALOR':                  '#ff6b35',
+                'CONDIÇÕES CLIMÁTICAS':           '#85c1e9',
+                'PERIGO CLIMÁTICO':               '#3498db',
+                # Congestionamentos
+                'TRÂNSITO PARADO':                '#7b1fa2',
+                'TRÂNSITO PESADO':                '#f44336',
+                'TRÂNSITO MODERADO':              '#ff9800',
+                'TRÂNSITO LEVE':                  '#4caf50',
+                'CONGESTIONAMENTO':               '#f39c12',
+                # Genérico
+                'PERIGO':                         '#e67e22',
+                'ALERTA':                         '#9b59b6',
+            }
+            cores_seq = [CORES_NATUREZA.get(n, '#95a5a6') for n in sub_counts['Natureza']]
+
+            fig_pie = px.pie(
+                sub_counts,
+                names='Natureza', values='Quantidade',
+                color='Natureza',
+                color_discrete_sequence=cores_seq,
+                hole=0.38
+            )
             fig_pie.update_traces(
-                textposition='outside', textinfo='label+percent', textfont_size=12,
-                pull=[0.05] * len(tipo_counts),
+                textposition='outside',
+                textinfo='label+percent',
+                textfont_size=11,
+                pull=[0.04] * len(sub_counts),
                 marker=dict(line=dict(color='white', width=2))
             )
             fig_pie.update_layout(
-                legend=dict(title="Tipos", orientation="v", x=1.02, y=0.5),
-                margin=dict(t=40, b=40, l=0, r=120),
-                paper_bgcolor='rgba(0,0,0,0)', height=360
+                legend=dict(title="Natureza", orientation="v", x=1.02, y=0.5),
+                margin=dict(t=40, b=40, l=0, r=150),
+                paper_bgcolor='rgba(0,0,0,0)',
+                height=380
             )
             st.plotly_chart(fig_pie, use_container_width=True)
-            tipo_dominante = tipo_counts.iloc[0]['Tipo']
-            pct_dominante  = 100 * tipo_counts.iloc[0]['Quantidade'] / tipo_counts['Quantidade'].sum()
-            st.caption(f"🔺 Predominante: **{tipo_dominante}** ({pct_dominante:.1f}%)")
 
-        st.markdown("---")
+            nat_top = sub_counts.iloc[0]['Natureza']
+            pct_top = 100 * sub_counts.iloc[0]['Quantidade'] / sub_counts['Quantidade'].sum()
+            st.caption(
+                f"🔺 Natureza predominante: **{nat_top}** ({pct_top:.1f}%) &nbsp;|&nbsp; "
+                f"{'Agrupado por subtipo' if dimensao == 'subtipo' else '⚠️ Sem subtipo disponível — agrupado por tipo'}"
+            )
 
         # =====================================================
         # GRÁFICO 3 — Dia da Semana (histórico completo)
