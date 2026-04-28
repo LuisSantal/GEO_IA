@@ -1493,19 +1493,68 @@ with tab_graficos:
                 f"🔺 Natureza predominante: **{nat_top}** ({pct_top:.1f}%) &nbsp;|&nbsp; "
                 f"{'Agrupado por subtipo' if dimensao == 'subtipo' else '⚠️ Sem subtipo disponível — agrupado por tipo'}"
             )
+        st.markdown("---")
+
+        # ── Filtro de tipo/subtipo exclusivo da aba de gráficos (histórico) ──
+        st.markdown("#### 🔎 Refinar análise histórica")
+        col_ft1, col_ft2 = st.columns(2)
+
+        tipos_hist_disp = sorted(df_hist['type'].dropna().unique().tolist()) \
+            if 'type' in df_hist.columns else []
+
+        with col_ft1:
+            filtro_tipo_graf = st.multiselect(
+                "Tipo de ocorrência",
+                options=tipos_hist_disp,
+                default=tipos_hist_disp,
+                key="graf_tipo"
+            )
+
+        # Subtipos atrelados aos tipos selecionados
+        subtipos_hist_disp = []
+        if 'subtype' in df_hist.columns and filtro_tipo_graf:
+            subtipos_hist_disp = sorted(
+                df_hist[
+                    df_hist['type'].isin(filtro_tipo_graf) &
+                    df_hist['subtype'].notna() &
+                    (~df_hist['subtype'].isin(['nan', '']))
+                ]['subtype'].unique().tolist()
+            )
+
+        with col_ft2:
+            filtro_sub_graf = st.multiselect(
+                "Natureza (subtipo)",
+                options=subtipos_hist_disp,
+                default=subtipos_hist_disp,
+                key="graf_sub"
+            )
+
+        # Aplica os filtros na base histórica
+        df_hist_graf = df_hist.copy()
+        if filtro_tipo_graf:
+            df_hist_graf = df_hist_graf[df_hist_graf['type'].isin(filtro_tipo_graf)]
+        if filtro_sub_graf and 'subtype' in df_hist_graf.columns:
+            df_hist_graf = df_hist_graf[
+                df_hist_graf['subtype'].isin(filtro_sub_graf) |
+                df_hist_graf['subtype'].isna()
+            ]
+
+        total_graf = len(df_hist_graf)
+        st.caption(f"📊 Base histórica refinada: **{total_graf}** registros")
+        st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 3 — Dia da Semana (histórico completo)
+        # GRÁFICO 3 — Dia da Semana (histórico refinado)
         # =====================================================
         st.subheader("📅 Incidentes por Dia da Semana — Histórico")
-        st.caption("Base completa de dados coletados, independente da data selecionada.")
+        st.caption("Distribuição histórica por dia da semana com os filtros acima aplicados.")
         order_dow = list(DIAS_PT.keys())
-        dow_counts = (
-            df_hist['day_of_week'].value_counts()
-            .reindex(order_dow, fill_value=0).reset_index()
-        ) if 'day_of_week' in df_hist.columns else pd.DataFrame()
 
-        if not dow_counts.empty:
+        if 'day_of_week' in df_hist_graf.columns and not df_hist_graf.empty:
+            dow_counts = (
+                df_hist_graf['day_of_week'].value_counts()
+                .reindex(order_dow, fill_value=0).reset_index()
+            )
             dow_counts.columns          = ['day_of_week', 'Quantidade']
             dow_counts['Dia']           = dow_counts['day_of_week'].map(DIAS_PT)
             dow_counts['Fim de Semana'] = dow_counts['day_of_week'].isin(['Saturday', 'Sunday'])
@@ -1532,7 +1581,8 @@ with tab_graficos:
             media_dia = dow_counts['Quantidade'].mean()
             fig_dow.add_hline(y=media_dia, line_dash='dot', line_color='gray',
                               annotation_text=f'Média: {media_dia:.1f}',
-                              annotation_position='top right', annotation_font_color='gray')
+                              annotation_position='top right',
+                              annotation_font_color='gray')
             fig_dow.update_traces(textposition='outside', textfont_size=11,
                                   marker_line_width=0.5, marker_line_color='white')
             fig_dow.update_layout(
@@ -1541,29 +1591,31 @@ with tab_graficos:
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                 margin=dict(t=40, b=60), height=380
             )
-            total_hist = int(dow_counts['Quantidade'].sum())
             st.plotly_chart(fig_dow, use_container_width=True)
             st.caption(
                 f"🔴 Dias úteis &nbsp;|&nbsp; 🔵 Fim de semana &nbsp;|&nbsp; "
-                f"- - - Média &nbsp;|&nbsp; 📊 Total histórico: **{total_hist}** incidentes"
+                f"- - - Média &nbsp;|&nbsp; 📊 Total: **{int(dow_counts['Quantidade'].sum())}**"
             )
 
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 4 — Top 10 Ruas (histórico)
+        # GRÁFICO 4 — Top 10 Vias Críticas
         # =====================================================
-        st.subheader("🛣️ Vias Críticas — Top 10 por Volume de Incidentes")
-        st.caption(
-            "Ruas com maior recorrência histórica de alertas. "
-            "Indicam trechos que necessitam de atenção prioritária da gestão viária."
-        )
-        if 'street' in df_hist.columns:
+        st.subheader("🛣️ Vias Críticas — Top 10 por Volume")
+        st.caption("Ruas com maior recorrência histórica de alertas com os filtros aplicados.")
+
+        top_ruas_lista = []
+        if 'street' in df_hist_graf.columns:
             rua_hist = (
-                df_hist[df_hist['street'].notna() & (~df_hist['street'].isin(['N/A', 'nan', '']))]
-                ['street'].value_counts().head(10).reset_index()
+                df_hist_graf[
+                    df_hist_graf['street'].notna() &
+                    (~df_hist_graf['street'].isin(['N/A', 'nan', '']))
+                ]['street'].value_counts().head(10).reset_index()
             )
             rua_hist.columns = ['Rua', 'Quantidade']
+            top_ruas_lista   = rua_hist['Rua'].tolist()
+
             if not rua_hist.empty:
                 fig_ruas = px.bar(
                     rua_hist.sort_values('Quantidade'),
@@ -1580,9 +1632,10 @@ with tab_graficos:
                     yaxis=dict(autorange='reversed')
                 )
                 st.plotly_chart(fig_ruas, use_container_width=True)
-                rua_top = rua_hist.iloc[0]['Rua']
-                qtd_top = rua_hist.iloc[0]['Quantidade']
-                st.caption(f"🔺 Via mais crítica: **{rua_top}** com **{qtd_top}** ocorrências históricas")
+                st.caption(
+                    f"🔺 Via mais crítica: **{rua_hist.iloc[0]['Rua']}** "
+                    f"com **{rua_hist.iloc[0]['Quantidade']}** ocorrências"
+                )
 
         st.markdown("---")
 
@@ -1590,99 +1643,76 @@ with tab_graficos:
         # GRÁFICO 5 — Heatmap Rua × Dia da Semana
         # =====================================================
         st.subheader("🗓️ Incidentes por Rua × Dia da Semana")
-        st.caption(
-            "Mostra em quais dias da semana cada via concentra mais incidentes. "
-            "Células mais escuras indicam maior recorrência — útil para planejar fiscalização."
-        )
-        if 'street' in df_hist.columns and 'day_of_week' in df_hist.columns:
-            top_ruas_lista = (
-                df_hist[df_hist['street'].notna() & (~df_hist['street'].isin(['N/A', 'nan', '']))]
-                ['street'].value_counts().head(10).index.tolist()
-            )
-            df_hm_rua = df_hist[df_hist['street'].isin(top_ruas_lista)].copy()
-            if not df_hm_rua.empty:
-                pivot_rua_dow = (
-                    df_hm_rua.groupby(['street', 'day_of_week'])
-                    .size().unstack(fill_value=0)
+        st.caption("Em quais dias cada via crítica concentra mais incidentes.")
+
+        if top_ruas_lista and 'day_of_week' in df_hist_graf.columns:
+            df_hm = df_hist_graf[df_hist_graf['street'].isin(top_ruas_lista)].copy()
+            if not df_hm.empty:
+                import plotly.graph_objects as go
+                pivot = (
+                    df_hm.groupby(['street', 'day_of_week']).size()
+                    .unstack(fill_value=0)
                     .reindex(columns=order_dow, fill_value=0)
                 )
-                pivot_rua_dow.columns = [DIAS_PT.get(c, c) for c in pivot_rua_dow.columns]
-                import plotly.graph_objects as go
+                pivot.columns = [DIAS_PT.get(c, c) for c in pivot.columns]
                 fig_hm = go.Figure(data=go.Heatmap(
-                    z=pivot_rua_dow.values,
-                    x=pivot_rua_dow.columns.tolist(),
-                    y=pivot_rua_dow.index.tolist(),
-                    colorscale='YlOrRd',
-                    text=pivot_rua_dow.values,
-                    texttemplate='%{text}',
-                    textfont=dict(size=11),
-                    hoverongaps=False
+                    z=pivot.values, x=pivot.columns.tolist(), y=pivot.index.tolist(),
+                    colorscale='YlOrRd', text=pivot.values,
+                    texttemplate='%{text}', textfont=dict(size=11), hoverongaps=False
                 ))
                 fig_hm.update_layout(
-                    xaxis_title='Dia da Semana',
-                    yaxis_title='',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=20, b=40, l=10, r=20),
-                    height=420
+                    xaxis_title='Dia da Semana', yaxis_title='',
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(t=20, b=40, l=10, r=20), height=420
                 )
                 st.plotly_chart(fig_hm, use_container_width=True)
-                st.caption("🟡 Poucos incidentes &nbsp;|&nbsp; 🔴 Muitos incidentes")
+                st.caption("🟡 Poucos &nbsp;|&nbsp; 🔴 Muitos incidentes")
 
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 6 — Heatmap Rua × Hora do Dia
+        # GRÁFICO 6 — Heatmap Rua × Hora
         # =====================================================
         st.subheader("⏰ Incidentes por Rua × Hora do Dia")
-        st.caption(
-            "Identifica em quais horários cada via concentra mais alertas. "
-            "Permite planejamento de patrulhamento e sinalização por faixa horária."
-        )
-        if 'street' in df_hist.columns and 'hour' in df_hist.columns:
-            df_hm_hora = df_hist[df_hist['street'].isin(top_ruas_lista)].copy() \
-                if 'top_ruas_lista' in dir() else pd.DataFrame()
-            if not df_hm_hora.empty:
-                pivot_rua_hora = (
-                    df_hm_hora.groupby(['street', 'hour'])
-                    .size().unstack(fill_value=0)
+        st.caption("Em quais horários cada via crítica concentra mais alertas.")
+
+        if top_ruas_lista and 'hour' in df_hist_graf.columns:
+            df_hh = df_hist_graf[df_hist_graf['street'].isin(top_ruas_lista)].copy()
+            if not df_hh.empty:
+                pivot2 = (
+                    df_hh.groupby(['street', 'hour']).size()
+                    .unstack(fill_value=0)
                     .reindex(columns=range(24), fill_value=0)
                 )
                 fig_hm2 = go.Figure(data=go.Heatmap(
-                    z=pivot_rua_hora.values,
+                    z=pivot2.values,
                     x=[f"{h:02d}h" for h in range(24)],
-                    y=pivot_rua_hora.index.tolist(),
-                    colorscale='Blues',
-                    text=pivot_rua_hora.values,
-                    texttemplate='%{text}',
-                    textfont=dict(size=9),
-                    hoverongaps=False
+                    y=pivot2.index.tolist(),
+                    colorscale='Blues', text=pivot2.values,
+                    texttemplate='%{text}', textfont=dict(size=9), hoverongaps=False
                 ))
                 fig_hm2.update_layout(
-                    xaxis_title='Hora do Dia',
-                    yaxis_title='',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=20, b=40, l=10, r=20),
-                    height=420
+                    xaxis_title='Hora do Dia', yaxis_title='',
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                    margin=dict(t=20, b=40, l=10, r=20), height=420
                 )
                 st.plotly_chart(fig_hm2, use_container_width=True)
-                st.caption("🔵 Claro = poucos incidentes &nbsp;|&nbsp; 🔵 Escuro = muitos incidentes")
+                st.caption("🔵 Claro = poucos &nbsp;|&nbsp; 🔵 Escuro = muitos incidentes")
 
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 7 — Natureza dos Incidentes (histórico)
+        # GRÁFICO 7 — Natureza Top 10
         # =====================================================
         st.subheader("🔍 Natureza das Ocorrências — Top 10")
-        st.caption(
-            "Classifica os subtipos mais frequentes historicamente. "
-            "Indica quais tipos de problema são mais recorrentes na cidade."
-        )
-        if 'subtype' in df_hist.columns:
+        st.caption("Subtipos mais frequentes no histórico com os filtros aplicados.")
+
+        if 'subtype' in df_hist_graf.columns:
             nat_counts = (
-                df_hist[df_hist['subtype'].notna() & (~df_hist['subtype'].isin(['nan', '']))]
-                ['subtype'].value_counts().head(10).reset_index()
+                df_hist_graf[
+                    df_hist_graf['subtype'].notna() &
+                    (~df_hist_graf['subtype'].isin(['nan', '']))
+                ]['subtype'].value_counts().head(10).reset_index()
             )
             nat_counts.columns = ['Natureza', 'Quantidade']
             if not nat_counts.empty:
@@ -1690,8 +1720,7 @@ with tab_graficos:
                     nat_counts.sort_values('Quantidade'),
                     x='Quantidade', y='Natureza', orientation='h',
                     labels={'Quantidade': 'Total', 'Natureza': ''},
-                    color='Quantidade', color_continuous_scale='Purples',
-                    text='Quantidade'
+                    color='Quantidade', color_continuous_scale='Purples', text='Quantidade'
                 )
                 fig_nat.update_traces(textposition='outside', textfont_size=11,
                                       marker_line_width=0)
@@ -1706,30 +1735,25 @@ with tab_graficos:
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 8 — Tendência diária (série temporal)
+        # GRÁFICO 8 — Tendência Diária
         # =====================================================
         st.subheader("📈 Tendência Diária de Incidentes")
-        st.caption(
-            "Evolução do número de incidentes ao longo dos dias coletados. "
-            "Permite identificar tendências de aumento ou redução na cidade."
-        )
-        if 'date' in df_hist.columns:
-            serie_diaria = (
-                df_hist.groupby('date').size().reset_index(name='Quantidade')
-            )
-            serie_diaria['date'] = pd.to_datetime(serie_diaria['date'])
-            if len(serie_diaria) > 1:
+        st.caption("Evolução do número de incidentes ao longo dos dias coletados.")
+
+        if 'date' in df_hist_graf.columns and not df_hist_graf.empty:
+            serie = df_hist_graf.groupby('date').size().reset_index(name='Quantidade')
+            serie['date'] = pd.to_datetime(serie['date'])
+            if len(serie) > 1:
                 fig_trend = px.line(
-                    serie_diaria, x='date', y='Quantidade',
+                    serie, x='date', y='Quantidade',
                     labels={'date': 'Data', 'Quantidade': 'Nº de Incidentes'},
                     markers=True
                 )
-                media_geral = serie_diaria['Quantidade'].mean()
+                media_g = serie['Quantidade'].mean()
                 fig_trend.add_hline(
-                    y=media_geral, line_dash='dot', line_color='orange',
-                    annotation_text=f'Média: {media_geral:.1f}',
-                    annotation_position='top right',
-                    annotation_font_color='orange'
+                    y=media_g, line_dash='dot', line_color='orange',
+                    annotation_text=f'Média: {media_g:.1f}',
+                    annotation_position='top right', annotation_font_color='orange'
                 )
                 fig_trend.update_traces(line_color='#e74c3c', marker_color='#c0392b')
                 fig_trend.update_layout(
@@ -1737,15 +1761,11 @@ with tab_graficos:
                     margin=dict(t=30, b=40), height=350
                 )
                 st.plotly_chart(fig_trend, use_container_width=True)
-                dia_pico = serie_diaria.loc[serie_diaria['Quantidade'].idxmax(), 'date']
-                qtd_pico = serie_diaria['Quantidade'].max()
+                dia_pico = serie.loc[serie['Quantidade'].idxmax(), 'date']
                 st.caption(
                     f"🔺 Dia mais crítico: **{dia_pico.strftime('%d/%m/%Y')}** "
-                    f"com **{qtd_pico}** incidentes"
+                    f"com **{int(serie['Quantidade'].max())}** incidentes"
                 )
-
-    else:
-        st.info("ℹ️ Sem dados para gerar gráficos. Ajuste os filtros na barra lateral.")
 
 # --- ABA 5: Dados Detalhados ---
 with tab_dados:
