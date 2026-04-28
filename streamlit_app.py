@@ -1638,165 +1638,147 @@ with tab_graficos:
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 5 — Concentração Rua × Dia da Semana
+        # GRÁFICO 5 — Bubble: Rua × Dia da Semana
         # =====================================================
         st.subheader("🗓️ Quais dias cada rua tem mais problemas?")
         st.caption(
-            "Quanto mais escura a célula, mais incidentes aconteceram naquele dia. "
-            "Use para saber em quais dias fiscalizar cada via."
+            "Cada bolha representa uma via num dia da semana. "
+            "Quanto maior e mais escura a bolha, mais incidentes aconteceram."
         )
 
         if top_ruas_lista and 'day_of_week' in df_hist.columns:
-            import plotly.graph_objects as go
             df_hm = df_hist[df_hist['street'].isin(top_ruas_lista)].copy()
-            if not df_hm.empty:
-                pivot = (
-                    df_hm.groupby(['street', 'day_of_week']).size()
-                    .unstack(fill_value=0)
-                    .reindex(columns=order_dow, fill_value=0)
+            df_hm['Dia'] = df_hm['day_of_week'].map(DIAS_PT)
+
+            bubble_dow = (
+                df_hm.groupby(['street', 'Dia', 'type'])
+                .size().reset_index(name='Qtd')
+            )
+            total_dow = bubble_dow.groupby(['street', 'Dia'])['Qtd'].sum().reset_index(name='Total')
+
+            def nivel_label(v, vmax):
+                if v == 0:            return '🟢 Nenhum'
+                elif v <= vmax*0.25:  return '🟡 Baixo'
+                elif v <= vmax*0.60:  return '🟠 Médio'
+                else:                 return '🔴 Alto'
+
+            vmax_dow = total_dow['Total'].max() if not total_dow.empty else 1
+            total_dow['Nível'] = total_dow['Total'].apply(lambda v: nivel_label(v, vmax_dow))
+            total_dow['Tamanho'] = total_dow['Total'] * 40   # escala visual da bolha
+
+            fig_b1 = px.scatter(
+                total_dow,
+                x='Dia', y='street',
+                size='Total',
+                color='Nível',
+                size_max=55,
+                text='Total',
+                labels={'street': '', 'Dia': 'Dia da Semana', 'Total': 'Incidentes'},
+                color_discrete_map={
+                    '🟢 Nenhum': '#27ae60',
+                    '🟡 Baixo':  '#f1c40f',
+                    '🟠 Médio':  '#e67e22',
+                    '🔴 Alto':   '#e74c3c',
+                },
+                category_orders={
+                    'Dia': list(DIAS_PT.values()),
+                    'Nível': ['🟢 Nenhum', '🟡 Baixo', '🟠 Médio', '🔴 Alto']
+                }
+            )
+            fig_b1.update_traces(
+                textposition='middle center',
+                textfont=dict(size=11, color='white', family='Arial Black')
+            )
+            # Destaca o dia atual com fundo
+            dia_hoje_pt = DIAS_PT.get(hora_foz_atual.strftime('%A'), '')
+            if dia_hoje_pt:
+                fig_b1.add_vline(
+                    x=dia_hoje_pt, line_dash='dot', line_color='gold', line_width=2,
+                    annotation_text='Hoje', annotation_font_color='gold',
+                    annotation_position='top'
                 )
-                pivot.columns = [DIAS_PT.get(c, c) for c in pivot.columns]
-
-                # Rótulos descritivos por célula
-                def nivel(v, vmax):
-                    if v == 0:           return "Nenhum"
-                    elif v <= vmax*0.25: return f"{v} — Baixo"
-                    elif v <= vmax*0.60: return f"{v} — Médio"
-                    else:                return f"{v} — ⚠️ Alto"
-
-                vmax = pivot.values.max() if pivot.values.max() > 0 else 1
-                texto = [[nivel(v, vmax) for v in row] for row in pivot.values]
-
-                fig_hm = go.Figure(data=go.Heatmap(
-                    z=pivot.values,
-                    x=pivot.columns.tolist(),
-                    y=pivot.index.tolist(),
-                    colorscale=[
-                        [0.0,  '#f0f9e8'],   # branco-verde = nenhum
-                        [0.25, '#bae4bc'],   # verde claro  = baixo
-                        [0.60, '#f7cb45'],   # amarelo       = médio
-                        [0.85, '#f97b2c'],   # laranja       = alto
-                        [1.0,  '#d73027'],   # vermelho      = crítico
-                    ],
-                    text=texto,
-                    texttemplate='%{text}',
-                    textfont=dict(size=11, color='#333'),
-                    hoverongaps=False,
-                    showscale=True,
-                    colorbar=dict(
-                        title='Incidentes',
-                        tickvals=[0, vmax*0.25, vmax*0.60, vmax*0.85, vmax],
-                        ticktext=['Nenhum', 'Baixo', 'Médio', 'Alto', 'Crítico'],
-                        len=0.8
-                    )
-                ))
-                fig_hm.update_layout(
-                    xaxis=dict(title='Dia da Semana', side='top',
-                               tickfont=dict(size=13, color='#222')),
-                    yaxis=dict(title='', tickfont=dict(size=12)),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=60, b=20, l=10, r=20),
-                    height=420
-                )
-                st.plotly_chart(fig_hm, use_container_width=True)
-
-                # Mini legenda textual
-                st.markdown(
-                    "🟢 **Nenhum** — sem ocorrências &nbsp;|&nbsp; "
-                    "🟡 **Médio** — atenção &nbsp;|&nbsp; "
-                    "🟠 **Alto** — fiscalizar &nbsp;|&nbsp; "
-                    "🔴 **Crítico** — intervenção necessária"
-                )
+            fig_b1.update_layout(
+                xaxis=dict(title='', tickfont=dict(size=13)),
+                yaxis=dict(title='', tickfont=dict(size=12), autorange='reversed'),
+                legend=dict(title='Nível', orientation='h', y=-0.18, x=0.5, xanchor='center'),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=30, b=60, l=10, r=20), height=440
+            )
+            st.plotly_chart(fig_b1, use_container_width=True)
+            st.caption("💡 O número dentro da bolha é a quantidade de incidentes naquele dia.")
 
         st.markdown("---")
 
         # =====================================================
-        # GRÁFICO 6 — Concentração Rua × Hora
+        # GRÁFICO 6 — Bubble: Rua × Período do Dia
         # =====================================================
         st.subheader("⏰ Em quais horários cada rua tem mais problemas?")
         st.caption(
-            "Cada coluna é uma hora do dia. Quanto mais escura, mais incidentes naquele horário. "
-            "Útil para definir horários de patrulhamento ou sinalização extra."
+            "As horas foram agrupadas em 4 períodos para facilitar a leitura. "
+            "Bolha maior = mais ocorrências naquele período."
         )
 
         if top_ruas_lista and 'hour' in df_hist.columns:
             df_hh = df_hist[df_hist['street'].isin(top_ruas_lista)].copy()
-            if not df_hh.empty:
-                pivot2 = (
-                    df_hh.groupby(['street', 'hour']).size()
-                    .unstack(fill_value=0)
-                    .reindex(columns=range(24), fill_value=0)
-                )
 
-                vmax2 = pivot2.values.max() if pivot2.values.max() > 0 else 1
-                texto2 = [
-                    [nivel(v, vmax2) for v in row]
-                    for row in pivot2.values
-                ]
+            def periodo(h):
+                if h < 6:    return '🌙 Madrugada\n(00–05h)'
+                elif h < 12: return '🌅 Manhã\n(06–11h)'
+                elif h < 18: return '☀️ Tarde\n(12–17h)'
+                else:        return '🌆 Noite\n(18–23h)'
 
-                # Agrupa horas em períodos para o eixo X
-                labels_hora = []
-                for h in range(24):
-                    if h < 6:    labels_hora.append(f"{h:02d}h 🌙")
-                    elif h < 12: labels_hora.append(f"{h:02d}h 🌅")
-                    elif h < 18: labels_hora.append(f"{h:02d}h ☀️")
-                    else:        labels_hora.append(f"{h:02d}h 🌆")
+            df_hh['Período'] = df_hh['hour'].apply(periodo)
 
-                fig_hm2 = go.Figure(data=go.Heatmap(
-                    z=pivot2.values,
-                    x=labels_hora,
-                    y=pivot2.index.tolist(),
-                    colorscale=[
-                        [0.0,  '#eaf4fb'],
-                        [0.25, '#aed6f1'],
-                        [0.60, '#f7cb45'],
-                        [0.85, '#f97b2c'],
-                        [1.0,  '#d73027'],
-                    ],
-                    text=texto2,
-                    texttemplate='%{text}',
-                    textfont=dict(size=9, color='#333'),
-                    hoverongaps=False,
-                    showscale=True,
-                    colorbar=dict(
-                        title='Incidentes',
-                        tickvals=[0, vmax2*0.25, vmax2*0.60, vmax2*0.85, vmax2],
-                        ticktext=['Nenhum', 'Baixo', 'Médio', 'Alto', 'Crítico'],
-                        len=0.8
-                    )
-                ))
+            bubble_hora = (
+                df_hh.groupby(['street', 'Período'])
+                .size().reset_index(name='Total')
+            )
+            vmax_hora = bubble_hora['Total'].max() if not bubble_hora.empty else 1
+            bubble_hora['Nível'] = bubble_hora['Total'].apply(
+                lambda v: nivel_label(v, vmax_hora)
+            )
+            ordem_periodos = [
+                '🌙 Madrugada\n(00–05h)',
+                '🌅 Manhã\n(06–11h)',
+                '☀️ Tarde\n(12–17h)',
+                '🌆 Noite\n(18–23h)'
+            ]
 
-                # Linhas verticais separando os períodos do dia
-                for x_sep in [5.5, 11.5, 17.5]:
-                    fig_hm2.add_shape(
-                        type='line', x0=x_sep, x1=x_sep, y0=-0.5,
-                        y1=len(pivot2)-0.5, xref='x', yref='y',
-                        line=dict(color='white', width=2, dash='dot')
-                    )
-
-                fig_hm2.update_layout(
-                    xaxis=dict(
-                        title='Hora do Dia',
-                        side='top',
-                        tickfont=dict(size=10, color='#222'),
-                        tickangle=-45
-                    ),
-                    yaxis=dict(title='', tickfont=dict(size=12)),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=80, b=20, l=10, r=20),
-                    height=440
-                )
-                st.plotly_chart(fig_hm2, use_container_width=True)
-
-                st.markdown(
-                    "🌙 **Madrugada** (00–05h) &nbsp;|&nbsp; "
-                    "🌅 **Manhã** (06–11h) &nbsp;|&nbsp; "
-                    "☀️ **Tarde** (12–17h) &nbsp;|&nbsp; "
-                    "🌆 **Noite** (18–23h)"
-                )
-
+            fig_b2 = px.scatter(
+                bubble_hora,
+                x='Período', y='street',
+                size='Total',
+                color='Nível',
+                size_max=65,
+                text='Total',
+                labels={'street': '', 'Período': 'Período do Dia', 'Total': 'Incidentes'},
+                color_discrete_map={
+                    '🟢 Nenhum': '#27ae60',
+                    '🟡 Baixo':  '#f1c40f',
+                    '🟠 Médio':  '#e67e22',
+                    '🔴 Alto':   '#e74c3c',
+                },
+                category_orders={
+                    'Período': ordem_periodos,
+                    'Nível': ['🟢 Nenhum', '🟡 Baixo', '🟠 Médio', '🔴 Alto']
+                }
+            )
+            fig_b2.update_traces(
+                textposition='middle center',
+                textfont=dict(size=12, color='white', family='Arial Black')
+            )
+            fig_b2.update_layout(
+                xaxis=dict(title='', tickfont=dict(size=13)),
+                yaxis=dict(title='', tickfont=dict(size=12), autorange='reversed'),
+                legend=dict(title='Nível', orientation='h', y=-0.18, x=0.5, xanchor='center'),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=30, b=60, l=10, r=20), height=440
+            )
+            st.plotly_chart(fig_b2, use_container_width=True)
+            st.caption(
+                "💡 Passe o mouse sobre a bolha para ver os detalhes. "
+                "Períodos com bolha cinza ou ausente = nenhum incidente registrado."
+            )
         # =====================================================
         # GRÁFICO 7 — Natureza Top 10 com barras por Tipo
         # =====================================================
