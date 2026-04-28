@@ -1320,9 +1320,7 @@ with tab_calor:
     else:
         st.info("Sem dados suficientes para mapa de calor.")
 
-O problema é claro — o Gráfico 3 saiu do with tab_graficos: e do if not df_filtered.empty:. Aqui está a aba completa corrigida com indentação consistente:
 
-python
 # --- ABA 4: Gráficos ---
 with tab_graficos:
     if not df_filtered.empty:
