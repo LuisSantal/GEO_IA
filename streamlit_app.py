@@ -1682,99 +1682,41 @@ with tab_dados:
 # 23. RODAPÉ — CRÉDITOS INSTITUCIONAIS
 # =============================================
 st.markdown("---")
-st.markdown(f"""
-<div style="
-    background: linear-gradient(135deg,
-        rgba(15,23,42,0.98) 0%,
-        rgba(17,24,39,0.95) 100%);
-    border: 1px solid rgba(59,130,246,0.15);
-    border-radius: 16px;
-    padding: 2rem 2.5rem;
-    margin-top: 1rem;
-    text-align: center;
-    font-family: 'Inter', sans-serif;
-">
-  <div style="font-size:1.4rem;font-weight:800;color:#f1f5f9;margin-bottom:0.25rem;">
-      🚗 GEO_IA — Monitoramento de Tráfego
-  </div>
-  <div style="font-size:0.82rem;color:#64748b;margin-bottom:1.5rem;">
-      Sistema de análise de incidentes e congestionamentos via dados Waze · Foz do Iguaçu, PR
-  </div>
-
+rodape_html = f"""
+<div style="background:linear-gradient(135deg,rgba(15,23,42,0.98) 0%,rgba(17,24,39,0.95) 100%);border:1px solid rgba(59,130,246,0.15);border-radius:16px;padding:2rem 2.5rem;margin-top:1rem;text-align:center;font-family:'Inter',sans-serif;">
+  <div style="font-size:1.4rem;font-weight:800;color:#f1f5f9;margin-bottom:0.25rem;">🚗 GEO_IA — Monitoramento de Tráfego</div>
+  <div style="font-size:0.82rem;color:#64748b;margin-bottom:1.5rem;">Sistema de análise de incidentes e congestionamentos via dados Waze · Foz do Iguaçu, PR</div>
   <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.5rem;"></div>
-
   <div style="margin-bottom:1.2rem;">
-    <div style="font-size:1rem;font-weight:700;color:#f1f5f9;margin-bottom:0.2rem;">
-        🏛️ UNILA — Universidade Federal da Integração Latino-Americana
-    </div>
-    <div style="font-size:0.78rem;color:#64748b;">
-        Foz do Iguaçu, Paraná · Brasil
-    </div>
+    <div style="font-size:1rem;font-weight:700;color:#f1f5f9;margin-bottom:0.2rem;">🏛️ UNILA — Universidade Federal da Integração Latino-Americana</div>
+    <div style="font-size:0.78rem;color:#64748b;">Foz do Iguaçu, Paraná · Brasil</div>
   </div>
-
   <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.5rem;"></div>
-
-  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.9rem;
-              text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
-      Grupos &amp; Laboratórios de Pesquisa
-  </div>
+  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.9rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Grupos &amp; Laboratórios de Pesquisa</div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.5rem;">
-
     <div style="text-align:center;">
-      <div style="font-size:1rem;font-weight:700;color:#60a5fa;margin-bottom:0.2rem;">
-          🔬 GPMME
-      </div>
-      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">
-          Grupo de Pesquisa em Mobilidade<br>e Matriz Energética
-      </div>
+      <div style="font-size:1rem;font-weight:700;color:#60a5fa;margin-bottom:0.2rem;">🔬 GPMME</div>
+      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">Grupo de Pesquisa em Mobilidade<br>e Matriz Energética</div>
     </div>
-
     <div style="width:1px;background:rgba(255,255,255,0.08);align-self:stretch;margin:0 0.25rem;"></div>
-
     <div style="text-align:center;">
-      <div style="font-size:1rem;font-weight:700;color:#34d399;margin-bottom:0.2rem;">
-          🧪 LAGGRA
-      </div>
-      <div style="font-size:0.78rem;color:#94a3b8;max-width:220px;line-height:1.5;">
-          Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental
-      </div>
+      <div style="font-size:1rem;font-weight:700;color:#34d399;margin-bottom:0.2rem;">🧪 LAGGRA</div>
+      <div style="font-size:0.78rem;color:#94a3b8;max-width:220px;line-height:1.5;">Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental</div>
     </div>
-
     <div style="width:1px;background:rgba(255,255,255,0.08);align-self:stretch;margin:0 0.25rem;"></div>
-
     <div style="text-align:center;">
-      <div style="font-size:1rem;font-weight:700;color:#f472b6;margin-bottom:0.2rem;">
-          💻 LACA
-      </div>
-      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">
-          Laboratório de<br>Computação Aplicada
-      </div>
+      <div style="font-size:1rem;font-weight:700;color:#f472b6;margin-bottom:0.2rem;">💻 LACA</div>
+      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">Laboratório de<br>Computação Aplicada</div>
     </div>
-
   </div>
-
   <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.2rem;"></div>
-
-  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.5rem;
-              text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
-      Equipe de Desenvolvimento
-  </div>
+  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Equipe de Desenvolvimento</div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.2rem;">
-    <span style="font-size:0.82rem;color:#94a3b8;">
-        👨‍💻 Luis Enrique Santacruz Alvarez
-    </span>
-    <span style="font-size:0.82rem;color:#94a3b8;">
-        🎓 Dr. Diego Moraes Flores ILATIT-UNILA.
-    </span>
+    <span style="font-size:0.82rem;color:#94a3b8;">👨‍💻 Luis Enrique Santacruz Alvarez</span>
+    <span style="font-size:0.82rem;color:#94a3b8;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
   </div>
-
   <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1rem;"></div>
-
-  <div style="
-      display:flex;justify-content:center;align-items:center;
-      gap:1.5rem;flex-wrap:wrap;
-      font-size:0.73rem;color:#334155;
-  ">
+  <div style="display:flex;justify-content:center;align-items:center;gap:1.5rem;flex-wrap:wrap;font-size:0.73rem;color:#334155;">
     <span>📡 Fonte: <strong style="color:#475569;">Waze for Cities</strong></span>
     <span>·</span>
     <span>🐍 Python · Streamlit · Folium · Plotly</span>
@@ -1783,10 +1725,8 @@ st.markdown(f"""
     <span>·</span>
     <span>🕐 {hora_foz_atual.strftime('%d/%m/%Y %H:%M')} (Foz · UTC-3)</span>
   </div>
-
-  <div style="margin-top:0.75rem;font-size:0.68rem;color:#1e293b;">
-      © {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa
-  </div>
+  <div style="margin-top:0.75rem;font-size:0.68rem;color:#1e293b;">© {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa</div>
 </div>
-""", unsafe_allow_html=True)
+"""
+st.markdown(rodape_html, unsafe_allow_html=True)
                             
