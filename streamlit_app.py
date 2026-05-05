@@ -21,6 +21,109 @@ st.set_page_config(
 )
 
 # =============================================
+# 1b. CSS GLOBAL — Estilo Visual Premium
+# =============================================
+st.markdown("""
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+  html, body, [class*="css"] {
+      font-family: 'Inter', sans-serif !important;
+  }
+  .stApp {
+      background: linear-gradient(135deg, #0a0e1a 0%, #0d1220 40%, #111827 100%) !important;
+      color: #e2e8f0 !important;
+  }
+  [data-testid="stSidebar"] {
+      background: linear-gradient(180deg, #0d1220 0%, #111827 100%) !important;
+      border-right: 1px solid rgba(59,130,246,0.15) !important;
+  }
+  [data-testid="stSidebar"] * {
+      color: #cbd5e1 !important;
+  }
+  .stButton > button[kind="primary"] {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+      color: white !important;
+      border: none !important;
+      border-radius: 10px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.3px !important;
+      box-shadow: 0 4px 15px rgba(59,130,246,0.35) !important;
+      transition: all 0.2s ease !important;
+  }
+  .stButton > button[kind="primary"]:hover {
+      background: linear-gradient(135deg, #60a5fa, #3b82f6) !important;
+      box-shadow: 0 6px 20px rgba(59,130,246,0.5) !important;
+      transform: translateY(-1px) !important;
+  }
+  [data-testid="metric-container"] {
+      background: rgba(255,255,255,0.04) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      border-radius: 12px !important;
+      padding: 1rem !important;
+      backdrop-filter: blur(10px) !important;
+  }
+  [data-testid="metric-container"] label {
+      color: #94a3b8 !important;
+      font-size: 0.75rem !important;
+      font-weight: 500 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.8px !important;
+  }
+  [data-testid="metric-container"] [data-testid="stMetricValue"] {
+      color: #f1f5f9 !important;
+      font-size: 1.6rem !important;
+      font-weight: 700 !important;
+  }
+  .stTabs [data-baseweb="tab-list"] {
+      background: rgba(255,255,255,0.04) !important;
+      border-radius: 12px !important;
+      padding: 4px !important;
+      gap: 4px !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+  }
+  .stTabs [data-baseweb="tab"] {
+      background: transparent !important;
+      color: #64748b !important;
+      border-radius: 8px !important;
+      font-weight: 500 !important;
+      padding: 8px 16px !important;
+      transition: all 0.2s ease !important;
+  }
+  .stTabs [aria-selected="true"] {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+      color: white !important;
+      box-shadow: 0 2px 8px rgba(59,130,246,0.4) !important;
+  }
+  [data-testid="stDataFrame"] {
+      border-radius: 12px !important;
+      overflow: hidden !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+  }
+  hr { border-color: rgba(255,255,255,0.08) !important; }
+  [data-testid="stAlert"] {
+      background: rgba(59,130,246,0.1) !important;
+      border: 1px solid rgba(59,130,246,0.25) !important;
+      border-radius: 10px !important;
+      color: #93c5fd !important;
+  }
+  [data-testid="stExpander"] {
+      background: rgba(255,255,255,0.03) !important;
+      border: 1px solid rgba(255,255,255,0.08) !important;
+      border-radius: 10px !important;
+  }
+  [data-baseweb="select"] {
+      background: rgba(255,255,255,0.06) !important;
+      border-radius: 8px !important;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+  ::-webkit-scrollbar-thumb { background: rgba(59,130,246,0.4); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,0.7); }
+</style>
+""", unsafe_allow_html=True)
+
+# =============================================
 # 2. TIMEZONE E HORA LOCAL
 # =============================================
 TZ_FOZ = ZoneInfo("America/Sao_Paulo")
@@ -44,81 +147,54 @@ tempo_total        = int(tempo_sessao)
 # =============================================
 # 4. IDs DAS PASTAS DO GOOGLE DRIVE
 # =============================================
-FOLDER_ALERTS_ID = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
-FOLDER_JAMS_ID   = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
-# ── Pastas secundárias (novos dados — mesmo formato) ──────────────────────────
-FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"   # ← substitua pelo ID real
-FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"     # ← substitua pelo ID real
+FOLDER_ALERTS_ID  = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
+FOLDER_JAMS_ID    = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
+FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
+FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
 
 # =============================================
 # 5. FUNÇÕES DE CORES
 # =============================================
-
 def get_congestion_color(speed_kmh):
-    """
-    Azul (fluindo) → Verde → Amarelo → Laranja → Vermelho (parado)
-    """
-    if speed_kmh >= 80:   return '#2196F3'   # 🔵 Azul       — livre / fluindo
-    elif speed_kmh >= 60: return '#4CAF50'   # 🟢 Verde       — bom
-    elif speed_kmh >= 40: return '#8BC34A'   # 🟡 Verde claro — moderado
-    elif speed_kmh >= 20: return '#FF9800'   # 🟠 Laranja     — lento
-    elif speed_kmh >= 5:  return '#F44336'   # 🔴 Vermelho    — muito lento
-    else:                 return '#7B1FA2'   # 🟣 Roxo        — parado / travado
-
+    if speed_kmh >= 80:   return '#2196F3'
+    elif speed_kmh >= 60: return '#4CAF50'
+    elif speed_kmh >= 40: return '#8BC34A'
+    elif speed_kmh >= 20: return '#FF9800'
+    elif speed_kmh >= 5:  return '#F44336'
+    else:                 return '#7B1FA2'
 
 def get_danger_color(incident_type, subtype=None):
-    """
-    Cores por tipo de ocorrência.
-    Subtipo pode suavizar a cor para ocorrências leves.
-    """
-    # Ocorrências leves — tons mais suaves
     LEVE_SUBTYPES = {
-        'ACIDENTE LEVE',
-        'TRÂNSITO MODERADO',
-        'PERIGO NA VIA',
-        'OBJETO NA VIA',
-        'ANIMAL NA VIA',
-        'VEÍCULO PARADO',
-        'CONDIÇÕES CLIMÁTICAS',
+        'ACIDENTE LEVE', 'TRÂNSITO MODERADO', 'PERIGO NA VIA',
+        'OBJETO NA VIA', 'ANIMAL NA VIA', 'VEÍCULO PARADO', 'CONDIÇÕES CLIMÁTICAS',
     }
-
     t = str(incident_type).upper().strip() if incident_type else ''
     s = str(subtype).upper().strip()       if subtype       else ''
-
     is_leve = s in LEVE_SUBTYPES
-
     color_map = {
-        # Graves — cores fortes
-        'ACIDENTE':          '#F44336' if not is_leve else '#EF9A9A',  # vermelho → rosado
-        'VIA FECHADA':       '#B71C1C',                                 # vermelho escuro
-        'CONGESTIONAMENTO':  '#7B1FA2' if not is_leve else '#CE93D8',  # roxo → lilás
-        # Perigos — laranja
-        'PERIGO':            '#FF9800' if not is_leve else '#FFCC80',  # laranja → pêssego
-        'PERIGO CLIMÁTICO':  '#29B6F6',                                 # azul claro
-        # Obras — cinza
-        'OBRAS':             '#78909C',                                 # cinza azulado
-        # Alerta genérico — amarelo
-        'ALERTA':            '#FDD835',                                 # amarelo
+        'ACIDENTE':         '#F44336' if not is_leve else '#EF9A9A',
+        'VIA FECHADA':      '#B71C1C',
+        'CONGESTIONAMENTO': '#7B1FA2' if not is_leve else '#CE93D8',
+        'PERIGO':           '#FF9800' if not is_leve else '#FFCC80',
+        'PERIGO CLIMÁTICO': '#29B6F6',
+        'OBRAS':            '#78909C',
+        'ALERTA':           '#FDD835',
     }
-
-    # Subtipo com cor específica sobrepõe o tipo
     subtype_override = {
-        'ACIDENTE GRAVE':    '#B71C1C',   # vermelho escuro
-        'ACIDENTE LEVE':     '#EF9A9A',   # rosado
-        'BURACO NA VIA':     '#FF9800',   # laranja
-        'OBRAS NA VIA':      '#78909C',   # cinza
-        'SEMÁFORO QUEBRADO': '#FDD835',   # amarelo
-        'INUNDAÇÃO':         '#0288D1',   # azul médio
-        'NEBLINA':           '#B0BEC5',   # cinza claro
-        'TRÂNSITO PARADO':   '#7B1FA2',   # roxo
-        'TRÂNSITO PESADO':   '#F44336',   # vermelho
-        'TRÂNSITO MODERADO': '#FF9800',   # laranja
+        'ACIDENTE GRAVE':    '#B71C1C',
+        'ACIDENTE LEVE':     '#EF9A9A',
+        'BURACO NA VIA':     '#FF9800',
+        'OBRAS NA VIA':      '#78909C',
+        'SEMÁFORO QUEBRADO': '#FDD835',
+        'INUNDAÇÃO':         '#0288D1',
+        'NEBLINA':           '#B0BEC5',
+        'TRÂNSITO PARADO':   '#7B1FA2',
+        'TRÂNSITO PESADO':   '#F44336',
+        'TRÂNSITO MODERADO': '#FF9800',
     }
-
     if s in subtype_override:
         return subtype_override[s]
-
-    return color_map.get(t, '#90A4AE')   # fallback cinza claro
+    return color_map.get(t, '#90A4AE')
 
 # =============================================
 # 6. CONEXÃO COM GOOGLE DRIVE
@@ -223,26 +299,17 @@ def extract_coordinates(df):
     return df
 
 # =============================================
-# 8b. EXTRAÇÃO DE COORDENADAS — JAMS  ← NOVO
+# 8b. EXTRAÇÃO DE COORDENADAS — JAMS
 # =============================================
 def extract_jams_coordinates(df):
-    """
-    Jams do Waze armazenam o traçado na coluna 'line' (lista de pontos {x, y}).
-    Esta função extrai o ponto médio do traçado como representante do jam.
-    Fallback: 'location', colunas soltas x/y.
-    """
     if df is None or df.empty:
         return df
     df = df.copy()
-
-    # Se já tem lat/lon válidos, apenas normaliza o tipo
     if 'lat' in df.columns and 'lon' in df.columns:
         df['lat'] = pd.to_numeric(df['lat'], errors='coerce')
         df['lon'] = pd.to_numeric(df['lon'], errors='coerce')
         if df['lat'].notna().any():
             return df
-
-    # ── PRIORIDADE 1: coluna 'line' (traçado do jam) ──────────────────────────
     if 'line' in df.columns:
         def _midpoint(val):
             try:
@@ -253,15 +320,11 @@ def extract_jams_coordinates(df):
                 return float(mid.get('y')), float(mid.get('x'))
             except Exception:
                 return None, None
-
         coords    = df['line'].apply(lambda x: pd.Series(_midpoint(x), index=['lat', 'lon']))
         df['lat'] = coords['lat']
         df['lon'] = coords['lon']
-
         if df['lat'].notna().any():
             return df
-
-    # ── PRIORIDADE 2: coluna 'location' ──────────────────────────────────────
     if 'location' in df.columns:
         try:
             sample = df['location'].dropna().iloc[0] if not df['location'].dropna().empty else None
@@ -277,13 +340,10 @@ def extract_jams_coordinates(df):
             )
         except Exception:
             pass
-
-    # ── PRIORIDADE 3: colunas soltas x / y ───────────────────────────────────
     if 'lat' not in df.columns and 'y' in df.columns:
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
         df['lon'] = pd.to_numeric(df['x'], errors='coerce')
-
     return df
 
 # =============================================
@@ -317,11 +377,8 @@ TYPE_MAP = {
 }
 
 SUBTYPE_MAP = {
-    # ── Vias fechadas ─────────────────────────────────────────────────────────
     'ROAD_CLOSED_CONSTRUCTION':               'OBRAS',
     'ROAD_CLOSED_EVENT':                      'EVENTO',
-
-    # ── Perigos na pista ──────────────────────────────────────────────────────
     'HAZARD_ON_ROAD':                         'PERIGO NA VIA',
     'HAZARD_ON_ROAD_POT_HOLE':                'BURACO NA VIA',
     'HAZARD_ON_ROAD_ROAD_KILL':               'ANIMAL NA VIA',
@@ -331,14 +388,10 @@ SUBTYPE_MAP = {
     'HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT':     'SEMÁFORO QUEBRADO',
     'HAZARD_ON_ROAD_ICE':                     'PISTA COM GELO',
     'HAZARD_ON_ROAD_LANE_CLOSED':             'FAIXA INTERDITADA',
-
-    # ── Perigos no acostamento ────────────────────────────────────────────────
     'HAZARD_ON_SHOULDER':                     'PERIGO NO ACOSTAMENTO',
     'HAZARD_ON_SHOULDER_CAR_STOPPED':         'VEÍCULO PARADO NO ACOSTAMENTO',
     'HAZARD_ON_SHOULDER_ANIMALS':             'ANIMAIS NO ACOSTAMENTO',
     'HAZARD_ON_SHOULDER_MISSING_SIGN':        'SINALIZAÇÃO AUSENTE',
-
-    # ── Condições climáticas ──────────────────────────────────────────────────
     'HAZARD_WEATHER':                         'CONDIÇÕES CLIMÁTICAS',
     'HAZARD_WEATHER_FOG':                     'NEBLINA',
     'HAZARD_WEATHER_HAIL':                    'GRANIZO',
@@ -349,12 +402,8 @@ SUBTYPE_MAP = {
     'HAZARD_WEATHER_HEAT_WAVE':               'ONDA DE CALOR',
     'HAZARD_WEATHER_HEAVY_SNOW':              'NEVE INTENSA',
     'HAZARD_WEATHER_FREEZING_RAIN':           'CHUVA COM GELO',
-
-    # ── Acidentes ─────────────────────────────────────────────────────────────
     'ACCIDENT_MAJOR':                         'ACIDENTE GRAVE',
     'ACCIDENT_MINOR':                         'ACIDENTE LEVE',
-
-    # ── Congestionamentos ─────────────────────────────────────────────────────
     'JAM_HEAVY_TRAFFIC':                      'TRÂNSITO PESADO',
     'JAM_MODERATE_TRAFFIC':                   'TRÂNSITO MODERADO',
     'JAM_STAND_STILL_TRAFFIC':                'TRÂNSITO PARADO',
@@ -369,7 +418,6 @@ def translate_dataframe(df):
         df['type'] = df['type'].replace(TYPE_MAP)
     if 'subtype' in df.columns:
         df['subtype'] = df['subtype'].replace(SUBTYPE_MAP)
-        # Fallback: formata códigos desconhecidos removendo prefixo e underscores
         known = set(SUBTYPE_MAP.values())
         mask  = df['subtype'].notna() & ~df['subtype'].isin(known)
         df.loc[mask, 'subtype'] = (
@@ -380,54 +428,46 @@ def translate_dataframe(df):
         )
     return df
 
-
 # =============================================
 # 11. PIPELINE PRINCIPAL DE DADOS
 # =============================================
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
 def load_all_data():
-
-    # ── Busca o arquivo mais recente em cada pasta ────────────────────────────
     alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
     alerts_id2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
     jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
     jams_id2   = get_latest_h5_id(FOLDER_JAMS_ID2)
 
-    # ── Carrega e mescla alertas ──────────────────────────────────────────────
     frames_alerts = []
     if alerts_id:  frames_alerts.append(load_hdf_from_drive(alerts_id))
     if alerts_id2: frames_alerts.append(load_hdf_from_drive(alerts_id2))
-
     if frames_alerts:
-        df_alerts = pd.concat(frames_alerts, ignore_index=True)
+        df_alerts  = pd.concat(frames_alerts, ignore_index=True)
         dedup_cols = ['uuid'] if 'uuid' in df_alerts.columns else ['pubMillis', 'street']
         df_alerts  = df_alerts.drop_duplicates(subset=dedup_cols)
     else:
         df_alerts = pd.DataFrame()
 
-    # ── Carrega e mescla jams ─────────────────────────────────────────────────
     frames_jams = []
     if jams_id:  frames_jams.append(load_hdf_from_drive(jams_id))
     if jams_id2: frames_jams.append(load_hdf_from_drive(jams_id2))
-
     if frames_jams:
-        df_jams   = pd.concat(frames_jams, ignore_index=True)
+        df_jams    = pd.concat(frames_jams, ignore_index=True)
         dedup_cols = ['uuid'] if 'uuid' in df_jams.columns else ['pubMillis', 'street']
-        df_jams   = df_jams.drop_duplicates(subset=dedup_cols)
+        df_jams    = df_jams.drop_duplicates(subset=dedup_cols)
     else:
         df_jams = pd.DataFrame()
 
-    # ── Pipeline de normalização (inalterado) ─────────────────────────────────
     if not df_alerts.empty:
         df_alerts = normalize_timestamps(df_alerts)
-        df_alerts = extract_coordinates(df_alerts)   # alertas usam 'location'
+        df_alerts = extract_coordinates(df_alerts)
         df_alerts = translate_dataframe(df_alerts)
         if 'street' not in df_alerts.columns:
             df_alerts['street'] = 'N/A'
 
     if not df_jams.empty:
         df_jams = normalize_timestamps(df_jams)
-        df_jams = extract_jams_coordinates(df_jams)  # jams usam 'line'
+        df_jams = extract_jams_coordinates(df_jams)
         df_jams = normalize_speed(df_jams)
         if 'street' not in df_jams.columns:
             df_jams['street'] = 'Via'
@@ -451,13 +491,11 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         max_bounds=True
     )
 
-    # ── Posição do cursor ──────────────────────────────────────────────────────
     plugins.MousePosition(
         position='topright', separator=' | ',
         prefix='Lat/Lon: ', num_digits=5
     ).add_to(m)
 
-    # ── Tela cheia ────────────────────────────────────────────────────────────
     plugins.Fullscreen(
         position='topleft',
         title='Expandir mapa',
@@ -465,7 +503,6 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
         force_separate_button=True
     ).add_to(m)
 
-    # ── Barra de escala gráfica (atualiza com zoom) ───────────────────────────
     scale_js = """
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -474,7 +511,6 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
                 return v && v._leaflet_id && typeof v.addControl === 'function';
             });
             maps.forEach(function(map) {
-                // Barra de escala métrica
                 L.control.scale({
                     position: 'bottomleft',
                     metric: true,
@@ -482,7 +518,6 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
                     maxWidth: 120
                 }).addTo(map);
 
-                // ── Indicador de nível de zoom ────────────────────────────
                 var ZoomIndicator = L.Control.extend({
                     options: { position: 'bottomleft' },
                     onAdd: function(map) {
@@ -516,7 +551,6 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     """
     m.get_root().html.add_child(folium.Element(scale_js))
 
-    # ── Rosa dos ventos SVG ────────────────────────────────────────────────────
     compass_html = """
     <div style="
         position:absolute;
@@ -551,16 +585,10 @@ def create_folium_map_with_compass(lat, lon, zoom_level=13):
     return m
 
 
-
-
-
-
 def generate_incidents_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-
-    # Recupera coordenadas caso venham zeradas do JSON
     if ('lat' not in df.columns or df['lat'].isna().all()) and 'location' in df.columns:
         def _gy(x):
             try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('y'))
@@ -577,13 +605,11 @@ def generate_incidents_map(df_json):
     if 'lat' not in df.columns or 'lon' not in df.columns:
         return None
 
-    # ── CORRIGIDO: filtra bbox ANTES de aplicar head() ────────────────────────
     df_map = df.dropna(subset=['lat', 'lon'])
     df_map = df_map[
         df_map['lat'].between(LAT_MIN, LAT_MAX) &
         df_map['lon'].between(LON_MIN, LON_MAX)
     ].head(50)
-
     if df_map.empty:
         return None
 
@@ -593,12 +619,11 @@ def generate_incidents_map(df_json):
             tipo    = str(row.get('type', '?'))
             subtipo = str(row.get('subtype', ''))
             rua     = str(row.get('street', 'N/A'))
-            color = get_danger_color(tipo, row.get('subtype'))
+            color   = get_danger_color(tipo, row.get('subtype'))
             ts_raw  = row.get('timestamp')
             ts      = pd.to_datetime(ts_raw).strftime('%H:%M') if pd.notna(ts_raw) else '--'
             lat_val = float(row['lat'])
             lon_val = float(row['lon'])
-
             popup_html = (
                 f"<div style='min-width:200px;font-family:Arial;'>"
                 f"<b style='color:{color};font-size:16px;'>🚨 {tipo}</b><br>"
@@ -621,13 +646,10 @@ def generate_incidents_map(df_json):
     return m
 
 
-
 def generate_jams_map(df_json):
     df = pd.read_json(io.StringIO(df_json))
     if df.empty:
         return None
-
-    # ── CORRIGIDO: extrai coords da coluna 'line' se lat/lon ausentes ─────────
     if ('lat' not in df.columns or df['lat'].isna().all()) and 'line' in df.columns:
         def _midpoint(val):
             try:
@@ -641,8 +663,6 @@ def generate_jams_map(df_json):
         coords    = df['line'].apply(lambda x: pd.Series(_midpoint(x), index=['lat', 'lon']))
         df['lat'] = coords['lat']
         df['lon'] = coords['lon']
-
-    # Fallbacks adicionais
     if ('lat' not in df.columns or df['lat'].isna().all()) and 'location' in df.columns:
         def _get_y(x):
             try: return float((ast.literal_eval(x) if isinstance(x, str) else x).get('y'))
@@ -656,8 +676,6 @@ def generate_jams_map(df_json):
         df['lat'] = pd.to_numeric(df['y'], errors='coerce')
     if 'lon' not in df.columns and 'x' in df.columns:
         df['lon'] = pd.to_numeric(df['x'], errors='coerce')
-
-    # Normaliza velocidade se ausente
     if 'speed' not in df.columns:
         for alt in ['speedKMH', 'speedkmh', 'speed_kmh', 'velocity']:
             if alt in df.columns:
@@ -665,17 +683,14 @@ def generate_jams_map(df_json):
                 break
         else:
             df['speed'] = float('nan')
-
     if 'lat' not in df.columns or 'lon' not in df.columns:
         return None
 
-    # ── CORRIGIDO: filtra bbox ANTES de aplicar head() ────────────────────────
     df_valid = df.dropna(subset=['lat', 'lon'])
     df_valid = df_valid[
         df_valid['lat'].between(LAT_MIN, LAT_MAX) &
         df_valid['lon'].between(LON_MIN, LON_MAX)
     ].head(40)
-
     if df_valid.empty:
         return None
 
@@ -691,7 +706,6 @@ def generate_jams_map(df_json):
             lat_val   = float(row['lat'])
             lon_val   = float(row['lon'])
             spd_str   = f"{speed_kmh:.0f} km/h"
-
             popup_html = (
                 f"<div style='min-width:180px;'>"
                 f"<b style='color:{color}'>🚗 {spd_str}</b><br>"
@@ -709,7 +723,6 @@ def generate_jams_map(df_json):
         except Exception:
             continue
     return m
-
 
 
 def generate_heatmap(df_json):
@@ -778,7 +791,6 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
 st.sidebar.subheader("🔍 Filtros")
 today_foz = hora_foz_atual.date()
 
-# ── 1. DATA (âncora de todos os filtros) ──────────────────────────────────────
 all_dates = set()
 if not df_alerts_raw.empty:
     all_dates.update(pd.to_datetime(df_alerts_raw["date"]).dt.date.unique())
@@ -799,17 +811,15 @@ selected_date = st.sidebar.date_input(
     max_value=max(max_date, today_foz),
 )
 
-# ── 2. HORÁRIO ────────────────────────────────────────────────────────────────
 hora_range = st.sidebar.slider("🕐 Horário", 0, 23, (0, 23))
 
-# ── 3. TIPO DE OCORRÊNCIA (atrelado à data) ───────────────────────────────────
 tipos_na_data = []
 if not df_alerts_raw.empty:
     tipos_na_data = sorted(
         df_alerts_raw.loc[df_alerts_raw["date"] == selected_date, "type"]
         .dropna().unique().tolist()
     )
-if not tipos_na_data:  # fallback
+if not tipos_na_data:
     tipos_na_data = sorted(df_alerts_raw["type"].dropna().unique().tolist()) if not df_alerts_raw.empty else []
 
 filtro_tipo = st.sidebar.multiselect(
@@ -818,7 +828,6 @@ filtro_tipo = st.sidebar.multiselect(
     default=tipos_na_data,
 )
 
-# ── 4. NATUREZA DA OCORRÊNCIA (atrelado ao tipo selecionado + data) ───────────
 naturezas_na_data = []
 if not df_alerts_raw.empty and "subtype" in df_alerts_raw.columns:
     mask_natureza = (df_alerts_raw["date"] == selected_date)
@@ -837,7 +846,6 @@ filtro_natureza = st.sidebar.multiselect(
     default=naturezas_na_data,
 )
 
-# ── 5. RUA / VIA (atrelado à data + tipo) ─────────────────────────────────────
 ruas_na_data = []
 if not df_alerts_raw.empty and "street" in df_alerts_raw.columns:
     mask_rua = (
@@ -856,7 +864,6 @@ filtro_rua = st.sidebar.selectbox(
 )
 filtro_rua = "" if filtro_rua == "(Todas)" else filtro_rua
 
-# ── 6. FAIXA DE VELOCIDADE — congestionamentos (atrelado à data) ──────────────
 vel_min_data, vel_max_data = 0.0, 120.0
 if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
     speeds_na_data = df_jams_raw.loc[df_jams_raw["date"] == selected_date, "speed"].dropna()
@@ -872,7 +879,6 @@ vel_range = st.sidebar.slider(
     step=5.0,
 )
 
-# ── 7. PAINEL DE CONGESTIONAMENTO (atrelado à data) ───────────────────────────
 if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
     jams_data = df_jams_raw[df_jams_raw["date"] == selected_date]
     if not jams_data.empty and jams_data["speed"].notna().any():
@@ -908,14 +914,13 @@ if not df_alerts_raw.empty:
     if filtro_rua and "street" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["street"] == filtro_rua]
 
-    # Fallback 1: zera tipo/natureza/rua mas mantém data + hora
     if df_filtered.empty:
         st.sidebar.warning("⚠️ Sem dados para essa combinação. Exibindo todos os registros da data.")
         df_filtered = df_alerts_raw[
             (df_alerts_raw["date"] == selected_date) &
             (df_alerts_raw["hour"].between(hora_range[0], hora_range[1]))
         ].copy()
-    # Fallback 2: ignora data também
+
     if df_filtered.empty:
         df_filtered = df_alerts_raw[
             df_alerts_raw["hour"].between(hora_range[0], hora_range[1])
@@ -934,15 +939,96 @@ if not df_jams_raw.empty:
         ].copy()
 
 # =============================================
-# 18. CABEÇALHO
+# 18. CABEÇALHO — Hero Premium
 # =============================================
-st.title(f"🚗 Monitoramento de Tráfego — Foz do Iguaçu | {selected_date.strftime('%d/%m/%Y')}")
-st.success(
-    f"✅ **Dados reais** carregados do Google Drive | "
-    f"🕐 Hora local (Foz): **{hora_foz_atual.strftime('%H:%M:%S')}**",
-    icon="🟢"
-)
-st.markdown("---")
+st.markdown(f"""
+<div style="
+    background: linear-gradient(135deg,
+        rgba(30,41,59,0.95) 0%,
+        rgba(15,23,42,0.98) 50%,
+        rgba(17,24,39,0.95) 100%);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 20px;
+    padding: 2rem 2.5rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+">
+  <div style="
+      position:absolute; top:-60px; right:-60px;
+      width:200px; height:200px;
+      background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%);
+      pointer-events:none;
+  "></div>
+  <div style="
+      display:inline-flex; align-items:center; gap:6px;
+      background: rgba(34,197,94,0.12);
+      border: 1px solid rgba(34,197,94,0.25);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #4ade80;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+  ">
+      <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
+                   animation:pulse 2s infinite;display:inline-block;"></span>
+      SISTEMA ATIVO — DADOS REAIS
+  </div>
+  <h1 style="
+      margin: 0 0 0.25rem 0;
+      font-size: clamp(1.4rem, 3vw, 2rem);
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+  ">
+      🚗 Monitoramento de Tráfego
+      <span style="
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+      "> — Foz do Iguaçu</span>
+  </h1>
+  <p style="
+      margin: 0.4rem 0 0 0;
+      color: #64748b;
+      font-size: 0.88rem;
+      font-weight: 400;
+  ">
+      📅 {selected_date.strftime('%d/%m/%Y')}
+      &nbsp;·&nbsp;
+      🕐 Hora local: <strong style="color:#94a3b8;">{hora_foz_atual.strftime('%H:%M:%S')}</strong>
+      &nbsp;·&nbsp;
+      🔄 Atualização automática a cada 10 minutos
+  </p>
+  <div style="
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.72rem;
+      color: #475569;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+  ">
+      <span>🔬 <strong style="color:#64748b;">GPMME</strong> — Grupo de Pesquisa em Mobilidade e Matriz Energética</span>
+      <span>🧪 <strong style="color:#64748b;">LAGGRA</strong> — Lab. de Geologia, Geotecnia e Recuperação Ambiental</span>
+      <span style="margin-left:auto; color:#334155;">UTFPR · Dois Vizinhos</span>
+  </div>
+</div>
+<style>
+@keyframes pulse {{
+    0%, 100% {{ opacity: 1; }}
+    50% {{ opacity: 0.4; }}
+}}
+</style>
+""", unsafe_allow_html=True)
 
 # =============================================
 # 19. RESUMO DOS FILTROS ATIVOS
@@ -1058,7 +1144,6 @@ with tab_inc:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format='iso'))
         if m_inc:
             st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
-            # ── Legenda ──────────────────────────────────────────────────────────
             st.markdown("""
             | Cor | Tipo | Natureza |
             |---|---|---|
@@ -1078,7 +1163,6 @@ with tab_inc:
 # --- ABA 2: Congestionamentos ---
 with tab_jams:
     st.caption("📏 Escala métrica | 🟢 Livre → 🔴 Parado")
-    # Painel de diagnóstico — remova após confirmar que os mapas aparecem
     with st.expander("🔎 Diagnóstico de dados (remover após validação)", expanded=False):
         st.write("Total de jams carregados:", len(df_jams_raw))
         st.write("Total após filtro:", len(df_jams_filtered))
@@ -1096,7 +1180,6 @@ with tab_jams:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format='iso'))
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
-            # ── Legenda ──────────────────────────────────────────────────────────
             st.markdown("""
             | Cor | Velocidade | Status |
             |---|---|---|
@@ -1119,70 +1202,55 @@ with tab_jams:
 # --- ABA 3: Mapa de Calor ---
 with tab_calor:
     st.subheader("🔥 Zonas de Concentração de Incidentes")
-
     if not df_filtered.empty:
         df_heat = df_filtered.copy()
-
-        # Garante lat/lon limpos e dentro de Foz
         df_heat = df_heat.dropna(subset=['lat', 'lon'])
         df_heat = df_heat[
             df_heat['lat'].between(LAT_MIN, LAT_MAX) &
             df_heat['lon'].between(LON_MIN, LON_MAX)
         ]
-
         if not df_heat.empty:
-            import folium
-            from folium import plugins
-
-            # ── Mapa base ────────────────────────────────────────────────────
             m_heat = folium.Map(
                 location=[df_heat['lat'].mean(), df_heat['lon'].mean()],
                 zoom_start=13,
                 tiles="OpenStreetMap"
             )
-
-            # ── Camada de calor ───────────────────────────────────────────────
             heat_data = [[row['lat'], row['lon']] for _, row in df_heat.iterrows()]
             plugins.HeatMap(
                 heat_data,
-                radius=20,
-                blur=15,
-                min_opacity=0.35,
+                radius=20, blur=15, min_opacity=0.35,
                 gradient={0.2: '#ffffb2', 0.4: '#fecc5c', 0.6: '#fd8d3c',
                           0.8: '#f03b20', 1.0: '#bd0026'}
             ).add_to(m_heat)
 
-            # ── Ícones por tipo de incidente ──────────────────────────────────
             ICON_MAP = {
-                'ACIDENTE':           ('car-crash',  'red',    '💥'),
-                'VIA FECHADA':        ('ban',        'darkred','🚫'),
-                'PERIGO':             ('warning',    'orange', '⚠️'),
-                'PERIGO CLIMÁTICO':   ('cloud-rain', 'blue',   '🌧️'),
-                'CONGESTIONAMENTO':   ('traffic-light','gray', '🚦'),
+                'ACIDENTE':         ('car-crash',    'red',      '💥'),
+                'VIA FECHADA':      ('ban',          'darkred',  '🚫'),
+                'PERIGO':           ('warning',      'orange',   '⚠️'),
+                'PERIGO CLIMÁTICO': ('cloud-rain',   'blue',     '🌧️'),
+                'CONGESTIONAMENTO': ('traffic-light','gray',     '🚦'),
             }
 
-            # Grupos separados por tipo (para o LayerControl)
             grupos = {}
             for tipo in df_heat['type'].dropna().unique():
-                grupos[tipo] = folium.FeatureGroup(name=f"{ICON_MAP.get(tipo, ('','',' '))[2]} {tipo}", show=True)
+                grupos[tipo] = folium.FeatureGroup(
+                    name=f"{ICON_MAP.get(tipo, ('','','ℹ️'))[2]} {tipo}", show=True
+                )
 
             for _, row in df_heat.iterrows():
                 try:
-                    tipo    = str(row.get('type',    'ALERTA'))
-                    subtipo = str(row.get('subtype', ''))
-                    rua     = str(row.get('street',  'N/A'))
-                    conf    = row.get('confidence',  'N/A')
-                    rating  = row.get('reportRating','N/A')
-                    ts_raw  = row.get('timestamp')
-                    ts      = pd.to_datetime(ts_raw).strftime('%d/%m %H:%M') if pd.notna(ts_raw) else '--'
-                    lat_val = float(row['lat'])
-                    lon_val = float(row['lon'])
-
+                    tipo       = str(row.get('type',    'ALERTA'))
+                    subtipo    = str(row.get('subtype', ''))
+                    rua        = str(row.get('street',  'N/A'))
+                    conf       = row.get('confidence',  'N/A')
+                    rating     = row.get('reportRating','N/A')
+                    ts_raw     = row.get('timestamp')
+                    ts         = pd.to_datetime(ts_raw).strftime('%d/%m %H:%M') if pd.notna(ts_raw) else '--'
+                    lat_val    = float(row['lat'])
+                    lon_val    = float(row['lon'])
                     icon_name, icon_color, emoji = ICON_MAP.get(tipo, ('info-sign', 'cadetblue', 'ℹ️'))
                     danger_cor = get_danger_color(tipo, row.get('subtype'))
 
-
-                    # ── Popup rico ────────────────────────────────────────────
                     popup_html = f"""
                     <div style="min-width:220px;font-family:Arial,sans-serif;font-size:13px;">
                         <div style="background:{danger_cor};color:white;padding:6px 10px;
@@ -1204,42 +1272,28 @@ with tab_calor:
                         </div>
                     </div>"""
 
-                    # ── Tooltip sempre visível (rótulo no mapa) ───────────────
                     tooltip_txt = f"{emoji} {tipo}"
-                    if rua and rua != 'N/A' and rua != 'nan':
+                    if rua and rua not in ('N/A', 'nan', ''):
                         tooltip_txt += f" — {rua[:30]}"
                     if ts != '--':
-                        tooltip_txt += f" ({ts[-5:]})"   # só HH:MM
+                        tooltip_txt += f" ({ts[-5:]})"
 
                     marker = folium.Marker(
                         location=[lat_val, lon_val],
                         popup=folium.Popup(popup_html, max_width=270),
-                        tooltip=folium.Tooltip(
-                            tooltip_txt,
-                            permanent=False,   # True = sempre visível (pode poluir)
-                            sticky=True
-                        ),
-                        icon=folium.Icon(
-                            color=icon_color,
-                            icon=icon_name,
-                            prefix='fa'
-                        )
+                        tooltip=folium.Tooltip(tooltip_txt, permanent=False, sticky=True),
+                        icon=folium.Icon(color=icon_color, icon=icon_name, prefix='fa')
                     )
-
                     if tipo in grupos:
                         marker.add_to(grupos[tipo])
                     else:
                         marker.add_to(m_heat)
-
                 except Exception:
                     continue
 
-            # Adiciona os grupos ao mapa
             for g in grupos.values():
                 g.add_to(m_heat)
 
-            # ── Rótulos permanentes nos TOP 5 pontos mais críticos ────────────
-            # Prioridade: ACIDENTE > VIA FECHADA > PERIGO
             prioridade = {'ACIDENTE': 1, 'VIA FECHADA': 2, 'PERIGO': 3,
                           'PERIGO CLIMÁTICO': 4, 'CONGESTIONAMENTO': 5}
             df_top = df_heat.copy()
@@ -1248,15 +1302,13 @@ with tab_calor:
 
             for _, row in df_top.iterrows():
                 try:
-                    tipo    = str(row.get('type', '?'))
-                    rua     = str(row.get('street', ''))
-                    emoji   = ICON_MAP.get(tipo, ('','','ℹ️'))[2]
-                    cor     = get_danger_color(tipo, row.get('subtype'))
-
-                    label   = f"{emoji} {tipo}"
+                    tipo  = str(row.get('type', '?'))
+                    rua   = str(row.get('street', ''))
+                    emoji = ICON_MAP.get(tipo, ('','','ℹ️'))[2]
+                    cor   = get_danger_color(tipo, row.get('subtype'))
+                    label = f"{emoji} {tipo}"
                     if rua and rua not in ('N/A', 'nan', ''):
                         label += f"\n{rua[:25]}"
-
                     folium.Marker(
                         location=[float(row['lat']), float(row['lon'])],
                         icon=folium.DivIcon(
@@ -1278,7 +1330,6 @@ with tab_calor:
                 except Exception:
                     continue
 
-            # ── Controles do mapa ─────────────────────────────────────────────
             plugins.MousePosition(
                 position='topright', separator=' | ',
                 prefix='Lat/Lon: ', num_digits=5
@@ -1286,15 +1337,8 @@ with tab_calor:
             plugins.MeasureControl(position='bottomright').add_to(m_heat)
             folium.LayerControl(position='topleft', collapsed=False).add_to(m_heat)
 
-            # ── Renderiza ─────────────────────────────────────────────────────
-            st_folium(
-                m_heat,
-                width="100%",
-                height=560,
-                key=f"mapa_calor_{len(df_heat)}"
-            )
+            st_folium(m_heat, width="100%", height=560, key=f"mapa_calor_{len(df_heat)}")
 
-           # ── Legenda ──────────────────────────────────────────────────────────
             st.markdown("""
             | Cor | Concentração |
             |---|---|
@@ -1314,17 +1358,14 @@ with tab_calor:
                 hide_index=True,
                 use_container_width=True
             )
-
         else:
             st.info("⚠️ Nenhum ponto dentro da área de Foz do Iguaçu.")
     else:
         st.info("Sem dados suficientes para mapa de calor.")
 
-
 # --- ABA 4: Gráficos ---
 with tab_graficos:
     if not df_filtered.empty:
-
         st.markdown(
             f"📋 **{len(df_filtered)} registros** analisados para "
             f"**{selected_date.strftime('%d/%m/%Y')}** "
@@ -1332,7 +1373,6 @@ with tab_graficos:
         )
         st.markdown("---")
 
-        # Base histórica para gráficos que não dependem da data
         df_hist = df_alerts_raw.copy()
         if filtro_tipo:
             df_hist = df_hist[df_hist['type'].isin(filtro_tipo)]
@@ -1352,9 +1392,6 @@ with tab_graficos:
             'CONGESTIONAMENTO': '#f39c12', 'ALERTA': '#9b59b6',
         }
 
-        # =====================================================
-        # GRÁFICO 1 + 2 — Hora do dia | Proporção por tipo
-        # =====================================================
         col_g1, col_g2 = st.columns(2)
 
         with col_g1:
@@ -1387,115 +1424,68 @@ with tab_graficos:
 
         with col_g2:
             st.subheader("🥧 Natureza das Ocorrências")
-            st.caption(
-                "Distribuição por subtipo de todos os incidentes do dia selecionado. "
-                "Detalha a natureza real de cada ocorrência além do tipo genérico."
-            )
-
-            # ── Tenta usar subtipo; fallback para tipo se subtipo vazio ──────
+            st.caption("Distribuição por subtipo de todos os incidentes do dia selecionado.")
             tem_subtipo = (
                 'subtype' in df_filtered.columns and
                 df_filtered['subtype'].notna().any() and
                 (~df_filtered['subtype'].isin(['nan', ''])).any()
             )
-
             if tem_subtipo:
                 df_sub = df_filtered[
                     df_filtered['subtype'].notna() &
                     (~df_filtered['subtype'].isin(['nan', '']))
                 ].copy()
-                # Adiciona o tipo como prefixo quando o subtipo for genérico
                 df_sub['label'] = df_sub.apply(
-                    lambda r: r['subtype']
-                    if r['subtype'] != r['type']
-                    else r['type'],
-                    axis=1
+                    lambda r: r['subtype'] if r['subtype'] != r['type'] else r['type'], axis=1
                 )
                 sub_counts = df_sub['label'].value_counts().reset_index()
                 sub_counts.columns = ['Natureza', 'Quantidade']
                 dimensao = "subtipo"
             else:
-                # Fallback: agrupa por tipo
                 sub_counts = df_filtered['type'].value_counts().reset_index()
                 sub_counts.columns = ['Natureza', 'Quantidade']
                 dimensao = "tipo"
 
             CORES_NATUREZA = {
-                # Acidentes
-                'ACIDENTE GRAVE':                 '#b71c1c',
-                'ACIDENTE LEVE':                  '#ef9a9a',
-                'ACIDENTE':                       '#e74c3c',
-                # Vias fechadas
-                'VIA FECHADA':                    '#c0392b',
-                'OBRAS':                          '#78909c',
-                'EVENTO':                         '#ab47bc',
-                # Perigos na pista
-                'BURACO NA VIA':                  '#e67e22',
-                'PERIGO NA VIA':                  '#f39c12',
-                'OBJETO NA VIA':                  '#d35400',
-                'ANIMAL NA VIA':                  '#27ae60',
-                'VEÍCULO PARADO NA VIA':          '#c0392b',
-                'VEÍCULO PARADO NO ACOSTAMENTO':  '#e74c3c',
-                'OBRAS NA VIA':                   '#7f8c8d',
-                'SEMÁFORO QUEBRADO':              '#f1c40f',
-                'FAIXA INTERDITADA':              '#8e44ad',
-                'PISTA COM GELO':                 '#3498db',
-                # Acostamento
-                'PERIGO NO ACOSTAMENTO':          '#ff8c00',
-                'ANIMAIS NO ACOSTAMENTO':         '#2ecc71',
-                'SINALIZAÇÃO AUSENTE':            '#95a5a6',
-                # Climáticos
-                'NEBLINA':                        '#bdc3c7',
-                'CHUVA FORTE':                    '#2980b9',
-                'INUNDAÇÃO':                      '#1a5276',
-                'GRANIZO':                        '#5dade2',
-                'TEMPORAL':                       '#1abc9c',
-                'ONDA DE CALOR':                  '#ff6b35',
-                'CONDIÇÕES CLIMÁTICAS':           '#85c1e9',
-                'PERIGO CLIMÁTICO':               '#3498db',
-                # Congestionamentos
-                'TRÂNSITO PARADO':                '#7b1fa2',
-                'TRÂNSITO PESADO':                '#f44336',
-                'TRÂNSITO MODERADO':              '#ff9800',
-                'TRÂNSITO LEVE':                  '#4caf50',
-                'CONGESTIONAMENTO':               '#f39c12',
-                # Genérico
-                'PERIGO':                         '#e67e22',
-                'ALERTA':                         '#9b59b6',
+                'ACIDENTE GRAVE': '#b71c1c', 'ACIDENTE LEVE': '#ef9a9a', 'ACIDENTE': '#e74c3c',
+                'VIA FECHADA': '#c0392b', 'OBRAS': '#78909c', 'EVENTO': '#ab47bc',
+                'BURACO NA VIA': '#e67e22', 'PERIGO NA VIA': '#f39c12', 'OBJETO NA VIA': '#d35400',
+                'ANIMAL NA VIA': '#27ae60', 'VEÍCULO PARADO NA VIA': '#c0392b',
+                'VEÍCULO PARADO NO ACOSTAMENTO': '#e74c3c', 'OBRAS NA VIA': '#7f8c8d',
+                'SEMÁFORO QUEBRADO': '#f1c40f', 'FAIXA INTERDITADA': '#8e44ad',
+                'PISTA COM GELO': '#3498db', 'PERIGO NO ACOSTAMENTO': '#ff8c00',
+                'ANIMAIS NO ACOSTAMENTO': '#2ecc71', 'SINALIZAÇÃO AUSENTE': '#95a5a6',
+                'NEBLINA': '#bdc3c7', 'CHUVA FORTE': '#2980b9', 'INUNDAÇÃO': '#1a5276',
+                'GRANIZO': '#5dade2', 'TEMPORAL': '#1abc9c', 'ONDA DE CALOR': '#ff6b35',
+                'CONDIÇÕES CLIMÁTICAS': '#85c1e9', 'PERIGO CLIMÁTICO': '#3498db',
+                'TRÂNSITO PARADO': '#7b1fa2', 'TRÂNSITO PESADO': '#f44336',
+                'TRÂNSITO MODERADO': '#ff9800', 'TRÂNSITO LEVE': '#4caf50',
+                'CONGESTIONAMENTO': '#f39c12', 'PERIGO': '#e67e22', 'ALERTA': '#9b59b6',
             }
             cores_seq = [CORES_NATUREZA.get(n, '#95a5a6') for n in sub_counts['Natureza']]
-
             fig_pie = px.pie(
-                sub_counts,
-                names='Natureza', values='Quantidade',
-                color='Natureza',
-                color_discrete_sequence=cores_seq,
-                hole=0.38
+                sub_counts, names='Natureza', values='Quantidade',
+                color='Natureza', color_discrete_sequence=cores_seq, hole=0.38
             )
             fig_pie.update_traces(
-                textposition='outside',
-                textinfo='label+percent',
-                textfont_size=11,
+                textposition='outside', textinfo='label+percent', textfont_size=11,
                 pull=[0.04] * len(sub_counts),
                 marker=dict(line=dict(color='white', width=2))
             )
             fig_pie.update_layout(
                 legend=dict(title="Natureza", orientation="v", x=1.02, y=0.5),
                 margin=dict(t=40, b=40, l=0, r=150),
-                paper_bgcolor='rgba(0,0,0,0)',
-                height=380
+                paper_bgcolor='rgba(0,0,0,0)', height=380
             )
             st.plotly_chart(fig_pie, use_container_width=True)
-
             nat_top = sub_counts.iloc[0]['Natureza']
             pct_top = 100 * sub_counts.iloc[0]['Quantidade'] / sub_counts['Quantidade'].sum()
             st.caption(
                 f"🔺 Natureza predominante: **{nat_top}** ({pct_top:.1f}%) &nbsp;|&nbsp; "
-                f"{'Agrupado por subtipo' if dimensao == 'subtipo' else '⚠️ Sem subtipo disponível — agrupado por tipo'}"
+                f"{'Agrupado por subtipo' if dimensao == 'subtipo' else '⚠️ Sem subtipo — agrupado por tipo'}"
             )
-        st.markdown("---")
 
-        # ── Filtro de tipo/subtipo exclusivo da aba de gráficos (histórico) ──
+        st.markdown("---")
         st.markdown("#### 🔎 Refinar análise histórica")
         col_ft1, col_ft2 = st.columns(2)
 
@@ -1504,13 +1494,10 @@ with tab_graficos:
 
         with col_ft1:
             filtro_tipo_graf = st.multiselect(
-                "Tipo de ocorrência",
-                options=tipos_hist_disp,
-                default=tipos_hist_disp,
-                key="graf_tipo"
+                "Tipo de ocorrência", options=tipos_hist_disp,
+                default=tipos_hist_disp, key="graf_tipo"
             )
 
-        # Subtipos atrelados aos tipos selecionados
         subtipos_hist_disp = []
         if 'subtype' in df_hist.columns and filtro_tipo_graf:
             subtipos_hist_disp = sorted(
@@ -1523,13 +1510,10 @@ with tab_graficos:
 
         with col_ft2:
             filtro_sub_graf = st.multiselect(
-                "Natureza (subtipo)",
-                options=subtipos_hist_disp,
-                default=subtipos_hist_disp,
-                key="graf_sub"
+                "Natureza (subtipo)", options=subtipos_hist_disp,
+                default=subtipos_hist_disp, key="graf_sub"
             )
 
-        # Aplica os filtros na base histórica
         df_hist_graf = df_hist.copy()
         if filtro_tipo_graf:
             df_hist_graf = df_hist_graf[df_hist_graf['type'].isin(filtro_tipo_graf)]
@@ -1543,36 +1527,25 @@ with tab_graficos:
         st.caption(f"📊 Base histórica refinada: **{total_graf}** registros")
         st.markdown("---")
 
-        # =====================================================
-        # GRÁFICO 3 — Dia da Semana com barras por Tipo
-        # =====================================================
+        # GRÁFICO 3 — Dia da Semana
         st.subheader("📅 Incidentes por Dia da Semana")
         st.caption("Barras empilhadas por tipo de ocorrência — histórico completo.")
-
-        order_dow = list(DIAS_PT.keys())
         if 'day_of_week' in df_hist.columns and not df_hist.empty:
             df_dow = df_hist.copy()
             df_dow['Dia'] = df_dow['day_of_week'].map(DIAS_PT)
-
-            dow_tipo = (
-                df_dow.groupby(['Dia', 'type'])
-                .size().reset_index(name='Quantidade')
-            )
+            dow_tipo = df_dow.groupby(['Dia', 'type']).size().reset_index(name='Quantidade')
             order_dias = list(DIAS_PT.values())
-
             fig_dow = px.bar(
                 dow_tipo, x='Dia', y='Quantidade', color='type',
                 labels={'Dia': 'Dia da Semana', 'Quantidade': 'Nº Incidentes', 'type': 'Tipo'},
-                color_discrete_map=CORES_TIPO,
-                category_orders={'Dia': order_dias},
+                color_discrete_map=CORES_TIPO, category_orders={'Dia': order_dias},
                 barmode='stack', text_auto=True
             )
-            # Marca o dia atual
             dia_hoje_pt = DIAS_PT.get(hora_foz_atual.strftime('%A'), '')
             if dia_hoje_pt:
                 idx_hoje = order_dias.index(dia_hoje_pt)
-                fig_dow.add_shape(type='line', x0=idx_hoje, x1=idx_hoje,
-                                  y0=0, y1=1, xref='x', yref='paper',
+                fig_dow.add_shape(type='line', x0=idx_hoje, x1=idx_hoje, y0=0, y1=1,
+                                  xref='x', yref='paper',
                                   line=dict(color='gold', width=2, dash='dot'))
                 fig_dow.add_annotation(x=idx_hoje, y=1, xref='x', yref='paper',
                                        text=f'Hoje ({dia_hoje_pt})', showarrow=False,
@@ -1588,15 +1561,9 @@ with tab_graficos:
 
         st.markdown("---")
 
-        # =====================================================
-        # GRÁFICO 4 — Top 10 Vias com barras por Subtipo
-        # =====================================================
+        # GRÁFICO 4 — Top 10 Vias
         st.subheader("🛣️ Vias Críticas — Incidentes por Natureza")
-        st.caption(
-            "Top 10 vias com mais ocorrências históricas. "
-            "Cada barra mostra a composição por natureza (subtipo) do incidente."
-        )
-
+        st.caption("Top 10 vias com mais ocorrências históricas.")
         top_ruas_lista = []
         if 'street' in df_hist.columns:
             top_ruas_lista = (
@@ -1604,19 +1571,13 @@ with tab_graficos:
                         (~df_hist['street'].isin(['N/A', 'nan', '']))]
                 ['street'].value_counts().head(10).index.tolist()
             )
-
         if top_ruas_lista and 'subtype' in df_hist.columns:
             df_rua = df_hist[
                 df_hist['street'].isin(top_ruas_lista) &
                 df_hist['subtype'].notna() &
                 (~df_hist['subtype'].isin(['nan', '']))
             ].copy()
-
-            rua_sub = (
-                df_rua.groupby(['street', 'subtype'])
-                .size().reset_index(name='Quantidade')
-            )
-            # Ordena ruas pelo total
+            rua_sub = df_rua.groupby(['street', 'subtype']).size().reset_index(name='Quantidade')
             ordem_ruas = (
                 rua_sub.groupby('street')['Quantidade'].sum()
                 .sort_values(ascending=True).index.tolist()
@@ -1637,48 +1598,31 @@ with tab_graficos:
 
         st.markdown("---")
 
-        # =====================================================
-        # GRÁFICO 5 — Bubble: Rua × Dia da Semana
-        # =====================================================
+        # GRÁFICO 5 — Bubble Rua × Dia da Semana
         st.subheader("🗓️ Quais dias cada rua tem mais problemas?")
-        st.caption(
-            "Cada bolha representa uma via num dia da semana. "
-            "Quanto maior e mais escura a bolha, mais incidentes aconteceram."
-        )
+        st.caption("Cada bolha representa uma via num dia da semana.")
+
+        def nivel_label(v, vmax):
+            if v == 0:            return '🟢 Nenhum'
+            elif v <= vmax*0.25:  return '🟡 Baixo'
+            elif v <= vmax*0.60:  return '🟠 Médio'
+            else:                 return '🔴 Alto'
 
         if top_ruas_lista and 'day_of_week' in df_hist.columns:
             df_hm = df_hist[df_hist['street'].isin(top_ruas_lista)].copy()
             df_hm['Dia'] = df_hm['day_of_week'].map(DIAS_PT)
-
-            bubble_dow = (
-                df_hm.groupby(['street', 'Dia', 'type'])
-                .size().reset_index(name='Qtd')
-            )
-            total_dow = bubble_dow.groupby(['street', 'Dia'])['Qtd'].sum().reset_index(name='Total')
-
-            def nivel_label(v, vmax):
-                if v == 0:            return '🟢 Nenhum'
-                elif v <= vmax*0.25:  return '🟡 Baixo'
-                elif v <= vmax*0.60:  return '🟠 Médio'
-                else:                 return '🔴 Alto'
-
-            vmax_dow = total_dow['Total'].max() if not total_dow.empty else 1
+            bubble_dow  = df_hm.groupby(['street', 'Dia', 'type']).size().reset_index(name='Qtd')
+            total_dow   = bubble_dow.groupby(['street', 'Dia'])['Qtd'].sum().reset_index(name='Total')
+            vmax_dow    = total_dow['Total'].max() if not total_dow.empty else 1
             total_dow['Nível'] = total_dow['Total'].apply(lambda v: nivel_label(v, vmax_dow))
-            total_dow['Tamanho'] = total_dow['Total'] * 40   # escala visual da bolha
 
             fig_b1 = px.scatter(
-                total_dow,
-                x='Dia', y='street',
-                size='Total',
-                color='Nível',
-                size_max=55,
-                text='Total',
+                total_dow, x='Dia', y='street', size='Total', color='Nível',
+                size_max=55, text='Total',
                 labels={'street': '', 'Dia': 'Dia da Semana', 'Total': 'Incidentes'},
                 color_discrete_map={
-                    '🟢 Nenhum': '#27ae60',
-                    '🟡 Baixo':  '#f1c40f',
-                    '🟠 Médio':  '#e67e22',
-                    '🔴 Alto':   '#e74c3c',
+                    '🟢 Nenhum': '#27ae60', '🟡 Baixo': '#f1c40f',
+                    '🟠 Médio': '#e67e22',  '🔴 Alto':  '#e74c3c',
                 },
                 category_orders={
                     'Dia': list(DIAS_PT.values()),
@@ -1689,204 +1633,160 @@ with tab_graficos:
                 textposition='middle center',
                 textfont=dict(size=11, color='white', family='Arial Black')
             )
-            # Destaca o dia atual — compatível com eixo categórico
             dia_hoje_pt = DIAS_PT.get(hora_foz_atual.strftime('%A'), '')
             if dia_hoje_pt and dia_hoje_pt in list(DIAS_PT.values()):
                 idx_hoje = list(DIAS_PT.values()).index(dia_hoje_pt)
-                fig_b1.add_shape(
-                    type='line',
-                    x0=idx_hoje, x1=idx_hoje,
-                    y0=0, y1=1,
-                    xref='x', yref='paper',
-                    line=dict(color='gold', width=2, dash='dot')
-                )
-                fig_b1.add_annotation(
-                    x=idx_hoje, y=1.05,
-                    xref='x', yref='paper',
-                    text='Hoje',
-                    showarrow=False,
-                    font=dict(color='gold', size=11, family='Arial'),
-                    xanchor='center'
-                )
+                fig_b1.add_shape(type='line', x0=idx_hoje, x1=idx_hoje, y0=0, y1=1,
+                                 xref='x', yref='paper',
+                                 line=dict(color='gold', width=2, dash='dot'))
+                fig_b1.add_annotation(x=idx_hoje, y=1.05, xref='x', yref='paper',
+                                      text='Hoje', showarrow=False,
+                                      font=dict(color='gold', size=11, family='Arial'),
+                                      xanchor='center')
+            fig_b1.update_layout(
+                legend=dict(title='Nível', orientation='v', x=1.01, y=1),
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(t=40, b=20, l=10, r=180), height=460
+            )
             st.plotly_chart(fig_b1, use_container_width=True)
-            st.caption("💡 O número dentro da bolha é a quantidade de incidentes naquele dia.")
-
-        st.markdown("---")
-
-        # =====================================================
-        # GRÁFICO 6 — Bubble: Rua × Período do Dia
-        # =====================================================
-        st.subheader("⏰ Em quais horários cada rua tem mais problemas?")
-        st.caption(
-            "As horas foram agrupadas em 4 períodos para facilitar a leitura. "
-            "Bolha maior = mais ocorrências naquele período."
-        )
-
-        if top_ruas_lista and 'hour' in df_hist.columns:
-            df_hh = df_hist[df_hist['street'].isin(top_ruas_lista)].copy()
-
-            def periodo(h):
-                if h < 6:    return '🌙 Madrugada\n(00–05h)'
-                elif h < 12: return '🌅 Manhã\n(06–11h)'
-                elif h < 18: return '☀️ Tarde\n(12–17h)'
-                else:        return '🌆 Noite\n(18–23h)'
-
-            df_hh['Período'] = df_hh['hour'].apply(periodo)
-
-            bubble_hora = (
-                df_hh.groupby(['street', 'Período'])
-                .size().reset_index(name='Total')
-            )
-            vmax_hora = bubble_hora['Total'].max() if not bubble_hora.empty else 1
-            bubble_hora['Nível'] = bubble_hora['Total'].apply(
-                lambda v: nivel_label(v, vmax_hora)
-            )
-            ordem_periodos = [
-                '🌙 Madrugada\n(00–05h)',
-                '🌅 Manhã\n(06–11h)',
-                '☀️ Tarde\n(12–17h)',
-                '🌆 Noite\n(18–23h)'
-            ]
-
-            fig_b2 = px.scatter(
-                bubble_hora,
-                x='Período', y='street',
-                size='Total',
-                color='Nível',
-                size_max=65,
-                text='Total',
-                labels={'street': '', 'Período': 'Período do Dia', 'Total': 'Incidentes'},
-                color_discrete_map={
-                    '🟢 Nenhum': '#27ae60',
-                    '🟡 Baixo':  '#f1c40f',
-                    '🟠 Médio':  '#e67e22',
-                    '🔴 Alto':   '#e74c3c',
-                },
-                category_orders={
-                    'Período': ordem_periodos,
-                    'Nível': ['🟢 Nenhum', '🟡 Baixo', '🟠 Médio', '🔴 Alto']
-                }
-            )
-            fig_b2.update_traces(
-                textposition='middle center',
-                textfont=dict(size=12, color='white', family='Arial Black')
-            )
-            fig_b2.update_layout(
-                xaxis=dict(title='', tickfont=dict(size=13)),
-                yaxis=dict(title='', tickfont=dict(size=12), autorange='reversed'),
-                legend=dict(title='Nível', orientation='h', y=-0.18, x=0.5, xanchor='center'),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(t=30, b=60, l=10, r=20), height=440
-            )
-            st.plotly_chart(fig_b2, use_container_width=True)
-            st.caption(
-                "💡 Passe o mouse sobre a bolha para ver os detalhes. "
-                "Períodos com bolha cinza ou ausente = nenhum incidente registrado."
-            )
-        # =====================================================
-        # GRÁFICO 7 — Natureza Top 10 com barras por Tipo
-        # =====================================================
-        st.subheader("🔍 Natureza das Ocorrências × Tipo")
-        st.caption("Top 10 subtipos mais frequentes, coloridos pelo tipo pai.")
-
-        if 'subtype' in df_hist.columns and 'type' in df_hist.columns:
-            df_nat = df_hist[
-                df_hist['subtype'].notna() &
-                (~df_hist['subtype'].isin(['nan', '']))
-            ].copy()
-            nat_tipo = (
-                df_nat.groupby(['subtype', 'type']).size().reset_index(name='Quantidade')
-            )
-            top10_nat = (
-                nat_tipo.groupby('subtype')['Quantidade'].sum()
-                .nlargest(10).index.tolist()
-            )
-            nat_tipo = nat_tipo[nat_tipo['subtype'].isin(top10_nat)]
-            ordem_nat = (
-                nat_tipo.groupby('subtype')['Quantidade'].sum()
-                .sort_values(ascending=True).index.tolist()
-            )
-            fig_nat = px.bar(
-                nat_tipo, x='Quantidade', y='subtype', color='type',
-                labels={'Quantidade': 'Total', 'subtype': '', 'type': 'Tipo'},
-                orientation='h', barmode='stack',
-                color_discrete_map=CORES_TIPO,
-                category_orders={'subtype': ordem_nat}
-            )
-            fig_nat.update_layout(
-                legend=dict(title='Tipo', orientation='v', x=1.01, y=1),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                margin=dict(t=20, b=20, l=10, r=160), height=420
-            )
-            st.plotly_chart(fig_nat, use_container_width=True)
-
-        st.markdown("---")
-
-        # =====================================================
-        # GRÁFICO 8 — Tendência Diária por Tipo
-        # =====================================================
-        st.subheader("📈 Tendência Diária por Tipo de Incidente")
-        st.caption("Evolução diária com linhas separadas por tipo — identifica qual categoria está aumentando.")
-
-        if 'date' in df_hist.columns and 'type' in df_hist.columns:
-            serie_tipo = (
-                df_hist.groupby(['date', 'type']).size().reset_index(name='Quantidade')
-            )
-            serie_tipo['date'] = pd.to_datetime(serie_tipo['date'])
-            if len(serie_tipo) > 1:
-                fig_trend = px.line(
-                    serie_tipo, x='date', y='Quantidade', color='type',
-                    labels={'date': 'Data', 'Quantidade': 'Nº Incidentes', 'type': 'Tipo'},
-                    color_discrete_map=CORES_TIPO, markers=True
-                )
-                fig_trend.update_layout(
-                    legend=dict(title='Tipo', orientation='h', y=-0.25, x=0.5, xanchor='center'),
-                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(t=30, b=80), height=400
-                )
-                st.plotly_chart(fig_trend, use_container_width=True)
-                dia_pico = serie_tipo.groupby('date')['Quantidade'].sum().idxmax()
-                qtd_pico = serie_tipo.groupby('date')['Quantidade'].sum().max()
-                st.caption(
-                    f"🔺 Dia mais crítico: **{pd.to_datetime(dia_pico).strftime('%d/%m/%Y')}** "
-                    f"com **{int(qtd_pico)}** incidentes totais"
-                )
+            st.caption("🟡 Hoje marcado em dourado &nbsp;|&nbsp; Tamanho da bolha = nº de incidentes")
+    else:
+        st.info("Nenhum dado disponível para gráficos.")
 
 # --- ABA 5: Dados Detalhados ---
 with tab_dados:
-    st.subheader("Registros Filtrados")
+    st.subheader("📋 Tabela de Incidentes")
     if not df_filtered.empty:
-        df_display = df_filtered.copy()
-        if 'lat' in df_display.columns and 'lon' in df_display.columns:
-            df_display['Google Maps'] = df_display.apply(
-                lambda x: f"https://www.google.com/maps?q={x.get('lat',0)},{x.get('lon',0)}", axis=1
-            )
-        cols_show = [c for c in ['timestamp','type','subtype','street','Google Maps'] if c in df_display.columns]
-        st.dataframe(
-            df_display[cols_show].sort_values('timestamp', ascending=False),
-            column_config={
-                "timestamp":   st.column_config.DatetimeColumn("Horário (Foz)", format="DD/MM HH:mm"),
-                "type":        "Tipo",
-                "subtype":     "Subtipo",
-                "street":      "Rua",
-                "Google Maps": st.column_config.LinkColumn("📍 Ver no Maps"),
-            },
-            use_container_width=True,
-            hide_index=True
-        )
-        csv = df_display[cols_show].to_csv(index=False).encode('utf-8')
-        st.download_button("⬇️ Baixar CSV", csv, "alertas_foz.csv", "text/csv")
+        colunas_exibir = [c for c in ['timestamp','type','subtype','street','lat','lon','confidence','reportRating'] if c in df_filtered.columns]
+        st.dataframe(df_filtered[colunas_exibir].sort_values('timestamp', ascending=False), use_container_width=True)
+        csv = df_filtered[colunas_exibir].to_csv(index=False).encode('utf-8')
+        st.download_button("⬇️ Baixar CSV — Incidentes", data=csv,
+                           file_name=f"incidentes_{selected_date}.csv", mime="text/csv")
     else:
-        st.info("Nenhum registro com os filtros aplicados.")
+        st.info("Nenhum dado disponível.")
+
+    st.subheader("📋 Tabela de Congestionamentos")
+    if not df_jams_filtered.empty:
+        colunas_jams = [c for c in ['timestamp','street','speed','length','delay','type','subtype','lat','lon'] if c in df_jams_filtered.columns]
+        df_jams_show = df_jams_filtered[colunas_jams].copy()
+        if 'speed' in df_jams_show.columns:
+            df_jams_show['speed_kmh'] = (df_jams_show['speed'] * 3.6).round(1)
+        st.dataframe(df_jams_show.sort_values('timestamp', ascending=False), use_container_width=True)
+        csv_jams = df_jams_show.to_csv(index=False).encode('utf-8')
+        st.download_button("⬇️ Baixar CSV — Congestionamentos", data=csv_jams,
+                           file_name=f"jams_{selected_date}.csv", mime="text/csv")
+    else:
+        st.info("Nenhum dado de congestionamento disponível.")
 
 # =============================================
-# 23. RODAPÉ
+# 23. RODAPÉ — CRÉDITOS INSTITUCIONAIS
 # =============================================
 st.markdown("---")
-st.info("💡 Passe o mouse sobre os mapas para ver coordenadas em tempo real no canto superior direito.")
-st.caption(
-    f"Fonte: Google Drive | "
-    f"Hora Foz: {hora_foz_atual.strftime('%H:%M')} (UTC-3) | "
-    f"Atualizações manuais: {st.session_state.manual_refreshes} | "
-    f"App online há {tempo_total // 60} min"
-)
+st.markdown(f"""
+<div style="
+    background: linear-gradient(135deg,
+        rgba(15,23,42,0.98) 0%,
+        rgba(17,24,39,0.95) 100%);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 16px;
+    padding: 2rem 2.5rem;
+    margin-top: 1rem;
+    text-align: center;
+    font-family: 'Inter', sans-serif;
+">
+  <div style="font-size:1.4rem;font-weight:800;color:#f1f5f9;margin-bottom:0.25rem;">
+      🚗 GEO_IA — Monitoramento de Tráfego
+  </div>
+  <div style="font-size:0.82rem;color:#64748b;margin-bottom:1.5rem;">
+      Sistema de análise de incidentes e congestionamentos via dados Waze · Foz do Iguaçu, PR
+  </div>
+
+  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.5rem;"></div>
+
+  <div style="margin-bottom:1.2rem;">
+    <div style="font-size:1rem;font-weight:700;color:#f1f5f9;margin-bottom:0.2rem;">
+        🏛️ UNILA — Universidade Federal da Integração Latino-Americana
+    </div>
+    <div style="font-size:0.78rem;color:#64748b;">
+        Foz do Iguaçu, Paraná · Brasil
+    </div>
+  </div>
+
+  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.5rem;"></div>
+
+  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.9rem;
+              text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
+      Grupos &amp; Laboratórios de Pesquisa
+  </div>
+  <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+
+    <div style="text-align:center;">
+      <div style="font-size:1rem;font-weight:700;color:#60a5fa;margin-bottom:0.2rem;">
+          🔬 GPMME
+      </div>
+      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">
+          Grupo de Pesquisa em Mobilidade<br>e Matriz Energética
+      </div>
+    </div>
+
+    <div style="width:1px;background:rgba(255,255,255,0.08);align-self:stretch;margin:0 0.25rem;"></div>
+
+    <div style="text-align:center;">
+      <div style="font-size:1rem;font-weight:700;color:#34d399;margin-bottom:0.2rem;">
+          🧪 LAGGRA
+      </div>
+      <div style="font-size:0.78rem;color:#94a3b8;max-width:220px;line-height:1.5;">
+          Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental
+      </div>
+    </div>
+
+    <div style="width:1px;background:rgba(255,255,255,0.08);align-self:stretch;margin:0 0.25rem;"></div>
+
+    <div style="text-align:center;">
+      <div style="font-size:1rem;font-weight:700;color:#f472b6;margin-bottom:0.2rem;">
+          💻 LACA
+      </div>
+      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">
+          Laboratório de<br>Computação Aplicada
+      </div>
+    </div>
+
+  </div>
+
+  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.2rem;"></div>
+
+  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.5rem;
+              text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
+      Equipe de Desenvolvimento
+  </div>
+  <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.2rem;">
+    <span style="font-size:0.82rem;color:#94a3b8;">
+        👨‍💻 Luis Enrique Santacruz Alvarez
+    </span>
+    <span style="font-size:0.82rem;color:#94a3b8;">
+        🎓 Dr. Diego Moraes Flores ILATIT-UNILA.
+    </span>
+  </div>
+
+  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1rem;"></div>
+
+  <div style="
+      display:flex;justify-content:center;align-items:center;
+      gap:1.5rem;flex-wrap:wrap;
+      font-size:0.73rem;color:#334155;
+  ">
+    <span>📡 Fonte: <strong style="color:#475569;">Waze for Cities</strong></span>
+    <span>·</span>
+    <span>🐍 Python · Streamlit · Folium · Plotly</span>
+    <span>·</span>
+    <span>☁️ Google Drive API</span>
+    <span>·</span>
+    <span>🕐 {hora_foz_atual.strftime('%d/%m/%Y %H:%M')} (Foz · UTC-3)</span>
+  </div>
+
+  <div style="margin-top:0.75rem;font-size:0.68rem;color:#1e293b;">
+      © {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa
+  </div>
+</div>
+""", unsafe_allow_html=True)
+                            
