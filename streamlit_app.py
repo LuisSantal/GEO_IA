@@ -1021,6 +1021,7 @@ st.markdown(f"""
   ">
       <span>🔬 <strong style="color:#64748b;">GPMME</strong> — Grupo de Pesquisa em Mobilidade e Matriz Energética</span>
       <span>🧪 <strong style="color:#64748b;">LAGGRA</strong> — Lab. de Geologia, Geotecnia e Recuperação Ambiental</span>
+      <span>💻 <strong style="color:#64748b;">LACA</strong> — Laboratório deComputação Aplicada</span>
       <span style="margin-left:auto; color:#334155;">UNILA · FOZ DO IGUAÇU</span>
   </div>
 </div>
