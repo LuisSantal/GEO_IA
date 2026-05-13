@@ -1132,247 +1132,59 @@ st.subheader("📈 Indicadores de Gravidade")
 
 if incidentes_dia >= 15:
     nivel_risco = "Crítico"
-    cor_risco = "#dc2626"
-    bg_risco = "#fef2f2"
-    borda_risco = "#fecaca"
+    emoji_risco = "🔴"
     desc_risco = "Volume muito alto de incidentes no período filtrado."
 elif incidentes_dia >= 10:
     nivel_risco = "Alto"
-    cor_risco = "#ea580c"
-    bg_risco = "#fff7ed"
-    borda_risco = "#fed7aa"
+    emoji_risco = "🟠"
     desc_risco = "Quantidade elevada de ocorrências; atenção operacional recomendada."
 elif incidentes_dia >= 5:
     nivel_risco = "Moderado"
-    cor_risco = "#ca8a04"
-    bg_risco = "#fefce8"
-    borda_risco = "#fde68a"
+    emoji_risco = "🟡"
     desc_risco = "Ocorrências acima do nível de normalidade para o recorte atual."
 else:
     nivel_risco = "Baixo"
-    cor_risco = "#16a34a"
-    bg_risco = "#f0fdf4"
-    borda_risco = "#bbf7d0"
+    emoji_risco = "🟢"
     desc_risco = "Baixa pressão operacional no período filtrado."
 
 if v_media_kmh < 20:
     status_fluxo = "Travado"
-    cor_fluxo = "#dc2626"
-    bg_fluxo = "#fef2f2"
-    borda_fluxo = "#fecaca"
+    emoji_fluxo = "🔴"
     desc_fluxo = "Fluxo muito comprometido, com forte retenção nas vias."
 elif v_media_kmh < 40:
     status_fluxo = "Lento"
-    cor_fluxo = "#f97316"
-    bg_fluxo = "#fff7ed"
-    borda_fluxo = "#fdba74"
+    emoji_fluxo = "🟠"
     desc_fluxo = "Tráfego com perda relevante de fluidez."
 elif v_media_kmh < 60:
     status_fluxo = "Moderado"
-    cor_fluxo = "#eab308"
-    bg_fluxo = "#fefce8"
-    borda_fluxo = "#fde68a"
+    emoji_fluxo = "🟡"
     desc_fluxo = "Fluxo estável, mas com redução perceptível de velocidade."
 else:
     status_fluxo = "Fluindo"
-    cor_fluxo = "#16a34a"
-    bg_fluxo = "#f0fdf4"
-    borda_fluxo = "#bbf7d0"
+    emoji_fluxo = "🟢"
     desc_fluxo = "Boas condições de circulação no recorte selecionado."
 
 col_grav, col_vel = st.columns(2)
 
 with col_grav:
-    st.markdown(
-        f"""
-        <div style="
-            background:{bg_risco};
-            border:1px solid {borda_risco};
-            border-left:6px solid {cor_risco};
-            border-radius:16px;
-            padding:1.2rem 1.25rem;
-            min-height:220px;
-            box-shadow:0 1px 4px rgba(0,0,0,0.04);
-        ">
-            <div style="
-                font-size:0.78rem;
-                font-weight:700;
-                text-transform:uppercase;
-                letter-spacing:0.8px;
-                color:#64748b;
-                margin-bottom:0.5rem;
-            ">
-                Risco operacional
-            </div>
-
-            <div style="
-                font-size:2rem;
-                font-weight:800;
-                color:{cor_risco};
-                line-height:1.1;
-                margin-bottom:0.35rem;
-            ">
-                {nivel_risco}
-            </div>
-
-            <div style="
-                font-size:0.98rem;
-                font-weight:600;
-                color:#0f172a;
-                margin-bottom:0.35rem;
-            ">
-                {incidentes_dia} incidente(s) no período filtrado
-            </div>
-
-            <div style="
-                font-size:0.88rem;
-                color:#475569;
-                line-height:1.55;
-                margin-bottom:0.9rem;
-            ">
-                {desc_risco}
-            </div>
-
-            <div style="
-                display:flex;
-                gap:0.5rem;
-                flex-wrap:wrap;
-                margin-bottom:0.9rem;
-            ">
-                <span style="
-                    background:white;
-                    border:1px solid {borda_risco};
-                    border-radius:999px;
-                    padding:0.32rem 0.7rem;
-                    font-size:0.78rem;
-                    color:#334155;
-                    font-weight:600;
-                ">
-                    🚨 Acidentes: {acidentes_graves}
-                </span>
-                <span style="
-                    background:white;
-                    border:1px solid {borda_risco};
-                    border-radius:999px;
-                    padding:0.32rem 0.7rem;
-                    font-size:0.78rem;
-                    color:#334155;
-                    font-weight:600;
-                ">
-                    {status_via}
-                </span>
-            </div>
-
-            <div style="
-                background:rgba(255,255,255,0.65);
-                border:1px dashed {borda_risco};
-                border-radius:10px;
-                padding:0.65rem 0.8rem;
-                font-size:0.8rem;
-                color:#64748b;
-            ">
-                Faixas: 0–4 = Baixo · 5–9 = Moderado · 10–14 = Alto · 15+ = Crítico
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with st.container(border=True):
+        st.markdown(f"### {emoji_risco} Risco operacional")
+        st.metric("Classificação", nivel_risco)
+        st.metric("Incidentes no período", incidentes_dia)
+        st.caption(desc_risco)
+        st.write(f"🚨 Acidentes: **{acidentes_graves}**")
+        st.write(f"📍 Status geral: **{status_via}**")
+        st.caption("Faixas: 0–4 = Baixo · 5–9 = Moderado · 10–14 = Alto · 15+ = Crítico")
 
 with col_vel:
-    st.markdown(
-        f"""
-        <div style="
-            background:{bg_fluxo};
-            border:1px solid {borda_fluxo};
-            border-left:6px solid {cor_fluxo};
-            border-radius:16px;
-            padding:1.2rem 1.25rem;
-            min-height:220px;
-            box-shadow:0 1px 4px rgba(0,0,0,0.04);
-        ">
-            <div style="
-                font-size:0.78rem;
-                font-weight:700;
-                text-transform:uppercase;
-                letter-spacing:0.8px;
-                color:#64748b;
-                margin-bottom:0.5rem;
-            ">
-                Condição do tráfego
-            </div>
-
-            <div style="
-                font-size:2rem;
-                font-weight:800;
-                color:{cor_fluxo};
-                line-height:1.1;
-                margin-bottom:0.35rem;
-            ">
-                {status_fluxo}
-            </div>
-
-            <div style="
-                font-size:0.98rem;
-                font-weight:600;
-                color:#0f172a;
-                margin-bottom:0.35rem;
-            ">
-                Velocidade média de {v_media_kmh:.1f} km/h
-            </div>
-
-            <div style="
-                font-size:0.88rem;
-                color:#475569;
-                line-height:1.55;
-                margin-bottom:0.9rem;
-            ">
-                {desc_fluxo}
-            </div>
-
-            <div style="
-                display:flex;
-                gap:0.5rem;
-                flex-wrap:wrap;
-                margin-bottom:0.9rem;
-            ">
-                <span style="
-                    background:white;
-                    border:1px solid {borda_fluxo};
-                    border-radius:999px;
-                    padding:0.32rem 0.7rem;
-                    font-size:0.78rem;
-                    color:#334155;
-                    font-weight:600;
-                ">
-                    🚗 Média: {v_media_kmh:.1f} km/h
-                </span>
-                <span style="
-                    background:white;
-                    border:1px solid {borda_fluxo};
-                    border-radius:999px;
-                    padding:0.32rem 0.7rem;
-                    font-size:0.78rem;
-                    color:#334155;
-                    font-weight:600;
-                ">
-                    📍 Jams: {len(df_jams_filtered)}
-                </span>
-            </div>
-
-            <div style="
-                background:rgba(255,255,255,0.65);
-                border:1px dashed {borda_fluxo};
-                border-radius:10px;
-                padding:0.65rem 0.8rem;
-                font-size:0.8rem;
-                color:#64748b;
-            ">
-                Faixas: &lt;20 = Travado · 20–39 = Lento · 40–59 = Moderado · 60+ = Fluindo
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with st.container(border=True):
+        st.markdown(f"### {emoji_fluxo} Condição do tráfego")
+        st.metric("Classificação", status_fluxo)
+        st.metric("Velocidade média", f"{v_media_kmh:.1f} km/h")
+        st.caption(desc_fluxo)
+        st.write(f"🚗 Média observada: **{v_media_kmh:.1f} km/h**")
+        st.write(f"📍 Total de jams: **{len(df_jams_filtered)}**")
+        st.caption("Faixas: <20 = Travado · 20–39 = Lento · 40–59 = Moderado · 60+ = Fluindo")
 
 st.caption(
     "Os indicadores acima resumem o comportamento do período filtrado: "
@@ -1381,7 +1193,6 @@ st.caption(
 )
 
 st.markdown("---")
-
 # =============================================
 # 22. ABAS DE VISUALIZAÇÃO
 # =============================================
