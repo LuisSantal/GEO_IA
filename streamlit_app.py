@@ -1116,7 +1116,10 @@ st.markdown("---")
 # =============================================
 # 21. INDICADORES DE GRAVIDADE
 # =============================================
-st.subheader("Indicadores de Gravidade")
+# =============================================
+# 21. INDICADORES DE GRAVIDADE
+# =============================================
+st.subheader("📈 Indicadores de Gravidade")
 
 # -----------------------------
 # Classificação do risco operacional
@@ -1149,19 +1152,19 @@ else:
 # -----------------------------
 # Classificação da condição do tráfego
 # -----------------------------
-if vmedia_kmh < 20:
+if v_media_kmh < 20:
     status_fluxo = "Travado"
     cor_fluxo = "#dc2626"
     bg_fluxo = "#fef2f2"
     borda_fluxo = "#fecaca"
     desc_fluxo = "Fluxo muito comprometido, com forte retenção nas vias."
-elif vmedia_kmh < 40:
+elif v_media_kmh < 40:
     status_fluxo = "Lento"
     cor_fluxo = "#f97316"
     bg_fluxo = "#fff7ed"
     borda_fluxo = "#fdba74"
     desc_fluxo = "Tráfego com perda relevante de fluidez."
-elif vmedia_kmh < 60:
+elif v_media_kmh < 60:
     status_fluxo = "Moderado"
     cor_fluxo = "#eab308"
     bg_fluxo = "#fefce8"
@@ -1174,9 +1177,9 @@ else:
     borda_fluxo = "#bbf7d0"
     desc_fluxo = "Boas condições de circulação no recorte selecionado."
 
-colgrav, colvel = st.columns(2)
+col_grav, col_vel = st.columns(2)
 
-with colgrav:
+with col_grav:
     st.markdown(
         f"""
         <div style="
@@ -1185,7 +1188,7 @@ with colgrav:
             border-left:6px solid {cor_risco};
             border-radius:16px;
             padding:1.2rem 1.25rem;
-            min-height:210px;
+            min-height:220px;
             box-shadow:0 1px 4px rgba(0,0,0,0.04);
         ">
             <div style="
@@ -1228,6 +1231,36 @@ with colgrav:
             </div>
 
             <div style="
+                display:flex;
+                gap:0.5rem;
+                flex-wrap:wrap;
+                margin-bottom:0.9rem;
+            ">
+                <span style="
+                    background:white;
+                    border:1px solid {borda_risco};
+                    border-radius:999px;
+                    padding:0.32rem 0.7rem;
+                    font-size:0.78rem;
+                    color:#334155;
+                    font-weight:600;
+                ">
+                    🚨 Acidentes: {acidentes_graves}
+                </span>
+                <span style="
+                    background:white;
+                    border:1px solid {borda_risco};
+                    border-radius:999px;
+                    padding:0.32rem 0.7rem;
+                    font-size:0.78rem;
+                    color:#334155;
+                    font-weight:600;
+                ">
+                    {status_via}
+                </span>
+            </div>
+
+            <div style="
                 background:rgba(255,255,255,0.65);
                 border:1px dashed {borda_risco};
                 border-radius:10px;
@@ -1242,7 +1275,7 @@ with colgrav:
         unsafe_allow_html=True
     )
 
-with colvel:
+with col_vel:
     st.markdown(
         f"""
         <div style="
@@ -1251,7 +1284,7 @@ with colvel:
             border-left:6px solid {cor_fluxo};
             border-radius:16px;
             padding:1.2rem 1.25rem;
-            min-height:210px;
+            min-height:220px;
             box-shadow:0 1px 4px rgba(0,0,0,0.04);
         ">
             <div style="
@@ -1281,7 +1314,7 @@ with colvel:
                 color:#0f172a;
                 margin-bottom:0.35rem;
             ">
-                Velocidade média de {vmedia_kmh:.1f} km/h
+                Velocidade média de {v_media_kmh:.1f} km/h
             </div>
 
             <div style="
@@ -1291,6 +1324,36 @@ with colvel:
                 margin-bottom:0.9rem;
             ">
                 {desc_fluxo}
+            </div>
+
+            <div style="
+                display:flex;
+                gap:0.5rem;
+                flex-wrap:wrap;
+                margin-bottom:0.9rem;
+            ">
+                <span style="
+                    background:white;
+                    border:1px solid {borda_fluxo};
+                    border-radius:999px;
+                    padding:0.32rem 0.7rem;
+                    font-size:0.78rem;
+                    color:#334155;
+                    font-weight:600;
+                ">
+                    🚗 Média: {v_media_kmh:.1f} km/h
+                </span>
+                <span style="
+                    background:white;
+                    border:1px solid {borda_fluxo};
+                    border-radius:999px;
+                    padding:0.32rem 0.7rem;
+                    font-size:0.78rem;
+                    color:#334155;
+                    font-weight:600;
+                ">
+                    📍 Jams: {len(df_jams_filtered)}
+                </span>
             </div>
 
             <div style="
