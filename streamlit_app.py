@@ -1119,11 +1119,11 @@ st.markdown("---")
 # =============================================
 # 21. INDICADORES DE GRAVIDADE
 # =============================================
+# =============================================
+# 21. INDICADORES DE GRAVIDADE
+# =============================================
 st.subheader("📈 Indicadores de Gravidade")
 
-# -----------------------------
-# Classificação do risco operacional
-# -----------------------------
 if incidentes_dia >= 15:
     nivel_risco = "Crítico"
     cor_risco = "#dc2626"
@@ -1149,9 +1149,6 @@ else:
     borda_risco = "#bbf7d0"
     desc_risco = "Baixa pressão operacional no período filtrado."
 
-# -----------------------------
-# Classificação da condição do tráfego
-# -----------------------------
 if v_media_kmh < 20:
     status_fluxo = "Travado"
     cor_fluxo = "#dc2626"
