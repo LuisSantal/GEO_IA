@@ -1116,43 +1116,203 @@ st.markdown("---")
 # =============================================
 # 21. INDICADORES DE GRAVIDADE
 # =============================================
-st.subheader("📈 Indicadores de Gravidade")
-col_grav, col_vel = st.columns(2)
+st.subheader("Indicadores de Gravidade")
 
-gravidade = min(75, incidentes_dia * 5)
-cor_grav  = '#FF0000' if gravidade >= 75 else ('#FF8800' if gravidade >= 50 else ('#FFDD00' if gravidade >= 25 else '#00AA00'))
+# -----------------------------
+# Classificação do risco operacional
+# -----------------------------
+if incidentes_dia >= 15:
+    nivel_risco = "Crítico"
+    cor_risco = "#dc2626"
+    bg_risco = "#fef2f2"
+    borda_risco = "#fecaca"
+    desc_risco = "Volume muito alto de incidentes no período filtrado."
+elif incidentes_dia >= 10:
+    nivel_risco = "Alto"
+    cor_risco = "#ea580c"
+    bg_risco = "#fff7ed"
+    borda_risco = "#fed7aa"
+    desc_risco = "Quantidade elevada de ocorrências; atenção operacional recomendada."
+elif incidentes_dia >= 5:
+    nivel_risco = "Moderado"
+    cor_risco = "#ca8a04"
+    bg_risco = "#fefce8"
+    borda_risco = "#fde68a"
+    desc_risco = "Ocorrências acima do nível de normalidade para o recorte atual."
+else:
+    nivel_risco = "Baixo"
+    cor_risco = "#16a34a"
+    bg_risco = "#f0fdf4"
+    borda_risco = "#bbf7d0"
+    desc_risco = "Baixa pressão operacional no período filtrado."
 
-with col_grav:
-    fig_grav = px.bar_polar(
-        r=[gravidade], theta=[0], range_r=[0, 100],
-        color_discrete_sequence=[cor_grav]
-    )
-    fig_grav.update_layout(
-        title=f"🚨 Gravidade: {incidentes_dia} incidentes",
-        polar=dict(
-            radialaxis=dict(range=[0, 100], showticklabels=False),
-            angularaxis=dict(showticklabels=False)
-        ),
-        showlegend=False, height=220
-    )
-    st.plotly_chart(fig_grav, use_container_width=True)
+# -----------------------------
+# Classificação da condição do tráfego
+# -----------------------------
+if vmedia_kmh < 20:
+    status_fluxo = "Travado"
+    cor_fluxo = "#dc2626"
+    bg_fluxo = "#fef2f2"
+    borda_fluxo = "#fecaca"
+    desc_fluxo = "Fluxo muito comprometido, com forte retenção nas vias."
+elif vmedia_kmh < 40:
+    status_fluxo = "Lento"
+    cor_fluxo = "#f97316"
+    bg_fluxo = "#fff7ed"
+    borda_fluxo = "#fdba74"
+    desc_fluxo = "Tráfego com perda relevante de fluidez."
+elif vmedia_kmh < 60:
+    status_fluxo = "Moderado"
+    cor_fluxo = "#eab308"
+    bg_fluxo = "#fefce8"
+    borda_fluxo = "#fde68a"
+    desc_fluxo = "Fluxo estável, mas com redução perceptível de velocidade."
+else:
+    status_fluxo = "Fluindo"
+    cor_fluxo = "#16a34a"
+    bg_fluxo = "#f0fdf4"
+    borda_fluxo = "#bbf7d0"
+    desc_fluxo = "Boas condições de circulação no recorte selecionado."
 
-cor_vel = 'green' if v_media_kmh > 40 else ('yellow' if v_media_kmh > 20 else 'red')
+colgrav, colvel = st.columns(2)
 
-with col_vel:
-    fig_vel = px.bar_polar(
-        r=[v_media_kmh], theta=[0], range_r=[0, 80],
-        color_discrete_sequence=[cor_vel]
+with colgrav:
+    st.markdown(
+        f"""
+        <div style="
+            background:{bg_risco};
+            border:1px solid {borda_risco};
+            border-left:6px solid {cor_risco};
+            border-radius:16px;
+            padding:1.2rem 1.25rem;
+            min-height:210px;
+            box-shadow:0 1px 4px rgba(0,0,0,0.04);
+        ">
+            <div style="
+                font-size:0.78rem;
+                font-weight:700;
+                text-transform:uppercase;
+                letter-spacing:0.8px;
+                color:#64748b;
+                margin-bottom:0.5rem;
+            ">
+                Risco operacional
+            </div>
+
+            <div style="
+                font-size:2rem;
+                font-weight:800;
+                color:{cor_risco};
+                line-height:1.1;
+                margin-bottom:0.35rem;
+            ">
+                {nivel_risco}
+            </div>
+
+            <div style="
+                font-size:0.98rem;
+                font-weight:600;
+                color:#0f172a;
+                margin-bottom:0.35rem;
+            ">
+                {incidentes_dia} incidente(s) no período filtrado
+            </div>
+
+            <div style="
+                font-size:0.88rem;
+                color:#475569;
+                line-height:1.55;
+                margin-bottom:0.9rem;
+            ">
+                {desc_risco}
+            </div>
+
+            <div style="
+                background:rgba(255,255,255,0.65);
+                border:1px dashed {borda_risco};
+                border-radius:10px;
+                padding:0.65rem 0.8rem;
+                font-size:0.8rem;
+                color:#64748b;
+            ">
+                Faixas: 0–4 = Baixo · 5–9 = Moderado · 10–14 = Alto · 15+ = Crítico
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
-    fig_vel.update_layout(
-        title=f"🚗 Velocidade Média: {v_media_kmh:.1f} km/h",
-        polar=dict(
-            radialaxis=dict(range=[0, 80], showticklabels=False),
-            angularaxis=dict(showticklabels=False)
-        ),
-        showlegend=False, height=220
+
+with colvel:
+    st.markdown(
+        f"""
+        <div style="
+            background:{bg_fluxo};
+            border:1px solid {borda_fluxo};
+            border-left:6px solid {cor_fluxo};
+            border-radius:16px;
+            padding:1.2rem 1.25rem;
+            min-height:210px;
+            box-shadow:0 1px 4px rgba(0,0,0,0.04);
+        ">
+            <div style="
+                font-size:0.78rem;
+                font-weight:700;
+                text-transform:uppercase;
+                letter-spacing:0.8px;
+                color:#64748b;
+                margin-bottom:0.5rem;
+            ">
+                Condição do tráfego
+            </div>
+
+            <div style="
+                font-size:2rem;
+                font-weight:800;
+                color:{cor_fluxo};
+                line-height:1.1;
+                margin-bottom:0.35rem;
+            ">
+                {status_fluxo}
+            </div>
+
+            <div style="
+                font-size:0.98rem;
+                font-weight:600;
+                color:#0f172a;
+                margin-bottom:0.35rem;
+            ">
+                Velocidade média de {vmedia_kmh:.1f} km/h
+            </div>
+
+            <div style="
+                font-size:0.88rem;
+                color:#475569;
+                line-height:1.55;
+                margin-bottom:0.9rem;
+            ">
+                {desc_fluxo}
+            </div>
+
+            <div style="
+                background:rgba(255,255,255,0.65);
+                border:1px dashed {borda_fluxo};
+                border-radius:10px;
+                padding:0.65rem 0.8rem;
+                font-size:0.8rem;
+                color:#64748b;
+            ">
+                Faixas: &lt;20 = Travado · 20–39 = Lento · 40–59 = Moderado · 60+ = Fluindo
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
-    st.plotly_chart(fig_vel, use_container_width=True)
+
+st.caption(
+    "Os indicadores acima resumem o comportamento do período filtrado: "
+    "o risco operacional considera o volume de incidentes, enquanto a condição do tráfego "
+    "é baseada na velocidade média observada nos congestionamentos."
+)
 
 st.markdown("---")
 
