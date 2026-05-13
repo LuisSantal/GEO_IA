@@ -1032,7 +1032,35 @@ st.markdown(f"""
 }}
 </style>
 """, unsafe_allow_html=True)
-
+st.markdown("""
+<div style="
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3b82f6;
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+">
+    <div style="
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.35rem;
+    ">
+        Sobre este dashboard
+    </div>
+    <div style="
+        font-size: 0.88rem;
+        line-height: 1.6;
+        color: #475569;
+    ">
+        Este dashboard apresenta o monitoramento de incidentes viários e congestionamentos em Foz do Iguaçu com base em dados do Waze.
+        Os painéis reúnem mapas, filtros e indicadores para apoiar a análise espacial, temporal e histórica da mobilidade urbana.
+        Os dados são atualizados periodicamente e podem ser explorados por tipo de ocorrência, via, horário e intensidade do tráfego.
+    </div>
+</div>
+""", unsafe_allow_html=True)
 # =============================================
 # 19. RESUMO DOS FILTROS ATIVOS
 # =============================================
