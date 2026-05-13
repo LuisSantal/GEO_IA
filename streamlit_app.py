@@ -1096,27 +1096,35 @@ st.markdown("---")
 st.subheader("📊 Resumo Estatístico")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-incidentes_dia   = len(df_filtered)
-acidentes_graves = len(df_filtered[df_filtered['type'] == 'ACIDENTE']) if not df_filtered.empty else 0
-      = (
-    df_jams_filtered['speed'].mean() * 3.6
-    if not df_jams_filtered.empty
-    and 'speed' in df_jams_filtered.columns
-    and df_jams_filtered['speed'].notna().any()
+incidentes_dia = len(df_filtered)
+
+acidentes_graves = (
+    len(df_filtered[df_filtered["type"] == "ACIDENTE"])
+    if not df_filtered.empty
     else 0
 )
-status_via = "🚫 Crítico" if incidentes_dia > 15 else ("⚠️ Moderado" if incidentes_dia > 5 else "✅ Normal")
+
+v_media_kmh = (
+    df_jams_filtered["speed"].mean() * 3.6
+    if not df_jams_filtered.empty
+    and "speed" in df_jams_filtered.columns
+    and df_jams_filtered["speed"].notna().any()
+    else 0
+)
+
+status_via = (
+    "🚫 Crítico" if incidentes_dia > 15
+    else "⚠️ Moderado" if incidentes_dia > 5
+    else "✅ Normal"
+)
 
 kpi1.metric("Total Alertas", incidentes_dia)
-kpi2.metric("Acidentes",     acidentes_graves)
-kpi3.metric("Vel. Média",    f"{:.1f} km/h")
+kpi2.metric("Acidentes", acidentes_graves)
+kpi3.metric("Vel. Média", f"{v_media_kmh:.1f} km/h")
 kpi4.metric("Status da Via", status_via)
+
 st.markdown("---")
 
-
-# =============================================
-# 21. INDICADORES DE GRAVIDADE
-# =============================================
 # =============================================
 # 21. INDICADORES DE GRAVIDADE
 # =============================================
