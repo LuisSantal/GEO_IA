@@ -788,7 +788,7 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
             df_ref['date'] = df_ref['timestamp'].dt.date
 
 # =============================================
-# 16. FILTROS NA SIDEBAR — CASCATA INTELIGENTE
+# 16. FILTROS NA SIDEBAR — FILTRO MESTRE DE DATA
 # =============================================
 st.sidebar.subheader("🔍 Filtros")
 today_foz = hora_foz_atual.date()
@@ -800,8 +800,8 @@ if not df_jams_raw.empty:
     all_dates.update(pd.to_datetime(df_jams_raw["date"]).dt.date.unique())
 
 if all_dates:
-    min_date     = min(all_dates)
-    max_date     = max(all_dates)
+    min_date = min(all_dates)
+    max_date = max(all_dates)
     default_date = today_foz if today_foz in all_dates else max_date
 else:
     min_date = max_date = default_date = today_foz
@@ -815,100 +815,113 @@ selected_date = st.sidebar.date_input(
 
 hora_range = st.sidebar.slider("🕐 Horário", 0, 23, (0, 23))
 
-tipos_na_data = []
+# ---------- Alertas disponíveis na data ----------
+alerts_date_base = pd.DataFrame()
 if not df_alerts_raw.empty:
-    tipos_na_data = sorted(
-        df_alerts_raw.loc[df_alerts_raw["date"] == selected_date, "type"]
-        .dropna().unique().tolist()
-    )
-if not tipos_na_data:
-    tipos_na_data = sorted(df_alerts_raw["type"].dropna().unique().tolist()) if not df_alerts_raw.empty else []
+    alerts_date_base = df_alerts_raw[
+        (df_alerts_raw["date"] == selected_date) &
+        (df_alerts_raw["hour"].between(hora_range[0], hora_range[1]))
+    ].copy()
+
+tipos_na_data = sorted(
+    alerts_date_base["type"].dropna().unique().tolist()
+) if not alerts_date_base.empty and "type" in alerts_date_base.columns else []
 
 filtro_tipo = st.sidebar.multiselect(
-    "⚠️ Tipo de Ocorrência",
+    "🚨 Tipo",
     options=tipos_na_data,
     default=tipos_na_data,
 )
 
-naturezas_na_data = []
-if not df_alerts_raw.empty and "subtype" in df_alerts_raw.columns:
-    mask_natureza = (df_alerts_raw["date"] == selected_date)
-    if filtro_tipo:
-        mask_natureza &= df_alerts_raw["type"].isin(filtro_tipo)
-    naturezas_na_data = sorted(
-        df_alerts_raw.loc[mask_natureza, "subtype"]
-        .dropna()
-        .loc[lambda s: ~s.isin(["nan", ""])]
-        .unique().tolist()
-    )
+natureza_base = alerts_date_base.copy()
+if filtro_tipo and "type" in natureza_base.columns:
+    natureza_base = natureza_base[natureza_base["type"].isin(filtro_tipo)]
+
+naturezas_na_data = sorted(
+    natureza_base["subtype"]
+    .dropna()
+    .loc[lambda s: ~s.isin(["nan", ""])]
+    .unique()
+    .tolist()
+) if not natureza_base.empty and "subtype" in natureza_base.columns else []
 
 filtro_natureza = st.sidebar.multiselect(
-    "🔍 Natureza da Ocorrência",
+    "🔍 Natureza",
     options=naturezas_na_data,
     default=naturezas_na_data,
 )
 
-ruas_na_data = []
-if not df_alerts_raw.empty and "street" in df_alerts_raw.columns:
-    mask_rua = (
-        (df_alerts_raw["date"] == selected_date) &
-        (df_alerts_raw["street"].notna()) &
-        (~df_alerts_raw["street"].isin(["NA", "nan", ""]))
-    )
-    if filtro_tipo:
-        mask_rua &= df_alerts_raw["type"].isin(filtro_tipo)
-    ruas_na_data = sorted(df_alerts_raw.loc[mask_rua, "street"].unique().tolist())
+rua_base = natureza_base.copy()
+if filtro_natureza and "subtype" in rua_base.columns:
+    rua_base = rua_base[rua_base["subtype"].isin(filtro_natureza)]
+
+ruas_na_data = sorted(
+    rua_base["street"]
+    .dropna()
+    .loc[lambda s: ~s.isin(["NA", "nan", ""])]
+    .unique()
+    .tolist()
+) if not rua_base.empty and "street" in rua_base.columns else []
 
 filtro_rua = st.sidebar.selectbox(
-    "🛣️ Rua / Via",
+    "🛣️ Rua",
     options=["(Todas)"] + ruas_na_data,
     index=0,
 )
 filtro_rua = "" if filtro_rua == "(Todas)" else filtro_rua
 
+# ---------- Jams disponíveis na data ----------
+jams_date_base = pd.DataFrame()
+if not df_jams_raw.empty:
+    jams_date_base = df_jams_raw[
+        (df_jams_raw["date"] == selected_date) &
+        (df_jams_raw["hour"].between(hora_range[0], hora_range[1]))
+    ].copy()
+
 vel_min_data, vel_max_data = 0.0, 120.0
-if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
-    speeds_na_data = df_jams_raw.loc[df_jams_raw["date"] == selected_date, "speed"].dropna()
+if not jams_date_base.empty and "speed" in jams_date_base.columns:
+    speeds_na_data = jams_date_base["speed"].dropna() * 3.6
     if not speeds_na_data.empty:
-        vel_min_data = float((speeds_na_data * 3.6).min())
-        vel_max_data = float((speeds_na_data * 3.6).max())
+        vel_min_data = max(0.0, float(speeds_na_data.min()))
+        vel_max_data = max(5.0, float(speeds_na_data.max()))
 
 vel_range = st.sidebar.slider(
     "🚗 Velocidade (km/h)",
     min_value=0.0,
     max_value=max(120.0, vel_max_data),
-    value=(vel_min_data, min(120.0, vel_max_data)),
+    value=(vel_min_data, max(vel_min_data, min(120.0, vel_max_data))),
     step=5.0,
 )
 
-if not df_jams_raw.empty and "speed" in df_jams_raw.columns:
-    jams_data = df_jams_raw[df_jams_raw["date"] == selected_date]
-    if not jams_data.empty and jams_data["speed"].notna().any():
-        media_vel  = jams_data["speed"].mean() * 3.6
-        total_jams = len(jams_data)
-        status_label = (
-            "🔴 Crítico"  if media_vel < 20 else
-            "🟠 Lento"    if media_vel < 40 else
-            "🟡 Moderado" if media_vel < 60 else
-            "🟢 Fluindo"
-        )
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("**📊 Congestionamentos em** " + selected_date.strftime("%d/%m"))
-        st.sidebar.metric("Vel. Média",    f"{media_vel:.1f} km/h", delta=status_label)
-        st.sidebar.metric("Total de Jams", total_jams)
-    else:
-        st.sidebar.info(f"Sem dados de congestionamento em {selected_date.strftime('%d/%m')}.")
+# ---------- Resumo lateral ----------
+if not jams_date_base.empty and "speed" in jams_date_base.columns and jams_date_base["speed"].notna().any():
+    media_vel = jams_date_base["speed"].mean() * 3.6
+    total_jams = len(jams_date_base)
+    status_label = (
+        "🔴 Crítico" if media_vel < 20 else
+        "🟠 Lento" if media_vel < 40 else
+        "🟡 Moderado" if media_vel < 60 else
+        "🟢 Fluindo"
+    )
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**📊 Congestionamentos em** " + selected_date.strftime("%d/%m"))
+    st.sidebar.metric("Vel. Média", f"{media_vel:.1f} km/h", delta=status_label)
+    st.sidebar.metric("Total de Jams", total_jams)
+else:
+    st.sidebar.info(f"Sem dados de congestionamento em {selected_date.strftime('%d/%m')}.")
 
 # =============================================
-# 17. APLICAÇÃO DOS FILTROS
+# 17. APLICAÇÃO GLOBAL DOS FILTROS — SEM FALLBACK DE DATA
 # =============================================
 df_filtered = pd.DataFrame()
 if not df_alerts_raw.empty:
     df_filtered = df_alerts_raw[
         (df_alerts_raw["date"] == selected_date) &
-        (df_alerts_raw["hour"].between(hora_range[0], hora_range[1])) &
-        (df_alerts_raw["type"].isin(filtro_tipo) if filtro_tipo else True)
+        (df_alerts_raw["hour"].between(hora_range[0], hora_range[1]))
     ].copy()
+
+    if filtro_tipo and "type" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["type"].isin(filtro_tipo)]
 
     if filtro_natureza and "subtype" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["subtype"].isin(filtro_natureza)]
@@ -916,29 +929,23 @@ if not df_alerts_raw.empty:
     if filtro_rua and "street" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["street"] == filtro_rua]
 
-    if df_filtered.empty:
-        st.sidebar.warning("⚠️ Sem dados para essa combinação. Exibindo todos os registros da data.")
-        df_filtered = df_alerts_raw[
-            (df_alerts_raw["date"] == selected_date) &
-            (df_alerts_raw["hour"].between(hora_range[0], hora_range[1]))
-        ].copy()
-
-    if df_filtered.empty:
-        df_filtered = df_alerts_raw[
-            df_alerts_raw["hour"].between(hora_range[0], hora_range[1])
-        ].copy()
-
 df_jams_filtered = pd.DataFrame()
 if not df_jams_raw.empty:
     df_jams_filtered = df_jams_raw[
         (df_jams_raw["date"] == selected_date) &
-        (df_jams_raw["hour"].between(hora_range[0], hora_range[1])) &
-        ((df_jams_raw["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1]))
+        (df_jams_raw["hour"].between(hora_range[0], hora_range[1]))
     ].copy()
-    if df_jams_filtered.empty:
-        df_jams_filtered = df_jams_raw[
-            df_jams_raw["hour"].between(hora_range[0], hora_range[1])
-        ].copy()
+
+    if "speed" in df_jams_filtered.columns:
+        df_jams_filtered = df_jams_filtered[
+            (df_jams_filtered["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1])
+        ]
+
+# =============================================
+# 17b. BASES MESTRES DO DASHBOARD
+# =============================================
+base_alertas_dashboard = df_filtered.copy()
+base_jams_dashboard = df_jams_filtered.copy()
 
 # =============================================
 # 18. CABEÇALHO — Hero Premium
