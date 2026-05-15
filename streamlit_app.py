@@ -1316,85 +1316,119 @@ def build_selection_label(selected_values, total_available, singular_name, plura
 # ---------------------------------------------------------
 st.markdown(f"""
 <div style="
-    background:#FFFFFF;
-    border:1px solid #E2E8F0;
-    border-radius:16px;
-    padding:20px 24px;
-    margin-bottom:16px;
-    box-shadow:0 2px 10px rgba(15,23,42,0.05);
+    background: linear-gradient(135deg,
+        rgba(30,41,59,0.95) 0%,
+        rgba(15,23,42,0.98) 50%,
+        rgba(17,24,39,0.95) 100%);
+    border: 1px solid rgba(59,130,246,0.2);
+    border-radius: 20px;
+    padding: 2rem 2.5rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+">
+  <div style="
+      position:absolute; top:-60px; right:-60px;
+      width:200px; height:200px;
+      background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%);
+      pointer-events:none;
+  "></div>
+  <div style="
+      display:inline-flex; align-items:center; gap:6px;
+      background: rgba(34,197,94,0.12);
+      border: 1px solid rgba(34,197,94,0.25);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #4ade80;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+  ">
+      <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
+                   animation:pulse 2s infinite;display:inline-block;"></span>
+      SISTEMA ATIVO — DADOS REAIS
+  </div>
+  <h1 style="
+      margin: 0 0 0.25rem 0;
+      font-size: clamp(1.4rem, 3vw, 2rem);
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+  ">
+      🚗 Monitoramento de Tráfego
+      <span style="
+          background: linear-gradient(135deg, #3b82f6, #60a5fa);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+      "> — Foz do Iguaçu</span>
+  </h1>
+  <p style="
+      margin: 0.4rem 0 0 0;
+      color: #64748b;
+      font-size: 0.88rem;
+      font-weight: 400;
+  ">
+      📅 {selected_date.strftime('%d/%m/%Y')}
+      &nbsp;·&nbsp;
+      🕐 Hora local: <strong style="color:#94a3b8;">{hora_foz_atual.strftime('%H:%M:%S')}</strong>
+      &nbsp;·&nbsp;
+      🔄 Atualização automática a cada 10 minutos
+  </p>
+  <div style="
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.72rem;
+      color: #475569;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+  ">
+      <span>🔬 <strong style="color:#64748b;">GPMME</strong> — Grupo de Pesquisa em Mobilidade e Matriz Energética</span>
+      <span>🧪 <strong style="color:#64748b;">LAGGRA</strong> — Lab. de Geologia, Geotecnia e Recuperação Ambiental</span>
+      <span>💻 <strong style="color:#64748b;">LACA</strong> — Laboratório deComputação Aplicada</span>
+      <span style="margin-left:auto; color:#334155;">UNILA · FOZ DO IGUAÇU</span>
+  </div>
+</div>
+<style>
+@keyframes pulse {{
+    0%, 100% {{ opacity: 1; }}
+    50% {{ opacity: 0.4; }}
+}}
+</style>
+""", unsafe_allow_html=True)
+st.markdown("""
+<div style="
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #3b82f6;
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 ">
     <div style="
-        display:flex;
-        justify-content:space-between;
-        align-items:flex-start;
-        gap:16px;
-        flex-wrap:wrap;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.35rem;
     ">
-        <div>
-            <div style="
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                background:#F0FDF4;
-                color:#16A34A;
-                border:1px solid #BBF7D0;
-                border-radius:999px;
-                padding:5px 10px;
-                font-size:12px;
-                font-weight:700;
-                margin-bottom:10px;
-            ">
-                <span style="font-size:10px;">●</span>
-                SISTEMA ATIVO — DADOS REAIS
-            </div>
-
-            <div style="
-                font-size:30px;
-                font-weight:800;
-                color:#0F172A;
-                line-height:1.15;
-                margin-bottom:6px;
-            ">
-                🚗 Monitoramento de Tráfego — Foz do Iguaçu
-            </div>
-
-            <div style="
-                font-size:14px;
-                color:#64748B;
-                line-height:1.6;
-            ">
-                📅 {selected_date.strftime('%d/%m/%Y')}
-                &nbsp;·&nbsp;
-                🕐 Hora local: <strong style="color:#334155;">{hora_foz_atual.strftime('%H:%M:%S')}</strong>
-                &nbsp;·&nbsp;
-                🔄 Atualização automática a cada 10 minutos
-            </div>
-        </div>
-
-        <div style="
-            background:#F8FAFC;
-            border:1px solid #E2E8F0;
-            border-radius:12px;
-            padding:12px 14px;
-            min-width:280px;
-        ">
-            <div style="
-                font-size:12px;
-                font-weight:700;
-                color:#64748B;
-                text-transform:uppercase;
-                letter-spacing:0.6px;
-                margin-bottom:8px;
-            ">
-                Instituições
-            </div>
-            <div style="font-size:13px;color:#334155;line-height:1.6;">
-                🔬 <strong>GPMME</strong> — Grupo de Pesquisa em Mobilidade e Matriz Energética<br>
-                🧪 <strong>LAGGRA</strong> — Lab. de Geologia, Geotecnia e Recuperação Ambiental<br>
-                💻 <strong>LACA</strong> — Laboratório de Computação Aplicada<br>
-                🎓 <strong>UNILA</strong> · Foz do Iguaçu
-            </div>
-        </div>
+        Sobre este dashboard
+    </div>
+    <div style="
+        font-size: 0.88rem;
+        line-height: 1.6;
+        color: #475569;
+    ">
+        Este dashboard apresenta o monitoramento de incidentes viários e congestionamentos em Foz do Iguaçu com base em dados do Waze.
+        Os painéis reúnem mapas, filtros e indicadores para apoiar a análise espacial, temporal e histórica da mobilidade urbana.
+        Os dados são atualizados periodicamente e podem ser explorados por tipo de ocorrência, via, horário e intensidade do tráfego.
     </div>
 </div>
 """, unsafe_allow_html=True)
