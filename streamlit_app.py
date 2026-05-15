@@ -1029,7 +1029,7 @@ st.sidebar.metric(
 
 if st.sidebar.button(
     "🔄 ATUALIZAR DADOS AGORA",
-    use_container_width=True,
+    width="stretch",
     type="primary"
 ):
     st.cache_data.clear()
@@ -1589,7 +1589,7 @@ with tab_jams:
         cols_diag = [c for c in ["lat", "lon", "line", "speed", "street"] if c in df_jams_filtered.columns]
         if cols_diag:
             st.caption("Amostra dos dados de congestionamentos")
-            st.dataframe(df_jams_filtered[cols_diag].head(5), use_container_width=True)
+            st.dataframe(df_jams_filtered[cols_diag].head(5), width="stretch")
     else:
         st.info("Nenhum congestionamento para exibir.")
 
@@ -1645,7 +1645,7 @@ with tab_calor:
 
                 tipos_no_mapa = df_heat["type"].value_counts().reset_index()
                 tipos_no_mapa.columns = ["Tipo", "Qtd"]
-                st.dataframe(tipos_no_mapa, hide_index=True, use_container_width=True)
+                st.dataframe(tipos_no_mapa, hide_index=True, width="stretch")
             else:
                 st.info("Nenhum ponto dentro da área de Foz do Iguaçu.")
         else:
@@ -1724,7 +1724,7 @@ with tab_graficos:
                 annotation_text=f"Pico {hora_pico:02d}h"
             )
             fig_hora.update_layout(coloraxis_showscale=False, height=360)
-            st.plotly_chart(fig_hora, use_container_width=True)
+            st.plotly_chart(fig_hora, width="stretch")
 
         with col_g2:
             st.subheader("Natureza das Ocorrências")
@@ -1756,7 +1756,7 @@ with tab_graficos:
                 hole=0.38
             )
             fig_pie.update_layout(height=380)
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width="stretch")
 
         st.markdown("---")
 
@@ -1779,7 +1779,7 @@ with tab_graficos:
                 text_auto=True
             )
             fig_dow.update_layout(height=420)
-            st.plotly_chart(fig_dow, use_container_width=True)
+            st.plotly_chart(fig_dow, width="stretch")
 
         st.markdown("---")
 
@@ -1823,7 +1823,7 @@ with tab_graficos:
                 category_orders={"street": ordem_ruas}
             )
             fig_rua.update_layout(height=460)
-            st.plotly_chart(fig_rua, use_container_width=True)
+            st.plotly_chart(fig_rua, width="stretch")
 
         st.markdown("---")
 
@@ -1859,7 +1859,7 @@ with tab_graficos:
                 category_orders={"Dia": list(DIAS_PT.values())}
             )
             fig_b1.update_layout(height=460)
-            st.plotly_chart(fig_b1, use_container_width=True)
+            st.plotly_chart(fig_b1, width="stretch")
     else:
         st.info("Sem incidentes para gerar gráficos no recorte atual.")
 
@@ -1880,14 +1880,14 @@ with tab_dados:
 
         st.dataframe(
             df_filtered[colunas_exibir].sort_values("timestamp", ascending=False),
-            use_container_width=True
+            width="stretch"
         )
 
         csv = df_filtered[colunas_exibir].to_csv(index=False).encode("utf-8")
         st.download_button(
             "Baixar CSV — Incidentes",
             data=csv,
-            filename=f"incidentes_{selected_date}.csv",
+            file_name=f"incidentes_{selected_date}.csv",
             mime="text/csv"
         )
     else:
@@ -1909,14 +1909,14 @@ with tab_dados:
 
         st.dataframe(
             df_jams_show.sort_values("timestamp", ascending=False),
-            use_container_width=True
+            width="stretch"
         )
 
         csv_jams = df_jams_show.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Baixar CSV — Congestionamentos",
             data=csv_jams,
-            filename=f"jams_{selected_date}.csv",
+            file_name=f"jams_{selected_date}.csv",
             mime="text/csv"
         )
     else:
