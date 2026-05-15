@@ -1269,7 +1269,7 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard = df_jams_filtered.copy()
 # =========================================================
-# BLOCO 5 — CABEÇALHO, CONTEXTO, FILTROS ATIVOS E KPIs
+# BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
 # =========================================================
 
 # ---------------------------------------------------------
@@ -1285,20 +1285,20 @@ def classify_risk_level(total_incidentes: int):
     return "Baixo", "🟢", "Baixa pressão operacional no período filtrado."
 
 
-def classify_flow_status(v_media_kmh: float):
-    if v_media_kmh < 20:
+def classify_flow_status(vmedia_kmh: float):
+    if vmedia_kmh < 20:
         return "Travado", "🔴", "Fluxo muito comprometido, com forte retenção nas vias."
-    elif v_media_kmh < 40:
+    elif vmedia_kmh < 40:
         return "Lento", "🟠", "Tráfego com perda relevante de fluidez."
-    elif v_media_kmh < 60:
+    elif vmedia_kmh < 60:
         return "Moderado", "🟡", "Fluxo estável, mas com redução perceptível de velocidade."
     return "Fluindo", "🟢", "Boas condições de circulação no recorte selecionado."
 
 
-def classify_road_status(total_incidentes: int):
-    if total_incidentes > 15:
+def classify_road_status(total_incidentes: int) -> str:
+    if total_incidentes >= 15:
         return "🚫 Crítico"
-    elif total_incidentes > 5:
+    elif total_incidentes >= 5:
         return "⚠️ Moderado"
     return "✅ Normal"
 
@@ -1312,7 +1312,7 @@ def build_selection_label(selected_values, total_available, singular_name, plura
 
 
 # ---------------------------------------------------------
-# 2. HERO / TOPBAR CLARO
+# 2. CABEÇALHO PRINCIPAL
 # ---------------------------------------------------------
 st.markdown(f"""
 <div style="
@@ -1378,7 +1378,14 @@ st.markdown(f"""
             padding:12px 14px;
             min-width:280px;
         ">
-            <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px;">
+            <div style="
+                font-size:12px;
+                font-weight:700;
+                color:#64748B;
+                text-transform:uppercase;
+                letter-spacing:0.6px;
+                margin-bottom:8px;
+            ">
                 Instituições
             </div>
             <div style="font-size:13px;color:#334155;line-height:1.6;">
@@ -1394,7 +1401,7 @@ st.markdown(f"""
 
 
 # ---------------------------------------------------------
-# 3. CARD "SOBRE"
+# 3. SOBRE O DASHBOARD
 # ---------------------------------------------------------
 st.markdown("""
 <div style="
@@ -1427,16 +1434,24 @@ st.markdown("""
 
 
 # ---------------------------------------------------------
-# 4. RESUMO DOS FILTROS ATIVOS
+# 4. RESUMO DOS FILTROS
 # ---------------------------------------------------------
 label_tipo = build_selection_label(
-    filtro_tipo, len(tipos_na_data), "tipo", "tipos"
+    filtro_tipo,
+    len(tipos_na_data),
+    "tipo",
+    "tipos"
 )
+
 label_natureza = build_selection_label(
-    filtro_natureza, len(naturezas_na_data), "natureza", "naturezas"
+    filtro_natureza,
+    len(naturezas_na_data),
+    "natureza",
+    "naturezas"
 )
 
 col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+
 col_f1.metric("📅 Data", selected_date.strftime("%d/%m/%Y"))
 col_f2.metric("🚨 Tipo", label_tipo)
 col_f3.metric("🔍 Natureza", label_natureza)
@@ -1444,34 +1459,30 @@ col_f4.metric("🛣️ Rua", filtro_rua if filtro_rua else "Todas")
 col_f5.metric("⏰ Horário", f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
 
 st.caption(
-    f"🔍 Filtros ativos → **{len(df_filtered)} incidente(s)** exibidos em "
-    f"**{selected_date.strftime('%d/%m/%Y')}** | "
-    f"Congestionamentos: **{len(df_jams_filtered)}**"
+    f"🔍 Filtros ativos → {len(df_filtered)} incidente(s) exibidos em "
+    f"{selected_date.strftime('%d/%m/%Y')} | Congestionamentos: {len(df_jams_filtered)}"
 )
 
 st.markdown("---")
 
 
 # ---------------------------------------------------------
-# 5. KPIs PRINCIPAIS
+# 5. KPIs
 # ---------------------------------------------------------
 st.subheader("📊 Resumo Estatístico")
 
 incidentes_dia = len(df_filtered)
-
-acidentes_graves = (
+acidentes = (
     len(df_filtered[df_filtered["type"] == "ACIDENTE"])
     if not df_filtered.empty and "type" in df_filtered.columns
     else 0
 )
 
-v_media_kmh = (
+vmedia_kmh = (
     df_jams_filtered["speed"].mean() * 3.6
-    if (
-        not df_jams_filtered.empty and
-        "speed" in df_jams_filtered.columns and
-        df_jams_filtered["speed"].notna().any()
-    )
+    if not df_jams_filtered.empty
+    and "speed" in df_jams_filtered.columns
+    and df_jams_filtered["speed"].notna().any()
     else 0
 )
 
@@ -1479,8 +1490,8 @@ status_via = classify_road_status(incidentes_dia)
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 kpi1.metric("Total Alertas", incidentes_dia)
-kpi2.metric("Acidentes", acidentes_graves)
-kpi3.metric("Vel. Média", f"{v_media_kmh:.1f} km/h")
+kpi2.metric("Acidentes", acidentes)
+kpi3.metric("Vel. Média", f"{vmedia_kmh:.1f} km/h")
 kpi4.metric("Status da Via", status_via)
 
 st.markdown("---")
@@ -1492,7 +1503,7 @@ st.markdown("---")
 st.subheader("📈 Indicadores de Gravidade")
 
 nivel_risco, emoji_risco, desc_risco = classify_risk_level(incidentes_dia)
-status_fluxo, emoji_fluxo, desc_fluxo = classify_flow_status(v_media_kmh)
+status_fluxo, emoji_fluxo, desc_fluxo = classify_flow_status(vmedia_kmh)
 
 col_grav, col_vel = st.columns(2)
 
@@ -1502,24 +1513,24 @@ with col_grav:
         st.metric("Classificação", nivel_risco)
         st.metric("Incidentes no período", incidentes_dia)
         st.caption(desc_risco)
-        st.write(f"🚨 Acidentes: **{acidentes_graves}**")
-        st.write(f"📍 Status geral: **{status_via}**")
+        st.write(f"🚨 Acidentes: {acidentes}")
+        st.write(f"📍 Status geral: {status_via}")
         st.caption("Faixas: 0–4 = Baixo · 5–9 = Moderado · 10–14 = Alto · 15+ = Crítico")
 
 with col_vel:
     with st.container(border=True):
         st.markdown(f"### {emoji_fluxo} Condição do tráfego")
         st.metric("Classificação", status_fluxo)
-        st.metric("Velocidade média", f"{v_media_kmh:.1f} km/h")
+        st.metric("Velocidade média", f"{vmedia_kmh:.1f} km/h")
         st.caption(desc_fluxo)
-        st.write(f"🚗 Média observada: **{v_media_kmh:.1f} km/h**")
-        st.write(f"📍 Total de jams: **{len(df_jams_filtered)}**")
+        st.write(f"🚗 Média observada: {vmedia_kmh:.1f} km/h")
+        st.write(f"📍 Total de jams: {len(df_jams_filtered)}")
         st.caption("Faixas: <20 = Travado · 20–39 = Lento · 40–59 = Moderado · 60+ = Fluindo")
 
 st.caption(
     "Os indicadores acima resumem o comportamento do período filtrado: "
-    "o risco operacional considera o volume de incidentes, enquanto a condição do tráfego "
-    "é baseada na velocidade média observada nos congestionamentos."
+    "o risco operacional considera o volume de incidentes, enquanto a condição "
+    "do tráfego é baseada na velocidade média observada nos congestionamentos."
 )
 
 st.markdown("---")
