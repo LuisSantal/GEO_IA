@@ -1114,7 +1114,7 @@ def classify_traffic_status(media_vel_kmh: float) -> str:
 # 5. FILTROS DA SIDEBAR
 # ---------------------------------------------------------
 st.sidebar.subheader("🔍 Filtros")
-today_foz = nowfoz().date()
+today_foz = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
 all_dates = set()
 if not dfalertsraw.empty and "date" in dfalertsraw.columns:
