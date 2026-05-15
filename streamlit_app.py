@@ -1110,17 +1110,14 @@ def classify_traffic_status(media_vel_kmh: float) -> str:
 # ---------------------------------------------------------
 # 5. FILTROS DA SIDEBAR
 # ---------------------------------------------------------
-# ---------------------------------------------------------
-# 5. FILTROS DA SIDEBAR
-# ---------------------------------------------------------
 st.sidebar.subheader("🔍 Filtros")
-today_foz = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+today_foz = hora_foz_atual.date()
 
 all_dates = set()
-if not dfalertsraw.empty and "date" in dfalertsraw.columns:
-    all_dates.update(pd.to_datetime(dfalertsraw["date"]).dt.date.unique())
-if not dfjamsraw.empty and "date" in dfjamsraw.columns:
-    all_dates.update(pd.to_datetime(dfjamsraw["date"]).dt.date.unique())
+if not df_alerts_raw.empty and "date" in df_alerts_raw.columns:
+    all_dates.update(pd.to_datetime(df_alerts_raw["date"]).dt.date.unique())
+if not df_jams_raw.empty and "date" in df_jams_raw.columns:
+    all_dates.update(pd.to_datetime(df_jams_raw["date"]).dt.date.unique())
 
 if all_dates:
     min_date = min(all_dates)
@@ -1129,142 +1126,148 @@ if all_dates:
 else:
     min_date = max_date = default_date = today_foz
 
-selecteddate = st.sidebar.date_input(
+selected_date = st.sidebar.date_input(
     "📅 Data",
     value=default_date,
     min_value=min_date,
     max_value=max(max_date, today_foz),
 )
 
-horarange = st.sidebar.slider(
+hora_range = st.sidebar.slider(
     "🕐 Horário",
     min_value=0,
     max_value=23,
     value=(0, 23)
 )
 
+
 # ---------------------------------------------------------
 # 6. BASES INTERMEDIÁRIAS POR DATA/HORA
 # ---------------------------------------------------------
-alertsdatebase = applybasetimefilter(dfalertsraw, selecteddate, horarange)
-jamsdatebase = applybasetimefilter(dfjamsraw, selecteddate, horarange)
+alerts_date_base = apply_base_time_filter(df_alerts_raw, selected_date, hora_range)
+jams_date_base = apply_base_time_filter(df_jams_raw, selected_date, hora_range)
+
 
 # ---------------------------------------------------------
 # 7. FILTROS DE ALERTAS
 # ---------------------------------------------------------
-tiposnadata = (
-    cleanuniquevalues(alertsdatebase["type"])
-    if not alertsdatebase.empty and "type" in alertsdatebase.columns
+tipos_na_data = (
+    clean_unique_values(alerts_date_base["type"])
+    if not alerts_date_base.empty and "type" in alerts_date_base.columns
     else []
 )
 
-filtrotipo = st.sidebar.multiselect(
+filtro_tipo = st.sidebar.multiselect(
     "🚨 Tipo",
-    options=tiposnadata,
-    default=tiposnadata,
+    options=tipos_na_data,
+    default=tipos_na_data,
 )
 
-naturezabase = alertsdatebase.copy()
-if filtrotipo and "type" in naturezabase.columns:
-    naturezabase = naturezabase[naturezabase["type"].isin(filtrotipo)]
+natureza_base = alerts_date_base.copy()
+if filtro_tipo and "type" in natureza_base.columns:
+    natureza_base = natureza_base[natureza_base["type"].isin(filtro_tipo)]
 
-naturezasnadata = (
-    cleanuniquevalues(naturezabase["subtype"], invalidvalues=["nan", ""])
-    if not naturezabase.empty and "subtype" in naturezabase.columns
+naturezas_na_data = (
+    clean_unique_values(natureza_base["subtype"], invalid_values=["nan", ""])
+    if not natureza_base.empty and "subtype" in natureza_base.columns
     else []
 )
 
-filtronatureza = st.sidebar.multiselect(
-    "🔎 Natureza",
-    options=naturezasnadata,
-    default=naturezasnadata,
+filtro_natureza = st.sidebar.multiselect(
+    "🔍 Natureza",
+    options=naturezas_na_data,
+    default=naturezas_na_data,
 )
 
-ruabase = naturezabase.copy()
-if filtronatureza and "subtype" in ruabase.columns:
-    ruabase = ruabase[ruabase["subtype"].isin(filtronatureza)]
+rua_base = natureza_base.copy()
+if filtro_natureza and "subtype" in rua_base.columns:
+    rua_base = rua_base[rua_base["subtype"].isin(filtro_natureza)]
 
-ruasnadata = (
-    cleanuniquevalues(ruabase["street"], invalidvalues=["NA", "nan", "", "N/A"])
-    if not ruabase.empty and "street" in ruabase.columns
+ruas_na_data = (
+    clean_unique_values(rua_base["street"], invalid_values=["NA", "nan", "", "N/A"])
+    if not rua_base.empty and "street" in rua_base.columns
     else []
 )
 
-ruaescolhida = st.sidebar.selectbox(
+filtro_rua = st.sidebar.selectbox(
     "🛣️ Rua",
-    options=["(Todas)"] + ruasnadata,
+    options=["(Todas)"] + ruas_na_data,
     index=0,
 )
 
-filtrorua = "" if ruaescolhida == "(Todas)" else ruaescolhida
+filtro_rua = "" if filtro_rua == "(Todas)" else filtro_rua
+
 
 # ---------------------------------------------------------
 # 8. FILTRO DE VELOCIDADE DOS JAMS
 # ---------------------------------------------------------
-velmindata, velmaxdata = 0.0, 120.0
+vel_min_data, vel_max_data = 0.0, 120.0
 
-if not jamsdatebase.empty and "speed" in jamsdatebase.columns:
-    speedsnadata = jamsdatebase["speed"].dropna() * 3.6
-    if not speedsnadata.empty:
-        velmindata = max(0.0, float(speedsnadata.min()))
-        velmaxdata = max(5.0, float(speedsnadata.max()))
+if not jams_date_base.empty and "speed" in jams_date_base.columns:
+    speeds_na_data = jams_date_base["speed"].dropna() * 3.6
+    if not speeds_na_data.empty:
+        vel_min_data = max(0.0, float(speeds_na_data.min()))
+        vel_max_data = max(5.0, float(speeds_na_data.max()))
 
-velrange = st.sidebar.slider(
+vel_range = st.sidebar.slider(
     "🚗 Velocidade (km/h)",
     min_value=0.0,
-    max_value=max(120.0, velmaxdata),
-    value=(velmindata, max(velmindata, min(120.0, velmaxdata))),
+    max_value=max(120.0, vel_max_data),
+    value=(vel_min_data, max(vel_min_data, min(120.0, vel_max_data))),
     step=5.0,
 )
+
 
 # ---------------------------------------------------------
 # 9. RESUMO LATERAL DE CONGESTIONAMENTOS
 # ---------------------------------------------------------
 if (
-    not jamsdatebase.empty
-    and "speed" in jamsdatebase.columns
-    and jamsdatebase["speed"].notna().any()
+    not jams_date_base.empty
+    and "speed" in jams_date_base.columns
+    and jams_date_base["speed"].notna().any()
 ):
-    mediavel = jamsdatebase["speed"].mean() * 3.6
-    totaljams = len(jamsdatebase)
-    statuslabel = classifytrafficstatus(mediavel)
+    media_vel = jams_date_base["speed"].mean() * 3.6
+    total_jams = len(jams_date_base)
+    status_label = classify_traffic_status(media_vel)
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("**📊 Congestionamentos em** " + selecteddate.strftime("%d/%m"))
-    st.sidebar.metric("Vel. Média", f"{mediavel:.1f} km/h", delta=statuslabel)
-    st.sidebar.metric("Total de Jams", totaljams)
+    st.sidebar.markdown("**📊 Congestionamentos em** " + selected_date.strftime("%d/%m"))
+    st.sidebar.metric("Vel. Média", f"{media_vel:.1f} km/h", delta=status_label)
+    st.sidebar.metric("Total de Jams", total_jams)
 else:
     st.sidebar.info(
-        f"Sem dados de congestionamento em {selecteddate.strftime('%d/%m')}."
+        f"Sem dados de congestionamento em {selected_date.strftime('%d/%m')}."
     )
+
 
 # ---------------------------------------------------------
 # 10. APLICAÇÃO GLOBAL DOS FILTROS
 # ---------------------------------------------------------
-dffiltered = applybasetimefilter(dfalertsraw, selecteddate, horarange)
+df_filtered = apply_base_time_filter(df_alerts_raw, selected_date, hora_range)
 
-if not dffiltered.empty:
-    if filtrotipo and "type" in dffiltered.columns:
-        dffiltered = dffiltered[dffiltered["type"].isin(filtrotipo)]
+if not df_filtered.empty:
+    if filtro_tipo and "type" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["type"].isin(filtro_tipo)]
 
-    if filtronatureza and "subtype" in dffiltered.columns:
-        dffiltered = dffiltered[dffiltered["subtype"].isin(filtronatureza)]
+    if filtro_natureza and "subtype" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["subtype"].isin(filtro_natureza)]
 
-    if filtrorua and "street" in dffiltered.columns:
-        dffiltered = dffiltered[dffiltered["street"] == filtrorua]
+    if filtro_rua and "street" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["street"] == filtro_rua]
 
-dfjamsfiltered = applybasetimefilter(dfjamsraw, selecteddate, horarange)
+df_jams_filtered = apply_base_time_filter(df_jams_raw, selected_date, hora_range)
 
-if not dfjamsfiltered.empty and "speed" in dfjamsfiltered.columns:
-    dfjamsfiltered = dfjamsfiltered[
-        (dfjamsfiltered["speed"].fillna(0) * 3.6).between(velrange[0], velrange[1])
+if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
+    df_jams_filtered = df_jams_filtered[
+        (df_jams_filtered["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1])
     ]
+
 
 # ---------------------------------------------------------
 # 11. BASES MESTRES DO DASHBOARD
 # ---------------------------------------------------------
-basealertasdashboard = dffiltered.copy()
-basejamsdashboard = dfjamsfiltered.copy()
+base_alertas_dashboard = df_filtered.copy()
+base_jams_dashboard = df_jams_filtered.copy()
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
 # =========================================================
