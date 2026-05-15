@@ -1922,6 +1922,28 @@ with tab_dados:
     else:
         st.info("Nenhum dado de congestionamento disponível.")
 
+O que você colou mostra que o app está renderizando parte do HTML como texto bruto, especialmente no rodapé, então o problema agora não é mais o log de filename, mas sim um bloco st.markdown() quebrado ou fechado no lugar errado.
+
+Isso acontece quando uma <div>...</div> fica fora da string tripla """...""" ou quando falta unsafe_allow_html=True no bloco correspondente.
+
+O que isso indica
+O trecho “🚗 GEO_IA — Monitoramento de Tráfego” seguido de várias <div style=...> aparecendo na tela é um sinal clássico de que o BLOCO 7 está parcialmente fora do st.markdown(f""" ... """, unsafe_allow_html=True).
+
+Da mesma forma, o header com “SISTEMA ATIVO — DADOS REAIS” parece estar renderizando certo, mas o conteúdo abaixo sugere que algum fechamento </div> ou """) está desalinhado entre os blocos do topo, resumo e rodapé.
+
+O que corrigir agora
+Você deve revisar principalmente estes pontos:
+
+BLOCO 5: header principal e card “Sobre este dashboard”.
+
+BLOCO 6: garantir que nenhum st.markdown(""" ... tabela markdown ... """) esteja “vazando”.
+
+BLOCO 7: reescrever inteiro em um único st.markdown(f"""...""", unsafe_allow_html=True).
+
+BLOCO 7 refeito
+Use este BLOCO 7 inteiro, porque ele evita justamente esse vazamento de HTML bruto:
+
+python
 # =========================================================
 # BLOCO 7 — RODAPÉ CLARO / DESIGN ADAPTADO
 # =========================================================
