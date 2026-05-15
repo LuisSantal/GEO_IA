@@ -1110,8 +1110,11 @@ def classify_traffic_status(media_vel_kmh: float) -> str:
 # ---------------------------------------------------------
 # 5. FILTROS DA SIDEBAR
 # ---------------------------------------------------------
+# ---------------------------------------------------------
+# 5. FILTROS DA SIDEBAR
+# ---------------------------------------------------------
 st.sidebar.subheader("🔍 Filtros")
-today_foz = horafozatual.date()
+today_foz = nowfoz().date()
 
 all_dates = set()
 if not dfalertsraw.empty and "date" in dfalertsraw.columns:
@@ -1187,13 +1190,13 @@ ruasnadata = (
     else []
 )
 
-filtrotua = st.sidebar.selectbox(
+ruaescolhida = st.sidebar.selectbox(
     "🛣️ Rua",
     options=["(Todas)"] + ruasnadata,
     index=0,
 )
 
-filtrorua = "" if filtrotua == "(Todas)" else filtrotua
+filtrorua = "" if ruaescolhida == "(Todas)" else ruaescolhida
 
 # ---------------------------------------------------------
 # 8. FILTRO DE VELOCIDADE DOS JAMS
