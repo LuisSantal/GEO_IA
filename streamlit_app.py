@@ -20,7 +20,7 @@ from streamlit_folium import st_folium
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Waze Foz do Iguaçu",
-    page_icon="🚗",
+    page_icon="https://cdn.simpleicons.org/waze",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -32,76 +32,135 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-:root{
-    --bg: #f8fafc;
-    --surface: #ffffff;
-    --surface-soft: #f1f5f9;
-    --text: #1e293b;
-    --text-strong: #0f172a;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --primary: #3b82f6;
+/* ======================================================
+   TEMA CLARO — Light Theme
+   Superfícies brancas · Texto escuro · Accent azul suave
+   ====================================================== */
+:root {
+    --bg:           #f0f4f8;
+    --surface:      #ffffff;
+    --surface-soft: #f8fafc;
+    --surface-2:    #e8edf2;
+    --text:         #1e293b;
+    --text-strong:  #0f172a;
+    --text-muted:   #475569;
+    --text-faint:   #94a3b8;
+    --border:       #dde3ea;
+    --primary:      #2563eb;
     --primary-dark: #1d4ed8;
     --primary-soft: #eff6ff;
-    --success: #16a34a;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --purple: #7b1fa2;
-    --radius: 12px;
-    --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
-    --shadow-md: 0 4px 15px rgba(59,130,246,0.25);
+    --primary-hover:#1e40af;
+    --success:      #16a34a;
+    --success-soft: #f0fdf4;
+    --warning:      #d97706;
+    --warning-soft: #fffbeb;
+    --danger:       #dc2626;
+    --danger-soft:  #fef2f2;
+    --purple:       #7c3aed;
+    --radius:       12px;
+    --shadow-sm:    0 1px 3px rgba(15,23,42,0.07), 0 1px 2px rgba(15,23,42,0.04);
+    --shadow-md:    0 4px 12px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.06);
+    --shadow-lg:    0 10px 30px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.07);
 }
 
+/* --- Reset e base --- */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
+    -webkit-font-smoothing: antialiased !important;
 }
 
-body {
-    color: var(--text);
-}
+body { color: var(--text); }
 
+/* --- App background --- */
 .stApp {
     background: var(--bg) !important;
     color: var(--text) !important;
 }
 
+/* --- Main content area --- */
+.main .block-container {
+    background: transparent !important;
+    padding-top: 1.5rem !important;
+}
+
+/* --- Sidebar --- */
 [data-testid="stSidebar"] {
     background: var(--surface) !important;
     border-right: 1px solid var(--border) !important;
+    box-shadow: 2px 0 8px rgba(15,23,42,0.05) !important;
 }
 
 [data-testid="stSidebar"] * {
-    color: #334155 !important;
+    color: var(--text) !important;
 }
 
+[data-testid="stSidebar"] .stMarkdown h3,
+[data-testid="stSidebar"] .stMarkdown h4 {
+    color: var(--text-strong) !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stMetricValue"] {
+    color: var(--primary) !important;
+    font-weight: 700 !important;
+}
+
+/* --- Botões primários --- */
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
-    color: white !important;
+    background: var(--primary) !important;
+    color: #ffffff !important;
     border: none !important;
     border-radius: 10px !important;
     font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
     box-shadow: var(--shadow-md) !important;
+    transition: background 160ms ease, box-shadow 160ms ease, transform 120ms ease !important;
 }
 
 .stButton > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #60a5fa, var(--primary)) !important;
+    background: var(--primary-hover) !important;
+    box-shadow: var(--shadow-lg) !important;
     transform: translateY(-1px) !important;
 }
 
+.stButton > button[kind="primary"]:active {
+    transform: translateY(0) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+/* --- Botões secundários --- */
+.stButton > button[kind="secondary"] {
+    background: var(--surface) !important;
+    color: var(--primary) !important;
+    border: 1.5px solid var(--primary) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background: var(--primary-soft) !important;
+}
+
+/* --- Métricas --- */
 [data-testid="metric-container"] {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
     border-radius: var(--radius) !important;
-    padding: 1rem !important;
+    padding: 1rem 1.2rem !important;
     box-shadow: var(--shadow-sm) !important;
+    transition: box-shadow 160ms ease !important;
+}
+
+[data-testid="metric-container"]:hover {
+    box-shadow: var(--shadow-md) !important;
 }
 
 [data-testid="metric-container"] label {
     color: var(--text-muted) !important;
-    font-size: 0.75rem !important;
-    font-weight: 500 !important;
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.8px !important;
+    letter-spacing: 0.9px !important;
 }
 
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
@@ -110,6 +169,12 @@ body {
     font-weight: 700 !important;
 }
 
+[data-testid="stMetricDelta"] {
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+}
+
+/* --- Abas --- */
 .stTabs [data-baseweb="tab-list"] {
     background: var(--surface-soft) !important;
     border-radius: 12px !important;
@@ -123,22 +188,32 @@ body {
     color: var(--text-muted) !important;
     border-radius: 8px !important;
     font-weight: 500 !important;
-    padding: 8px 16px !important;
+    padding: 8px 18px !important;
+    transition: color 140ms ease, background 140ms ease !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: var(--surface-2) !important;
+    color: var(--text) !important;
 }
 
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
-    color: white !important;
-    box-shadow: 0 2px 8px rgba(59,130,246,0.3) !important;
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.30) !important;
 }
 
+/* --- DataFrames --- */
 [data-testid="stDataFrame"] {
-    border-radius: 12px !important;
+    border-radius: var(--radius) !important;
     overflow: hidden !important;
     border: 1px solid var(--border) !important;
     background: var(--surface) !important;
+    box-shadow: var(--shadow-sm) !important;
 }
 
+/* --- Alertas --- */
 [data-testid="stAlert"] {
     background: var(--primary-soft) !important;
     border: 1px solid #bfdbfe !important;
@@ -146,20 +221,73 @@ body {
     color: var(--primary-dark) !important;
 }
 
+/* --- Expanders --- */
 [data-testid="stExpander"] {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
     border-radius: 10px !important;
+    box-shadow: var(--shadow-sm) !important;
 }
 
-hr {
-    border-color: var(--border) !important;
+[data-testid="stExpander"]:hover {
+    border-color: #bcd0f0 !important;
 }
+
+/* --- Inputs e selects --- */
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stSelectbox"] > div,
+[data-testid="stMultiSelect"] > div {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    color: var(--text) !important;
+}
+
+[data-testid="stTextInput"] input:focus,
+[data-testid="stNumberInput"] input:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
+}
+
+/* --- Slider --- */
+[data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+}
+
+/* --- Divisores e scrollbar --- */
+hr { border-color: var(--border) !important; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--surface-soft); }
+::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 3px; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* --- Cards de conteúdo --- */
+.card-light {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- Badges de status --- */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 99px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+.badge-success { background: var(--success-soft); color: var(--success); border: 1px solid #bbf7d0; }
+.badge-warning { background: var(--warning-soft); color: var(--warning); border: 1px solid #fde68a; }
+.badge-danger  { background: var(--danger-soft);  color: var(--danger);  border: 1px solid #fecaca; }
+.badge-primary { background: var(--primary-soft); color: var(--primary); border: 1px solid #bfdbfe; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1360,7 +1488,7 @@ st.markdown(f"""
       letter-spacing: -0.5px;
       line-height: 1.2;
   ">
-      🚗 Monitoramento de Tráfego
+      <img src="https://cdn.simpleicons.org/waze/33CCC5" width="36" height="36" style="vertical-align:middle;margin-right:8px;" alt="Waze for Cities">Monitoramento de Tráfego
       <span style="
           background: linear-gradient(135deg, #3b82f6, #60a5fa);
           -webkit-background-clip: text;
@@ -1946,41 +2074,41 @@ with tab_dados:
 
 st.markdown("---")
 rodape_html = f"""
-<div style="background:linear-gradient(135deg,rgba(15,23,42,0.98) 0%,rgba(17,24,39,0.95) 100%);border:1px solid rgba(59,130,246,0.15);border-radius:16px;padding:2rem 2.5rem;margin-top:1rem;text-align:center;font-family:'Inter',sans-serif;">
-  <div style="font-size:1.4rem;font-weight:800;color:#f1f5f9;margin-bottom:0.25rem;">🚗 GEO_IA — Monitoramento de Tráfego</div>
-  <div style="font-size:0.82rem;color:#64748b;margin-bottom:1.5rem;">Sistema de análise de incidentes e congestionamentos via dados Waze · Foz do Iguaçu, PR</div>
-  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.5rem;"></div>
+<div style="background:linear-gradient(135deg,#3b82f6,#60a5fa);border:none;border-radius:16px;padding:2rem 2.5rem;margin-top:1rem;text-align:center;font-family:'Inter',sans-serif;box-shadow:0 4px 20px rgba(59,130,246,0.35);">
+  <div style="font-size:1.4rem;font-weight:800;color:#FFFFFF;margin-bottom:0.25rem;display:flex;align-items:center;justify-content:center;gap:10px;"><img src="https://cdn.simpleicons.org/waze/33CCC5" width="32" height="32" alt="Waze for Cities"> GEO_IA — Monitoramento de Tráfego</div>
+  <div style="font-size:0.82rem;color:rgba(255,255,255,0.85);margin-bottom:1.5rem;">Sistema de análise de incidentes e congestionamentos via dados Waze for Cities · Foz do Iguaçu, PR</div>
+  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1.5rem;"></div>
   <div style="margin-bottom:1.2rem;">
-    <div style="font-size:1rem;font-weight:700;color:#f1f5f9;margin-bottom:0.2rem;">🏛️ UNILA — Universidade Federal da Integração Latino-Americana</div>
-    <div style="font-size:0.78rem;color:#64748b;">Foz do Iguaçu, Paraná · Brasil</div>
+    <div style="font-size:1rem;font-weight:700;color:#FFFFFF;margin-bottom:0.2rem;">🏛️ UNILA — Universidade Federal da Integração Latino-Americana</div>
+    <div style="font-size:0.78rem;color:rgba(255,255,255,0.75);">Foz do Iguaçu, Paraná · Brasil</div>
   </div>
-  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.5rem;"></div>
-  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.9rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Grupos &amp; Laboratórios de Pesquisa</div>
+  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1.5rem;"></div>
+  <div style="font-size:0.75rem;color:rgba(255,255,255,0.7);margin-bottom:0.9rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Grupos &amp; Laboratórios de Pesquisa</div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.5rem;">
     <div style="text-align:center;">
       <div style="font-size:1rem;font-weight:700;color:#60a5fa;margin-bottom:0.2rem;">🔬 GPMME</div>
-      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">Grupo de Pesquisa em Mobilidade<br>e Matriz Energética</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,0.85);max-width:200px;line-height:1.5;">Grupo de Pesquisa em Mobilidade<br>e Matriz Energética</div>
     </div>
-    <div style="width:1px;background:rgba(255,255,255,0.08);align-self:stretch;margin:0 0.25rem;"></div>
+    <div style="width:1px;background:rgba(255,255,255,0.25);align-self:stretch;margin:0 0.25rem;"></div>
     <div style="text-align:center;">
       <div style="font-size:1rem;font-weight:700;color:#34d399;margin-bottom:0.2rem;">🧪 LAGGRA</div>
-      <div style="font-size:0.78rem;color:#94a3b8;max-width:220px;line-height:1.5;">Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,0.85);max-width:220px;line-height:1.5;">Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental</div>
     </div>
-    <div style="width:1px;background:rgba(255,255,255,0.08);align-self:stretch;margin:0 0.25rem;"></div>
+    <div style="width:1px;background:rgba(255,255,255,0.25);align-self:stretch;margin:0 0.25rem;"></div>
     <div style="text-align:center;">
       <div style="font-size:1rem;font-weight:700;color:#f472b6;margin-bottom:0.2rem;">💻 LACA</div>
-      <div style="font-size:0.78rem;color:#94a3b8;max-width:200px;line-height:1.5;">Laboratório de<br>Computação Aplicada</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,0.85);max-width:200px;line-height:1.5;">Laboratório de<br>Computação Aplicada</div>
     </div>
   </div>
-  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1.2rem;"></div>
-  <div style="font-size:0.75rem;color:#475569;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Equipe de Desenvolvimento</div>
+  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1.2rem;"></div>
+  <div style="font-size:0.75rem;color:rgba(255,255,255,0.7);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Equipe de Desenvolvimento</div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.2rem;">
-    <span style="font-size:0.82rem;color:#94a3b8;">👨‍💻 Luis Enrique Santacruz Alvarez</span>
-    <span style="font-size:0.82rem;color:#94a3b8;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
+    <span style="font-size:0.82rem;color:rgba(255,255,255,0.9);">👨‍💻 Luis Enrique Santacruz Alvarez</span>
+    <span style="font-size:0.82rem;color:rgba(255,255,255,0.9);">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
   </div>
-  <div style="border-top:1px solid rgba(255,255,255,0.07);margin-bottom:1rem;"></div>
-  <div style="display:flex;justify-content:center;align-items:center;gap:1.5rem;flex-wrap:wrap;font-size:0.73rem;color:#334155;">
-    <span>📡 Fonte: <strong style="color:#475569;">Waze for Cities</strong></span>
+  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1rem;"></div>
+  <div style="display:flex;justify-content:center;align-items:center;gap:1.5rem;flex-wrap:wrap;font-size:0.73rem;color:rgba(255,255,255,0.8);">
+    <span>📡 Fonte: <img src="https://cdn.simpleicons.org/waze/33CCC5" width="14" height="14" style="vertical-align:middle;"> <strong style="color:#FFFFFF;">Waze for Cities</strong></span>
     <span>·</span>
     <span>🐍 Python · Streamlit · Folium · Plotly</span>
     <span>·</span>
@@ -1988,8 +2116,8 @@ rodape_html = f"""
     <span>·</span>
     <span>🕐 {hora_foz_atual.strftime('%d/%m/%Y %H:%M')} (Foz · UTC-3)</span>
   </div>
-  <div style="margin-top:0.75rem;font-size:0.68rem;color:#1e293b;">© {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa</div>
+  <div style="margin-top:0.75rem;font-size:0.68rem;color:rgba(255,255,255,0.6);">© {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa</div>
 </div>
 """
 st.markdown(rodape_html, unsafe_allow_html=True)
-                            
+                        
