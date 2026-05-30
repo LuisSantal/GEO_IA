@@ -1552,14 +1552,14 @@ st.markdown("""
         color:#0F172A;
         margin-bottom:6px;
     ">
-        Sobre este dashboard
+        Sobre o Sistema
     </div>
     <div style="
         font-size:14px;
         line-height:1.7;
         color:#475569;
     ">
-        Este dashboard apresenta o monitoramento de incidentes viários e congestionamentos em Foz do Iguaçu com base em dados do Waze.
+        Este sistema mostra o monitoramento de incidentes viários e congestionamentos em Foz do Iguaçu com base em dados do Waze.
         Os painéis reúnem mapas, filtros e indicadores para apoiar análises espaciais, temporais e históricas da mobilidade urbana.
         Os dados podem ser explorados por tipo de ocorrência, natureza, via, horário e intensidade do tráfego.
     </div>
