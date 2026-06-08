@@ -1,10 +1,5 @@
 # 🚦 GEO_IA: Sistema de Suporte à Decisão em Mobilidade Urbana — Foz do Iguaçu
 
-[
-[
-[
-[
-[
 
 > Dashboard interativo para visualização, análise e **suporte à decisão** em tempo real e histórico de tráfego urbano em Foz do Iguaçu — PR, integrando dados do **Waze for Cities**, algoritmos **multicritério (MCDA)** e **modelos preditivos** de impacto viário.
 
