@@ -2000,6 +2000,154 @@ with tab_predicao:
     else:
         st.info("Histórico de congestionamentos insuficiente para análise de propensão por via e dia.")
 
+
+    st.markdown("---")
+
+    # ── Seção 3: Comparador Mensal 2025 vs 2026 ───────────────────────
+    st.markdown("### 📆 Comparador Mensal: 2025 vs 2026")
+    st.caption("Selecione um dia da semana e uma categoria para comparar a evolução mês a mês entre os dois anos.")
+
+    MESES_PT = {
+        1:"Janeiro", 2:"Fevereiro", 3:"Março", 4:"Abril",
+        5:"Maio",    6:"Junho",    7:"Julho", 8:"Agosto",
+        9:"Setembro",10:"Outubro",11:"Novembro",12:"Dezembro"
+    }
+    DIAS_PT_CMP = {
+        "Monday":"Segunda","Tuesday":"Terça","Wednesday":"Quarta",
+        "Thursday":"Quinta","Friday":"Sexta","Saturday":"Sábado","Sunday":"Domingo"
+    }
+
+    # Unir alertas + jams para análise combinada
+    frames_cmp = []
+    if not df_alerts_raw.empty:
+        df_a_cmp = df_alerts_raw.copy()
+        df_a_cmp["categoria"] = df_a_cmp.get("type", pd.Series("ALERTA", index=df_a_cmp.index))
+        df_a_cmp["origem"] = "alerta"
+        frames_cmp.append(df_a_cmp[["timestamp","categoria","origem","street","day_of_week"]
+                                    if all(c in df_a_cmp.columns for c in ["timestamp","categoria","origem","street","day_of_week"])
+                                    else [c for c in ["timestamp","categoria","origem","street","day_of_week"] if c in df_a_cmp.columns]])
+    if not df_jams_raw.empty:
+        df_j_cmp = df_jams_raw.copy()
+        df_j_cmp["categoria"] = "CONGESTIONAMENTO"
+        df_j_cmp["origem"] = "jams"
+        frames_cmp.append(df_j_cmp[["timestamp","categoria","origem","street","day_of_week"]
+                                    if all(c in df_j_cmp.columns for c in ["timestamp","categoria","origem","street","day_of_week"])
+                                    else [c for c in ["timestamp","categoria","origem","street","day_of_week"] if c in df_j_cmp.columns]])
+
+    if frames_cmp:
+        df_cmp_all = pd.concat(frames_cmp, ignore_index=True)
+        df_cmp_all["timestamp"] = pd.to_datetime(df_cmp_all["timestamp"], errors="coerce")
+        df_cmp_all = df_cmp_all.dropna(subset=["timestamp"])
+        df_cmp_all["ano"]  = df_cmp_all["timestamp"].dt.year
+        df_cmp_all["mes"]  = df_cmp_all["timestamp"].dt.month
+        df_cmp_all["Dia"]  = df_cmp_all["day_of_week"].map(DIAS_PT_CMP) if "day_of_week" in df_cmp_all.columns else "Todos"
+        df_cmp_all["mes_nome"] = df_cmp_all["mes"].map(MESES_PT)
+
+        anos_disp = sorted(df_cmp_all["ano"].dropna().unique().astype(int).tolist())
+        cats_disp = sorted(df_cmp_all["categoria"].dropna().unique().tolist())
+        dias_disp = ["Todos"] + ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"]
+
+        col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+        with col_c1:
+            ano_a = st.selectbox("Ano A:", anos_disp, index=0, key="cmp_ano_a")
+        with col_c2:
+            ano_b_opts = [a for a in anos_disp if a != ano_a]
+            ano_b = st.selectbox("Ano B:", ano_b_opts if ano_b_opts else anos_disp, key="cmp_ano_b")
+        with col_c3:
+            dia_cmp = st.selectbox("Dia da Semana:", dias_disp, key="cmp_dia")
+        with col_c4:
+            cat_cmp = st.multiselect("Categorias:", cats_disp, default=cats_disp[:3] if len(cats_disp) >= 3 else cats_disp, key="cmp_cat")
+
+        # Aplicar filtros
+        df_f = df_cmp_all[df_cmp_all["categoria"].isin(cat_cmp)] if cat_cmp else df_cmp_all.copy()
+        if dia_cmp != "Todos":
+            df_f = df_f[df_f["Dia"] == dia_cmp]
+
+        df_ano_a = df_f[df_f["ano"] == ano_a]
+        df_ano_b = df_f[df_f["ano"] == ano_b]
+
+        def agg_mensal(df_in, ano_label):
+            if df_in.empty:
+                return pd.DataFrame(columns=["mes","mes_nome","Total","Ano"])
+            grp = df_in.groupby(["mes","mes_nome","categoria"]).size().reset_index(name="Total")
+            grp["Ano"] = str(ano_label)
+            return grp
+
+        res_a = agg_mensal(df_ano_a, ano_a)
+        res_b = agg_mensal(df_ano_b, ano_b)
+        df_comp = pd.concat([res_a, res_b], ignore_index=True)
+
+        if not df_comp.empty:
+            df_comp = df_comp.sort_values("mes")
+            ordem_meses = [MESES_PT[m] for m in sorted(df_comp["mes"].unique())]
+
+            # ── Gráfico 1: Linha comparativa total por mês ──
+            total_mes = df_comp.groupby(["mes","mes_nome","Ano"])["Total"].sum().reset_index()
+            total_mes = total_mes.sort_values("mes")
+
+            fig_linha = px.line(
+                total_mes, x="mes_nome", y="Total", color="Ano",
+                markers=True,
+                title=f"Evolução Mensal Total — {ano_a} vs {ano_b}" + (f" · {dia_cmp}" if dia_cmp != "Todos" else ""),
+                labels={"mes_nome":"Mês","Total":"Nº Ocorrências","Ano":"Ano"},
+                color_discrete_map={str(ano_a):"#2563EB", str(ano_b):"#DC2626"},
+                category_orders={"mes_nome": ordem_meses}
+            )
+            fig_linha.update_layout(height=380)
+            st.plotly_chart(fig_linha, use_container_width=True)
+
+            # ── Gráfico 2: Barras lado-a-lado por categoria e mês ──
+            fig_bar = px.bar(
+                df_comp, x="mes_nome", y="Total", color="Ano",
+                facet_col="categoria", facet_col_wrap=3,
+                barmode="group",
+                title="Comparativo por Categoria e Mês",
+                labels={"mes_nome":"Mês","Total":"Ocorrências"},
+                color_discrete_map={str(ano_a):"#2563EB", str(ano_b):"#DC2626"},
+                category_orders={"mes_nome": ordem_meses}
+            )
+            fig_bar.update_layout(height=420)
+            fig_bar.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+            # ── Gráfico 3: Variação % mês a mês (crescimento / queda) ──
+            st.markdown("#### 📈 Variação Percentual Mês a Mês (Crescimento / Decrescimento)")
+            pivot_var = total_mes.pivot_table(index="mes_nome", columns="Ano", values="Total").reindex(ordem_meses)
+            pivot_var.columns = [str(c) for c in pivot_var.columns]
+            col_a_str, col_b_str = str(ano_a), str(ano_b)
+
+            if col_a_str in pivot_var.columns and col_b_str in pivot_var.columns:
+                pivot_var["Variação (%)"] = (
+                    (pivot_var[col_b_str] - pivot_var[col_a_str]) / pivot_var[col_a_str].replace(0, np.nan) * 100
+                ).round(1)
+                pivot_var = pivot_var.reset_index()
+                pivot_var["Cor"] = pivot_var["Variação (%)"].apply(lambda v: "Aumento 📈" if v >= 0 else "Redução 📉")
+
+                fig_var = px.bar(
+                    pivot_var.dropna(subset=["Variação (%)"]),
+                    x="mes_nome", y="Variação (%)",
+                    color="Cor",
+                    color_discrete_map={"Aumento 📈":"#DC2626","Redução 📉":"#16A34A"},
+                    title=f"Variação % de {ano_a} → {ano_b} por Mês",
+                    labels={"mes_nome":"Mês","Variação (%)":"Variação (%)"},
+                    text="Variação (%)",
+                    category_orders={"mes_nome": ordem_meses}
+                )
+                fig_var.update_traces(texttemplate="%{text}%", textposition="outside")
+                fig_var.add_hline(y=0, line_dash="dash", line_color="gray")
+                fig_var.update_layout(height=360, showlegend=True)
+                st.plotly_chart(fig_var, use_container_width=True)
+
+            # ── Tabela resumo ──
+            st.markdown("#### 📋 Tabela Resumo Comparativa")
+            tbl = pivot_var[["mes_nome", col_a_str, col_b_str, "Variação (%)"]].copy() if "Variação (%)" in pivot_var.columns else pivot_var
+            tbl.columns = ["Mês", str(ano_a), str(ano_b), "Δ (%)"] if "Variação (%)" in pivot_var.columns else tbl.columns
+            st.dataframe(tbl, hide_index=True, use_container_width=True)
+        else:
+            st.info("Sem dados suficientes para o comparativo mensal com os filtros selecionados.")
+    else:
+        st.info("Nenhum dado histórico disponível para comparação.")
+
 with tab_dados:
     st.subheader("Tabela de Incidentes")
 
