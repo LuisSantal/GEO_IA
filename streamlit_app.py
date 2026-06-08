@@ -1595,8 +1595,7 @@ with tab_calor:
                 | 🟫 | Crítica — intervenção prioritária |
                 """)
 
-                tipos_no_mapa = df_heat["type"].valu
-e_counts().reset_index()
+                tipos_no_mapa = df_heat["type"].value_counts().reset_index()
                 tipos_no_mapa.columns = ["Tipo", "Qtd"]
                 st.dataframe(tipos_no_mapa, hide_index=True, width="stretch")
             else:
