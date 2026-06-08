@@ -5,7 +5,6 @@ import io
 import re
 import ast
 import tempfile
-import numpy as np  # Adicionado para suporte ao modelo matemático linear
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import folium
@@ -33,10 +32,6 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-/* ======================================================
-   TEMA CLARO — Light Theme
-   Superfícies brancas · Texto escuro · Accent azul suave
-   ====================================================== */
 :root {
     --bg:           #f0f4f8;
     --surface:      #ffffff;
@@ -64,7 +59,6 @@ st.markdown("""
     --shadow-lg:    0 10px 30px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.07);
 }
 
-/* --- Reset e base --- */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
     -webkit-font-smoothing: antialiased !important;
@@ -72,19 +66,16 @@ html, body, [class*="css"] {
 
 body { color: var(--text); }
 
-/* --- App background --- */
 .stApp {
     background: var(--bg) !important;
     color: var(--text) !important;
 }
 
-/* --- Main content area --- */
 .main .block-container {
     background: transparent !important;
     padding-top: 1.5rem !important;
 }
 
-/* --- Sidebar --- */
 [data-testid="stSidebar"] {
     background: var(--surface) !important;
     border-right: 1px solid var(--border) !important;
@@ -106,7 +97,6 @@ body { color: var(--text); }
     font-weight: 700 !important;
 }
 
-/* --- Botões primários --- */
 .stButton > button[kind="primary"] {
     background: var(--primary) !important;
     color: #ffffff !important;
@@ -129,7 +119,6 @@ body { color: var(--text); }
     box-shadow: var(--shadow-sm) !important;
 }
 
-/* --- Botões secundários --- */
 .stButton > button[kind="secondary"] {
     background: var(--surface) !important;
     color: var(--primary) !important;
@@ -142,7 +131,6 @@ body { color: var(--text); }
     background: var(--primary-soft) !important;
 }
 
-/* --- Métricas --- */
 [data-testid="metric-container"] {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
@@ -175,7 +163,6 @@ body { color: var(--text); }
     font-weight: 500 !important;
 }
 
-/* --- Abas --- */
 .stTabs [data-baseweb="tab-list"] {
     background: var(--surface-soft) !important;
     border-radius: 12px !important;
@@ -205,7 +192,6 @@ body { color: var(--text); }
     box-shadow: 0 2px 8px rgba(37,99,235,0.30) !important;
 }
 
-/* --- DataFrames --- */
 [data-testid="stDataFrame"] {
     border-radius: var(--radius) !important;
     overflow: hidden !important;
@@ -214,7 +200,6 @@ body { color: var(--text); }
     box-shadow: var(--shadow-sm) !important;
 }
 
-/* --- Alertas --- */
 [data-testid="stAlert"] {
     background: var(--primary-soft) !important;
     border: 1px solid #bfdbfe !important;
@@ -222,7 +207,6 @@ body { color: var(--text); }
     color: var(--primary-dark) !important;
 }
 
-/* --- Expanders --- */
 [data-testid="stExpander"] {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
@@ -234,7 +218,6 @@ body { color: var(--text); }
     border-color: #bcd0f0 !important;
 }
 
-/* --- Inputs e selects --- */
 [data-testid="stTextInput"] input,
 [data-testid="stNumberInput"] input,
 [data-testid="stSelectbox"] > div,
@@ -251,13 +234,11 @@ body { color: var(--text); }
     box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
 }
 
-/* --- Slider --- */
 [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] {
     background: var(--primary) !important;
     border-color: var(--primary) !important;
 }
 
-/* --- Divisores e scrollbar --- */
 hr { border-color: var(--border) !important; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -265,7 +246,6 @@ hr { border-color: var(--border) !important; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* --- Cards de conteúdo --- */
 .card-light {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -274,7 +254,6 @@ hr { border-color: var(--border) !important; }
     box-shadow: var(--shadow-sm);
 }
 
-/* --- Badges de status --- */
 .badge {
     display: inline-flex;
     align-items: center;
@@ -318,10 +297,10 @@ tempo_total = int(tempo_sessao)
 # ---------------------------------------------------------
 # 5. CONFIGURAÇÕES DE FONTE DE DADOS
 # ---------------------------------------------------------
-FOLDER_ALERTS_ID = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
-FOLDER_JAMS_ID = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
+FOLDER_ALERTS_ID  = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
+FOLDER_JAMS_ID    = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
-FOLDER_JAMS_ID2 = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
+FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
 
 # ---------------------------------------------------------
 # 6. FUNÇÕES DE COR
@@ -355,25 +334,25 @@ def get_danger_color(incident_type: str, subtype: str | None = None) -> str:
     is_leve = s in leves
 
     color_map = {
-        "ACIDENTE": "#F44336" if not is_leve else "#EF9A9A",
-        "VIA FECHADA": "#B71C1C",
+        "ACIDENTE":         "#F44336" if not is_leve else "#EF9A9A",
+        "VIA FECHADA":      "#B71C1C",
         "CONGESTIONAMENTO": "#7B1FA2" if not is_leve else "#CE93D8",
-        "PERIGO": "#FF9800" if not is_leve else "#FFCC80",
+        "PERIGO":           "#FF9800" if not is_leve else "#FFCC80",
         "PERIGO CLIMÁTICO": "#29B6F6",
-        "OBRAS": "#78909C",
-        "ALERTA": "#FDD835",
+        "OBRAS":            "#78909C",
+        "ALERTA":           "#FDD835",
     }
 
     subtype_override = {
-        "ACIDENTE GRAVE": "#B71C1C",
-        "ACIDENTE LEVE": "#EF9A9A",
-        "BURACO NA VIA": "#FF9800",
-        "OBRAS NA VIA": "#78909C",
+        "ACIDENTE GRAVE":    "#B71C1C",
+        "ACIDENTE LEVE":     "#EF9A9A",
+        "BURACO NA VIA":     "#FF9800",
+        "OBRAS NA VIA":      "#78909C",
         "SEMÁFORO QUEBRADO": "#FDD835",
-        "INUNDAÇÃO": "#0288D1",
-        "NEBLINA": "#B0BEC5",
-        "TRÂNSITO PARADO": "#7B1FA2",
-        "TRÂNSITO PESADO": "#F44336",
+        "INUNDAÇÃO":         "#0288D1",
+        "NEBLINA":           "#B0BEC5",
+        "TRÂNSITO PARADO":   "#7B1FA2",
+        "TRÂNSITO PESADO":   "#F44336",
         "TRÂNSITO MODERADO": "#FF9800",
     }
 
@@ -388,9 +367,6 @@ def get_danger_color(incident_type: str, subtype: str | None = None) -> str:
 
 import os
 
-# ---------------------------------------------------------
-# 1. CONEXÃO COM GOOGLE DRIVE
-# ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def get_drive_service():
     from google.oauth2 import service_account
@@ -404,9 +380,6 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-# ---------------------------------------------------------
-# 2. DESCOBRIR O ARQUIVO .H5 MAIS RECENTE
-# ---------------------------------------------------------
 def get_latest_h5_id(folder_id: str) -> str | None:
     service = get_drive_service()
     query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
@@ -436,9 +409,6 @@ def get_latest_h5_id(folder_id: str) -> str | None:
     return latest_id if latest_id else files[0]["id"]
 
 
-# ---------------------------------------------------------
-# 3. BAIXAR E LER HDF DO DRIVE
-# ---------------------------------------------------------
 @st.cache_data(ttl=600, show_spinner="📥 Baixando dados do Drive...")
 def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     from googleapiclient.http import MediaIoBaseDownload
@@ -469,9 +439,6 @@ def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
             os.remove(tmp_path)
 
 
-# ---------------------------------------------------------
-# 4. NORMALIZAR TIMESTAMPS
-# ---------------------------------------------------------
 def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
@@ -489,16 +456,13 @@ def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["timestamp"] = now_foz()
 
-    df["date"] = df["timestamp"].dt.date
-    df["hour"] = df["timestamp"].dt.hour
-    df["day_of_week"] = df["timestamp"].dt.day_name()
+    df["date"]       = df["timestamp"].dt.date
+    df["hour"]       = df["timestamp"].dt.hour
+    df["day_of_week"]= df["timestamp"].dt.day_name()
 
     return df
 
 
-# ---------------------------------------------------------
-# 5. EXTRAÇÃO DE COORDENADAS — HELPERS
-# ---------------------------------------------------------
 def _parse_dict_like(value):
     if isinstance(value, dict):
         return value
@@ -520,9 +484,6 @@ def _extract_lat_lon_from_location(value):
     return None, None
 
 
-# ---------------------------------------------------------
-# 6. EXTRAÇÃO DE COORDENADAS — ALERTAS
-# ---------------------------------------------------------
 def extract_coordinates(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
@@ -550,9 +511,6 @@ def extract_coordinates(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------
-# 7. EXTRAÇÃO DE COORDENADAS — JAMS
-# ---------------------------------------------------------
 def _extract_midpoint_from_line(value):
     try:
         points = value if isinstance(value, list) else ast.literal_eval(str(value))
@@ -601,9 +559,6 @@ def extract_jams_coordinates(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------
-# 8. NORMALIZAÇÃO DE VELOCIDADE
-# ---------------------------------------------------------
 def normalize_speed(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
@@ -623,51 +578,48 @@ def normalize_speed(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------
-# 9. TRADUÇÕES WAZE → PT-BR
-# ---------------------------------------------------------
 TYPE_MAP = {
-    "ROAD_CLOSED": "VIA FECHADA",
+    "ROAD_CLOSED":              "VIA FECHADA",
     "ROAD_CLOSED_CONSTRUCTION": "VIA FECHADA",
-    "ROAD_CLOSED_EVENT": "VIA FECHADA",
-    "HAZARD": "PERIGO",
-    "ACCIDENT": "ACIDENTE",
-    "JAM": "CONGESTIONAMENTO",
-    "WEATHERHAZARD": "PERIGO CLIMÁTICO",
+    "ROAD_CLOSED_EVENT":        "VIA FECHADA",
+    "HAZARD":                   "PERIGO",
+    "ACCIDENT":                 "ACIDENTE",
+    "JAM":                      "CONGESTIONAMENTO",
+    "WEATHERHAZARD":            "PERIGO CLIMÁTICO",
 }
 
 SUBTYPE_MAP = {
-    "ROAD_CLOSED_CONSTRUCTION": "OBRAS",
-    "ROAD_CLOSED_EVENT": "EVENTO",
-    "HAZARD_ON_ROAD": "PERIGO NA VIA",
-    "HAZARD_ON_ROAD_POT_HOLE": "BURACO NA VIA",
-    "HAZARD_ON_ROAD_ROAD_KILL": "ANIMAL NA VIA",
-    "HAZARD_ON_ROAD_CAR_STOPPED": "VEÍCULO PARADO NA VIA",
-    "HAZARD_ON_ROAD_CONSTRUCTION": "OBRAS NA VIA",
-    "HAZARD_ON_ROAD_OBJECT": "OBJETO NA VIA",
+    "ROAD_CLOSED_CONSTRUCTION":           "OBRAS",
+    "ROAD_CLOSED_EVENT":                  "EVENTO",
+    "HAZARD_ON_ROAD":                     "PERIGO NA VIA",
+    "HAZARD_ON_ROAD_POT_HOLE":            "BURACO NA VIA",
+    "HAZARD_ON_ROAD_ROAD_KILL":           "ANIMAL NA VIA",
+    "HAZARD_ON_ROAD_CAR_STOPPED":         "VEÍCULO PARADO NA VIA",
+    "HAZARD_ON_ROAD_CONSTRUCTION":        "OBRAS NA VIA",
+    "HAZARD_ON_ROAD_OBJECT":              "OBJETO NA VIA",
     "HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT": "SEMÁFORO QUEBRADO",
-    "HAZARD_ON_ROAD_ICE": "PISTA COM GELO",
-    "HAZARD_ON_ROAD_LANE_CLOSED": "FAIXA INTERDITADA",
-    "HAZARD_ON_SHOULDER": "PERIGO NO ACOSTAMENTO",
-    "HAZARD_ON_SHOULDER_CAR_STOPPED": "VEÍCULO PARADO NO ACOSTAMENTO",
-    "HAZARD_ON_SHOULDER_ANIMALS": "ANIMAIS NO ACOSTAMENTO",
-    "HAZARD_ON_SHOULDER_MISSING_SIGN": "SINALIZAÇÃO AUSENTE",
-    "HAZARD_WEATHER": "CONDIÇÕES CLIMÁTICAS",
-    "HAZARD_WEATHER_FOG": "NEBLINA",
-    "HAZARD_WEATHER_HAIL": "GRANIZO",
-    "HAZARD_WEATHER_HEAVY_RAIN": "CHUVA FORTE",
-    "HAZARD_WEATHER_FLOOD": "INUNDAÇÃO",
-    "HAZARD_WEATHER_MONSOON": "TEMPORAL",
-    "HAZARD_WEATHER_TORNADO": "TORNADO",
-    "HAZARD_WEATHER_HEAT_WAVE": "ONDA DE CALOR",
-    "HAZARD_WEATHER_HEAVY_SNOW": "NEVE INTENSA",
-    "HAZARD_WEATHER_FREEZING_RAIN": "CHUVA COM GELO",
-    "ACCIDENT_MAJOR": "ACIDENTE GRAVE",
-    "ACCIDENT_MINOR": "ACIDENTE LEVE",
-    "JAM_HEAVY_TRAFFIC": "TRÂNSITO PESADO",
-    "JAM_MODERATE_TRAFFIC": "TRÂNSITO MODERADO",
-    "JAM_STAND_STILL_TRAFFIC": "TRÂNSITO PARADO",
-    "JAM_LIGHT_TRAFFIC": "TRÂNSITO LEVE",
+    "HAZARD_ON_ROAD_ICE":                 "PISTA COM GELO",
+    "HAZARD_ON_ROAD_LANE_CLOSED":         "FAIXA INTERDITADA",
+    "HAZARD_ON_SHOULDER":                 "PERIGO NO ACOSTAMENTO",
+    "HAZARD_ON_SHOULDER_CAR_STOPPED":     "VEÍCULO PARADO NO ACOSTAMENTO",
+    "HAZARD_ON_SHOULDER_ANIMALS":         "ANIMAIS NO ACOSTAMENTO",
+    "HAZARD_ON_SHOULDER_MISSING_SIGN":    "SINALIZAÇÃO AUSENTE",
+    "HAZARD_WEATHER":                     "CONDIÇÕES CLIMÁTICAS",
+    "HAZARD_WEATHER_FOG":                 "NEBLINA",
+    "HAZARD_WEATHER_HAIL":                "GRANIZO",
+    "HAZARD_WEATHER_HEAVY_RAIN":          "CHUVA FORTE",
+    "HAZARD_WEATHER_FLOOD":               "INUNDAÇÃO",
+    "HAZARD_WEATHER_MONSOON":             "TEMPORAL",
+    "HAZARD_WEATHER_TORNADO":             "TORNADO",
+    "HAZARD_WEATHER_HEAT_WAVE":           "ONDA DE CALOR",
+    "HAZARD_WEATHER_HEAVY_SNOW":          "NEVE INTENSA",
+    "HAZARD_WEATHER_FREEZING_RAIN":       "CHUVA COM GELO",
+    "ACCIDENT_MAJOR":                     "ACIDENTE GRAVE",
+    "ACCIDENT_MINOR":                     "ACIDENTE LEVE",
+    "JAM_HEAVY_TRAFFIC":                  "TRÂNSITO PESADO",
+    "JAM_MODERATE_TRAFFIC":               "TRÂNSITO MODERADO",
+    "JAM_STAND_STILL_TRAFFIC":            "TRÂNSITO PARADO",
+    "JAM_LIGHT_TRAFFIC":                  "TRÂNSITO LEVE",
 }
 
 def translate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -700,17 +652,13 @@ def translate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------
-# 10. PIPELINE PRINCIPAL
-# ---------------------------------------------------------
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
 def load_all_data():
-    alerts_id = get_latest_h5_id(FOLDER_ALERTS_ID)
+    alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
     alerts_id2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
-    jams_id = get_latest_h5_id(FOLDER_JAMS_ID)
-    jams_id2 = get_latest_h5_id(FOLDER_JAMS_ID2)
+    jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
+    jams_id2   = get_latest_h5_id(FOLDER_JAMS_ID2)
 
-    # Alertas
     frames_alerts = []
     if alerts_id:
         frames_alerts.append(load_hdf_from_drive(alerts_id))
@@ -724,7 +672,6 @@ def load_all_data():
     else:
         df_alerts = pd.DataFrame()
 
-    # Jams
     frames_jams = []
     if jams_id:
         frames_jams.append(load_hdf_from_drive(jams_id))
@@ -738,21 +685,17 @@ def load_all_data():
     else:
         df_jams = pd.DataFrame()
 
-    # Enriquecimento alertas
     if not df_alerts.empty:
         df_alerts = normalize_timestamps(df_alerts)
         df_alerts = extract_coordinates(df_alerts)
         df_alerts = translate_dataframe(df_alerts)
-
         if "street" not in df_alerts.columns:
             df_alerts["street"] = "N/A"
 
-    # Enriquecimento jams
     if not df_jams.empty:
         df_jams = normalize_timestamps(df_jams)
         df_jams = extract_jams_coordinates(df_jams)
         df_jams = normalize_speed(df_jams)
-
         if "street" not in df_jams.columns:
             df_jams["street"] = "Via"
 
@@ -762,9 +705,6 @@ def load_all_data():
 # BLOCO 3 — MAPAS E VISUALIZAÇÕES GEOESPACIAIS
 # =========================================================
 
-# ---------------------------------------------------------
-# 1. BOUNDING BOX DE FOZ DO IGUAÇU
-# ---------------------------------------------------------
 LAT_MIN, LAT_MAX = -25.70, -25.40
 LON_MIN, LON_MAX = -54.75, -54.45
 
@@ -786,9 +726,6 @@ def filter_bbox_foz(df: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
-# ---------------------------------------------------------
-# 2. MAPA BASE COM BÚSSOLA
-# ---------------------------------------------------------
 def create_folium_map_with_compass(lat: float, lon: float, zoom_level: int = 13) -> folium.Map:
     m = folium.Map(
         location=[lat, lon],
@@ -899,9 +836,6 @@ def create_folium_map_with_compass(lat: float, lon: float, zoom_level: int = 13)
     return m
 
 
-# ---------------------------------------------------------
-# 3. HELPERS DE SEGURANÇA / SERIALIZAÇÃO
-# ---------------------------------------------------------
 def _load_json_df(df_json: str) -> pd.DataFrame:
     try:
         df = pd.read_json(io.StringIO(df_json))
@@ -919,9 +853,6 @@ def _safe_time_label(value) -> str:
     return "--"
 
 
-# ---------------------------------------------------------
-# 4. MAPA DE INCIDENTES
-# ---------------------------------------------------------
 def generate_incidents_map(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
     if df.empty:
@@ -961,11 +892,11 @@ def generate_incidents_map(df_json: str) -> folium.Map | None:
 
     for _, row in df_map.iterrows():
         try:
-            tipo = str(row.get("type", "?"))
+            tipo    = str(row.get("type", "?"))
             subtipo = str(row.get("subtype", ""))
-            rua = str(row.get("street", "N/A"))
-            color = get_danger_color(tipo, row.get("subtype"))
-            ts = _safe_time_label(row.get("timestamp"))
+            rua     = str(row.get("street", "N/A"))
+            color   = get_danger_color(tipo, row.get("subtype"))
+            ts      = _safe_time_label(row.get("timestamp"))
             lat_val = float(row["lat"])
             lon_val = float(row["lon"])
 
@@ -973,7 +904,7 @@ def generate_incidents_map(df_json: str) -> folium.Map | None:
             <div style='min-width:200px;font-family:Arial,sans-serif;'>
                 <b style='color:{color};font-size:16px;'>🚨 {tipo}</b><br>
                 <b>{subtipo}</b><br>
-                路️ <i>{rua}</i><br>
+                🛣️ <i>{rua}</i><br>
                 🕒 {ts}<br>
                 📍 {lat_val:.4f}, {lon_val:.4f}
             </div>
@@ -997,9 +928,6 @@ def generate_incidents_map(df_json: str) -> folium.Map | None:
     return m
 
 
-# ---------------------------------------------------------
-# 5. MAPA DE CONGESTIONAMENTOS
-# ---------------------------------------------------------
 def generate_jams_map(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
     if df.empty:
@@ -1064,12 +992,12 @@ def generate_jams_map(df_json: str) -> folium.Map | None:
         try:
             speed_raw = row.get("speed", float("nan"))
             speed_kmh = float(speed_raw) * 3.6 if pd.notna(speed_raw) else 0.0
-            color = get_congestion_color(speed_kmh)
-            rua = str(row.get("street", "Via"))
-            ts = _safe_time_label(row.get("timestamp"))
-            lat_val = float(row["lat"])
-            lon_val = float(row["lon"])
-            spd_str = f"{speed_kmh:.0f} km/h"
+            color     = get_congestion_color(speed_kmh)
+            rua       = str(row.get("street", "Via"))
+            ts        = _safe_time_label(row.get("timestamp"))
+            lat_val   = float(row["lat"])
+            lon_val   = float(row["lon"])
+            spd_str   = f"{speed_kmh:.0f} km/h"
 
             popup_html = f"""
             <div style='min-width:180px;font-family:Arial,sans-serif;'>
@@ -1097,9 +1025,6 @@ def generate_jams_map(df_json: str) -> folium.Map | None:
     return m
 
 
-# ---------------------------------------------------------
-# 6. MAPA DE CALOR
-# ---------------------------------------------------------
 def generate_heatmap(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
     if df.empty:
@@ -1130,59 +1055,9 @@ def generate_heatmap(df_json: str) -> folium.Map | None:
     return m
 
 # =========================================================
-# BACKEND AUXILIAR — NOVOS RECURSOS DE TOMADA DE DECISÃO URBANA (SAD)
-# =========================================================
-
-def calculate_road_criticism(df_jams) -> pd.DataFrame:
-    """
-    MÉTODO 1: ANÁLISE MULTICRITÉRIO DE PRIORIZAÇÃO VIÁRIA (MCDA)
-    Calcula o índice composto de criticidade por via baseado na frequência e atraso.
-    """
-    if df_jams is None or df_jams.empty or "street" not in df_jams.columns:
-        return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
-    
-    # Agregar métricas por logradouro
-    agg_dict = {"street": "count"}
-    if "delay" in df_jams.columns:
-        agg_dict["delay"] = "mean"
-    
-    grouped = df_jams.groupby("street").agg(
-        Volume_Jams=("street", "count"),
-        Atraso_Medio_Seg=("delay", "mean") if "delay" in df_jams.columns else ("street", lambda x: 0.0)
-    ).reset_index()
-    
-    # Remover registros sem nome válido de via
-    grouped = grouped[~grouped["street"].isin(["NA", "nan", "", "N/A", "Via"])]
-    if grouped.empty:
-        return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
-        
-    max_vol = float(grouped["Volume_Jams"].max()) if grouped["Volume_Jams"].max() > 0 else 1.0
-    max_delay = float(grouped["Atraso_Medio_Seg"].max()) if grouped["Atraso_Medio_Seg"].max() > 0 else 1.0
-    
-    # Formula estruturada: 40% peso volumétrico + 60% peso temporal de retenção
-    grouped["Criticidade_Index"] = (
-        ((grouped["Volume_Jams"] / max_vol) * 0.4) + 
-        ((grouped["Atraso_Medio_Seg"] / max_delay) * 0.6)
-    ) * 100
-    
-    return grouped.sort_values(by="Criticidade_Index", ascending=False)
-
-def predict_traffic_delay_impact(length_meters: float) -> float:
-    """
-    MÉTODO 2: MODELO PREDITIVO DE ENGENHARIA DE TRÁFEGO
-    Estima matematicamente o delay (segundos) com base na extensão linear da fila (m).
-    """
-    coef_angular = 0.15   # Segundos adicionais estimados por metro de retenção viária
-    intercepto = 12.0     # Delay estrutural fixo de interseção
-    return (length_meters * coef_angular) + intercepto
-
-# =========================================================
 # BLOCO 4 — SIDEBAR, CARGA OPERACIONAL E FILTROS
 # =========================================================
 
-# ---------------------------------------------------------
-# 1. HORA LOCAL E STATUS DA SESSÃO
-# ---------------------------------------------------------
 hora_foz_atual = now_foz()
 
 st.sidebar.header("⚙️ Controles")
@@ -1190,24 +1065,11 @@ st.sidebar.markdown("### ⏰ Status da Sessão")
 st.sidebar.markdown(
     f"🕐 **Hora atual (Foz):** `{hora_foz_atual.strftime('%d/%m/%Y %H:%M:%S')}`"
 )
-st.sidebar.metric(
-    "⏳ Tempo online",
-    f"{tempo_total // 3600}h:{(tempo_total % 3600) // 60:02d}m"
-)
-st.sidebar.metric(
-    "⏳ Próximo ciclo",
-    f"{minutos_restantes}:{segundos_restantes:02d}"
-)
-st.sidebar.metric(
-    "🔄 Atualizações",
-    st.session_state.manual_refreshes
-)
+st.sidebar.metric("⏳ Tempo online",    f"{tempo_total // 3600}h:{(tempo_total % 3600) // 60:02d}m")
+st.sidebar.metric("⏳ Próximo ciclo",   f"{minutos_restantes}:{segundos_restantes:02d}")
+st.sidebar.metric("🔄 Atualizações",    st.session_state.manual_refreshes)
 
-if st.sidebar.button(
-    "🔄 ATUALIZAR DADOS AGORA",
-    width="stretch",
-    type="primary"
-):
+if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", width="stretch", type="primary"):
     st.cache_data.clear()
     st.cache_resource.clear()
     st.session_state.manual_refreshes += 1
@@ -1216,9 +1078,6 @@ if st.sidebar.button(
 st.sidebar.divider()
 
 
-# ---------------------------------------------------------
-# 2. CARREGAMENTO PRINCIPAL DE DADOS
-# ---------------------------------------------------------
 try:
     df_alerts_raw, df_jams_raw = load_all_data()
 except Exception as e:
@@ -1232,9 +1091,6 @@ except Exception as e:
     st.stop()
 
 
-# ---------------------------------------------------------
-# 3. GARANTIA DE COLUNAS TEMPORAIS
-# ---------------------------------------------------------
 for df_ref in [df_alerts_raw, df_jams_raw]:
     if not df_ref.empty and "timestamp" in df_ref.columns:
         if "hour" not in df_ref.columns:
@@ -1243,16 +1099,11 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
             df_ref["date"] = pd.to_datetime(df_ref["timestamp"], errors="coerce").dt.date
 
 
-# ---------------------------------------------------------
-# 4. HELPERS DE FILTRO
-# ---------------------------------------------------------
 def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[int, int]) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
-
     if "date" not in df.columns or "hour" not in df.columns:
         return pd.DataFrame()
-
     return df[
         (df["date"] == selected_date) &
         (df["hour"].between(hora_range[0], hora_range[1]))
@@ -1262,13 +1113,8 @@ def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[in
 def clean_unique_values(series: pd.Series, invalid_values=None):
     if series is None:
         return []
-
     invalid_values = set(invalid_values or [])
-    values = (
-        series.dropna()
-        .astype(str)
-        .str.strip()
-    )
+    values = series.dropna().astype(str).str.strip()
     values = values[~values.isin(invalid_values)]
     return sorted(values.unique().tolist())
 
@@ -1283,9 +1129,6 @@ def classify_traffic_status(media_vel_kmh: float) -> str:
     return "🟢 Fluindo"
 
 
-# ---------------------------------------------------------
-# 5. FILTROS DA SIDEBAR
-# ---------------------------------------------------------
 st.sidebar.subheader("🔍 Filtros")
 today_foz = hora_foz_atual.date()
 
@@ -1296,8 +1139,8 @@ if not df_jams_raw.empty and "date" in df_jams_raw.columns:
     all_dates.update(pd.to_datetime(df_jams_raw["date"]).dt.date.unique())
 
 if all_dates:
-    min_date = min(all_dates)
-    max_date = max(all_dates)
+    min_date     = min(all_dates)
+    max_date     = max(all_dates)
     default_date = today_foz if today_foz in all_dates else max_date
 else:
     min_date = max_date = default_date = today_foz
@@ -1309,35 +1152,18 @@ selected_date = st.sidebar.date_input(
     max_value=max(max_date, today_foz),
 )
 
-hora_range = st.sidebar.slider(
-    "🕐 Horário",
-    min_value=0,
-    max_value=23,
-    value=(0, 23)
-)
+hora_range = st.sidebar.slider("🕐 Horário", min_value=0, max_value=23, value=(0, 23))
 
-
-# ---------------------------------------------------------
-# 6. BASES INTERMEDIÁRIAS POR DATA/HORA
-# ---------------------------------------------------------
 alerts_date_base = apply_base_time_filter(df_alerts_raw, selected_date, hora_range)
-jams_date_base = apply_base_time_filter(df_jams_raw, selected_date, hora_range)
+jams_date_base   = apply_base_time_filter(df_jams_raw,   selected_date, hora_range)
 
-
-# ---------------------------------------------------------
-# 7. FILTROS DE ALERTAS
-# ---------------------------------------------------------
 tipos_na_data = (
     clean_unique_values(alerts_date_base["type"])
     if not alerts_date_base.empty and "type" in alerts_date_base.columns
     else []
 )
 
-filtro_tipo = st.sidebar.multiselect(
-    "🚨 Tipo",
-    options=tipos_na_data,
-    default=tipos_na_data,
-)
+filtro_tipo = st.sidebar.multiselect("🚨 Tipo", options=tipos_na_data, default=tipos_na_data)
 
 natureza_base = alerts_date_base.copy()
 if filtro_tipo and "type" in natureza_base.columns:
@@ -1349,11 +1175,7 @@ naturezas_na_data = (
     else []
 )
 
-filtro_natureza = st.sidebar.multiselect(
-    "🔍 Natureza",
-    options=naturezas_na_data,
-    default=naturezas_na_data,
-)
+filtro_natureza = st.sidebar.multiselect("🔍 Natureza", options=naturezas_na_data, default=naturezas_na_data)
 
 rua_base = natureza_base.copy()
 if filtro_natureza and "subtype" in rua_base.columns:
@@ -1365,18 +1187,9 @@ ruas_na_data = (
     else []
 )
 
-filtro_rua = st.sidebar.selectbox(
-    "🛣️ Rua",
-    options=["(Todas)"] + ruas_na_data,
-    index=0,
-)
-
+filtro_rua = st.sidebar.selectbox("🛣️ Rua", options=["(Todas)"] + ruas_na_data, index=0)
 filtro_rua = "" if filtro_rua == "(Todas)" else filtro_rua
 
-
-# ---------------------------------------------------------
-# 8. FILTRO DE VELOCIDADE DOS JAMS
-# ---------------------------------------------------------
 vel_min_data, vel_max_data = 0.0, 120.0
 
 if not jams_date_base.empty and "speed" in jams_date_base.columns:
@@ -1393,17 +1206,13 @@ vel_range = st.sidebar.slider(
     step=5.0,
 )
 
-
-# ---------------------------------------------------------
-# 9. RESUMO LATERAL DE CONGESTIONAMENTOS
-# ---------------------------------------------------------
 if (
     not jams_date_base.empty
     and "speed" in jams_date_base.columns
     and jams_date_base["speed"].notna().any()
 ):
-    media_vel = jams_date_base["speed"].mean() * 3.6
-    total_jams = len(jams_date_base)
+    media_vel   = jams_date_base["speed"].mean() * 3.6
+    total_jams  = len(jams_date_base)
     status_label = classify_traffic_status(media_vel)
 
     st.sidebar.markdown("---")
@@ -1411,23 +1220,16 @@ if (
     st.sidebar.metric("Vel. Média", f"{media_vel:.1f} km/h", delta=status_label)
     st.sidebar.metric("Total de Jams", total_jams)
 else:
-    st.sidebar.info(
-        f"Sem dados de congestionamento em {selected_date.strftime('%d/%m')}."
-    )
+    st.sidebar.info(f"Sem dados de congestionamento em {selected_date.strftime('%d/%m')}.")
 
 
-# ---------------------------------------------------------
-# 10. APLICAÇÃO GLOBAL DOS FILTROS
-# ---------------------------------------------------------
 df_filtered = apply_base_time_filter(df_alerts_raw, selected_date, hora_range)
 
 if not df_filtered.empty:
     if filtro_tipo and "type" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["type"].isin(filtro_tipo)]
-
     if filtro_natureza and "subtype" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["subtype"].isin(filtro_natureza)]
-
     if filtro_rua and "street" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["street"] == filtro_rua]
 
@@ -1438,28 +1240,18 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
         (df_jams_filtered["speed"].fillna(0) * 3.6).between(vel_range[0], vel_range[1])
     ]
 
-
-# ---------------------------------------------------------
-# 11. BASES MESTRES DO DASHBOARD
-# ---------------------------------------------------------
 base_alertas_dashboard = df_filtered.copy()
-base_jams_dashboard = df_jams_filtered.copy()
-
-# Executar processamento analítico do backend auxiliar com base nos dados dinâmicos filtrados
-df_criticidade_vias = calculate_road_criticism(base_jams_dashboard)
+base_jams_dashboard    = df_jams_filtered.copy()
 
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
 # =========================================================
 
-# ---------------------------------------------------------
-# 1. HELPERS DE CLASSIFICAÇÃO
-# ---------------------------------------------------------
 def classify_risk_level(total_incidentes: int):
     if total_incidentes >= 15:
-        return "Crítico", "🔴", "Volume muito alto de incidentes no período filtrado."
+        return "Crítico",  "🔴", "Volume muito alto de incidentes no período filtrado."
     elif total_incidentes >= 10:
-        return "Alto", "🟠", "Quantidade elevada de ocorrências; atenção operacional recomendada."
+        return "Alto",     "🟠", "Quantidade elevada de ocorrências; atenção operacional recomendada."
     elif total_incidentes >= 5:
         return "Moderado", "🟡", "Ocorrências acima do nível de normalidade para o recorte atual."
     return "Baixo", "🟢", "Baixa pressão operacional no período filtrado."
@@ -1467,9 +1259,9 @@ def classify_risk_level(total_incidentes: int):
 
 def classify_flow_status(vmedia_kmh: float):
     if vmedia_kmh < 20:
-        return "Travado", "🔴", "Fluxo muito comprometido, com forte retenção nas vias."
+        return "Travado",  "🔴", "Fluxo muito comprometido, com forte retenção nas vias."
     elif vmedia_kmh < 40:
-        return "Lento", "🟠", "Tráfego com perda relevante de fluidez."
+        return "Lento",    "🟠", "Tráfego com perda relevante de fluidez."
     elif vmedia_kmh < 60:
         return "Moderado", "🟡", "Fluxo estável, mas com redução perceptível de velocidade."
     return "Fluindo", "🟢", "Boas condições de circulação no recorte selecionado."
@@ -1492,7 +1284,7 @@ def build_selection_label(selected_values, total_available, singular_name, plura
 
 
 # ---------------------------------------------------------
-# 2. CABEÇALHO PRINCIPAL
+# CABEÇALHO PRINCIPAL  ← MODIFICAÇÃO 1: ícone Waze + fundo escuro original
 # ---------------------------------------------------------
 st.markdown(f"""
 <div style="
@@ -1530,7 +1322,7 @@ st.markdown(f"""
   ">
       <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
                    animation:pulse 2s infinite;display:inline-block;"></span>
-      SISTEMA ATIVO — INTEGRAÇÃO CIENTÍFICA (SAD)
+      SISTEMA ATIVO — DADOS REAIS
   </div>
   <h1 style="
       margin: 0 0 0.25rem 0;
@@ -1540,7 +1332,9 @@ st.markdown(f"""
       letter-spacing: -0.5px;
       line-height: 1.2;
   ">
-      <img src="https://cdn.simpleicons.org/waze/33CCC5" width="36" height="36" style="vertical-align:middle;margin-right:8px;" alt="Waze for Cities">Monitoramento de Tráfego
+      <img src="https://cdn.simpleicons.org/waze/33CCC5" width="36" height="36"
+           style="vertical-align:middle;margin-right:8px;" alt="Waze for Cities">
+      Monitoramento de Tráfego
       <span style="
           background: linear-gradient(135deg, #3b82f6, #60a5fa);
           -webkit-background-clip: text;
@@ -1585,9 +1379,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------
-# 3. SOBRE O DASHBOARD
-# ---------------------------------------------------------
+# SOBRE O DASHBOARD
 st.markdown("""
 <div style="
     background:#FFFFFF;
@@ -1597,50 +1389,27 @@ st.markdown("""
     margin-bottom:16px;
     box-shadow:0 1px 4px rgba(15,23,42,0.04);
 ">
-    <div style="
-        font-size:15px;
-        font-weight:700;
-        color:#0F172A;
-        margin-bottom:6px;
-    ">
-        Sobre o Sistema de Apoio à Decisão Urbana
+    <div style="font-size:15px;font-weight:700;color:#0F172A;margin-bottom:6px;">
+        Sobre o Sistema
     </div>
-    <div style="
-        font-size:14px;
-        line-height:1.7;
-        color:#475569;
-    ">
-        Este sistema consolidado como uma ferramenta de infraestrutura e tecnologia urbana realiza o monitoramento analítico de incidentes e congestionamentos em Foz do Iguaçu. 
-        Além do mapeamento e exploração descritiva baseada nos dados do programa <i>Waze for Cities Data</i>, a plataforma integra métodos científicos de <b>Análise Multicritério (MCDA)</b> para priorização de vias e um <b>Modelo Preditivo</b> matemático para mensurar a perda de fluidez viária.
+    <div style="font-size:14px;line-height:1.7;color:#475569;">
+        Este sistema mostra o monitoramento de incidentes viários e congestionamentos em Foz do Iguaçu com base em dados do Waze.
+        Os painéis reúnem mapas, filtros e indicadores para apoiar análises espaciais, temporais e históricas da mobilidade urbana.
+        Os dados podem ser explorados por tipo de ocorrência, natureza, via, horário e intensidade do tráfego.
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------
-# 4. RESUMO DOS FILTROS
-# ---------------------------------------------------------
-label_tipo = build_selection_label(
-    filtro_tipo,
-    len(tipos_na_data),
-    "tipo",
-    "tipos"
-)
-
-label_natureza = build_selection_label(
-    filtro_natureza,
-    len(naturezas_na_data),
-    "natureza",
-    "naturezas"
-)
+label_tipo = build_selection_label(filtro_tipo, len(tipos_na_data), "tipo", "tipos")
+label_natureza = build_selection_label(filtro_natureza, len(naturezas_na_data), "natureza", "naturezas")
 
 col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
-
-col_f1.metric("📅 Data", selected_date.strftime("%d/%m/%Y"))
-col_f2.metric("🚨 Tipo", label_tipo)
+col_f1.metric("📅 Data",     selected_date.strftime("%d/%m/%Y"))
+col_f2.metric("🚨 Tipo",     label_tipo)
 col_f3.metric("🔍 Natureza", label_natureza)
-col_f4.metric("🛣️ Rua", filtro_rua if filtro_rua else "Todas")
-col_f5.metric("⏰ Horário", f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
+col_f4.metric("🛣️ Rua",     filtro_rua if filtro_rua else "Todas")
+col_f5.metric("⏰ Horário",  f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
 
 st.caption(
     f"🔍 Filtros ativos → {len(df_filtered)} incidente(s) exibidos em "
@@ -1650,10 +1419,8 @@ st.caption(
 st.markdown("---")
 
 
-# ---------------------------------------------------------
-# 5. KPIs
-# ---------------------------------------------------------
-st.subheader("📊 Resumo Estatístico Estruturado")
+# KPIs
+st.subheader("📊 Resumo Estatístico")
 
 incidentes_dia = len(df_filtered)
 acidentes = (
@@ -1674,19 +1441,17 @@ status_via = classify_road_status(incidentes_dia)
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 kpi1.metric("Total Alertas", incidentes_dia)
-kpi2.metric("Acidentes", acidentes)
-kpi3.metric("Vel. Média", f"{vmedia_kmh:.1f} km/h")
+kpi2.metric("Acidentes",     acidentes)
+kpi3.metric("Vel. Média",    f"{vmedia_kmh:.1f} km/h")
 kpi4.metric("Status da Via", status_via)
 
 st.markdown("---")
 
 
-# ---------------------------------------------------------
-# 6. INDICADORES DE GRAVIDADE
-# ---------------------------------------------------------
+# INDICADORES DE GRAVIDADE
 st.subheader("📈 Indicadores de Gravidade")
 
-nivel_risco, emoji_risco, desc_risco = classify_risk_level(incidentes_dia)
+nivel_risco,  emoji_risco, desc_risco  = classify_risk_level(incidentes_dia)
 status_fluxo, emoji_fluxo, desc_fluxo = classify_flow_status(vmedia_kmh)
 
 col_grav, col_vel = st.columns(2)
@@ -1720,17 +1485,14 @@ st.caption(
 st.markdown("---")
 
 # =========================================================
-# BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS E RECURSOS CIENTÍFICOS (SAD)
+# BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS
 # =========================================================
 
-st.subheader("🗺️ Painéis e Matrizes de Suporte à Decisão")
-tab_inc, tab_jams, tab_calor, tab_criticidade, tab_predicao, tab_graficos, tab_dados = st.tabs(
-    ["Incidentes", "Congestionamentos", "Mapa de Calor (KDE)", "📊 Criticidade Viária (MCDA)", "🔮 Modelo Preditivo", "Gráficos", "Dados Detalhados"]
+st.subheader("🗺️ Visualizações")
+tab_inc, tab_jams, tab_calor, tab_graficos, tab_dados = st.tabs(
+    ["Incidentes", "Congestionamentos", "Mapa de Calor", "Gráficos", "Dados Detalhados"]
 )
 
-# ---------------------------------------------------------
-# ABA 1 — INCIDENTES
-# ---------------------------------------------------------
 with tab_inc:
     st.caption("📍 Centro: -25.54, -54.58 · Norte ↑ · Clique nos pontos para detalhes")
 
@@ -1757,9 +1519,6 @@ with tab_inc:
         st.info("Nenhum incidente com os filtros aplicados.")
 
 
-# ---------------------------------------------------------
-# ABA 2 — CONGESTIONAMENTOS
-# ---------------------------------------------------------
 with tab_jams:
     st.caption("🚦 Escala métrica · Livre → Parado")
 
@@ -1771,7 +1530,7 @@ with tab_jams:
 
             st.markdown("""
             | Cor | Velocidade | Status |
-            |---|---|---|
+            |---|---:|---|
             | 🔵 | 80+ km/h | Livre / Fluindo |
             | 🟢 | 60–80 km/h | Bom |
             | 🟡 | 40–60 km/h | Moderado |
@@ -1790,12 +1549,8 @@ with tab_jams:
         st.info("Nenhum congestionamento para exibir.")
 
 
-# ---------------------------------------------------------
-# ABA 3 — MAPA DE CALOR
-# ---------------------------------------------------------
 with tab_calor:
-    st.subheader("🔥 Zonas de Densidade de Ocorrências (Estimativa de Kernel)")
-    st.caption("Superfície contínua espacializada para delimitação de clusters críticos de mobilidade.")
+    st.subheader("🔥 Zonas de Concentração de Incidentes")
 
     if not df_filtered.empty:
         df_heat = df_filtered.copy()
@@ -1832,15 +1587,16 @@ with tab_calor:
                 st_folium(m_heat, width="100%", height=500, key=f"mapa_heat_{len(df_heat)}")
 
                 st.markdown("""
-                | Cor | Concentração Estatística |
+                | Cor | Concentração |
                 |---|---|
-                | 🟨 | Densidade Baixa — registros dispersos |
-                | 🟧 | Densidade Média — ponto de atenção |
-                | 🟥 | Densidade Alta — hotspot crítico |
-                | 🟫 | Densidade Crítica — requer intervenção viária |
+                | 🟨 | Baixa — poucos registros |
+                | 🟧 | Média — atenção |
+                | 🟥 | Alta — ponto crítico |
+                | 🟫 | Crítica — intervenção prioritária |
                 """)
 
-                tipos_no_mapa = df_heat["type"].value_counts().reset_index()
+                tipos_no_mapa = df_heat["type"].valu
+e_counts().reset_index()
                 tipos_no_mapa.columns = ["Tipo", "Qtd"]
                 st.dataframe(tipos_no_mapa, hide_index=True, width="stretch")
             else:
@@ -1850,100 +1606,7 @@ with tab_calor:
     else:
         st.info("Sem dados suficientes para mapa de calor.")
 
-# ---------------------------------------------------------
-# NOVA ABA 4 — ANÁLISE DE CRITICIDADE MULTICRITÉRIO (MCDA)
-# ---------------------------------------------------------
-with tab_criticidade:
-    st.subheader("📊 Hierarquização de Logradouros por Índice Composto de Gargalo")
-    st.markdown("""
-    Este módulo implementa uma abordagem analítica multicritério, extraindo os dados de congestionamento no backend e processando-os dinamicamente. 
-    A fórmula pondera o **Volume de Retenções (40%)** e o **Atraso Médio de Viagem em Segundos (60%)**, gerando uma ferramenta matemática de suporte à decisão para a **Foztrans**.
-    """)
-    
-    if not df_criticidade_vias.empty:
-        col_c1, col_c2 = st.columns([3, 2])
-        with col_c1:
-            fig_crit = px.bar(
-                df_criticidade_vias.head(10),
-                x="Criticidade_Index",
-                y="street",
-                orientation="h",
-                title="Top 10 Vias Críticas que Demandam Intervenção Estrutural",
-                labels={"Criticidade_Index": "Índice Composto de Criticidade (0-100)", "street": "Logradouro Viário"},
-                color="Criticidade_Index",
-                color_continuous_scale="Reds"
-            )
-            fig_crit.update_layout(height=400)
-            st.plotly_chart(fig_crit, use_container_width=True)
-        with col_c2:
-            st.markdown("#### Matriz do Ranking de Prioridade Viária")
-            st.dataframe(
-                df_criticidade_vias[["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"]].head(10),
-                hide_index=True,
-                column_config={
-                    "street": "Logradouro",
-                    "Volume_Jams": "Qtd Retenções",
-                    "Atraso_Medio_Seg": "Atraso Médio (s)",
-                    "Criticidade_Index": "Índice Composto"
-                }
-            )
-    else:
-        st.info("Volume de dados insuficiente no recorte temporal selecionado para gerar o ranking multicritério.")
 
-# ---------------------------------------------------------
-# NOVA ABA 5 — MODELO PREDITIVO DE ENGENHARIA DE TRÁFEGO
-# ---------------------------------------------------------
-with tab_predicao:
-    st.subheader("🔮 Estimativa Computacional Proativa de Perda de Fluidez")
-    st.markdown("""
-    Módulo preditivo proativo fundamentado em regressão inferencial a partir do histórico de longa duração viária. 
-    A ferramenta permite estimar o **Tempo de Atraso Veicular Esperado** em minutos baseado na extensão geométrica da fila em metros gerada por um incidente ou bloqueio em Foz.
-    """)
-    
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        st.markdown("#### Parâmetros Operacionais da Fila Viária")
-        extensao_simulada = st.slider("Extensão linear estimada da fila/congestionamento (metros):", min_value=50, max_value=5000, value=600, step=50)
-        
-        atraso_segundos = predict_traffic_delay_impact(float(extensao_simulada))
-        atraso_minutos = atraso_segundos / 60.0
-        
-        st.metric(
-            label="Tempo de Atraso Predito no Segmento", 
-            value=f"{atraso_minutos:.2f} minutos",
-            delta="Modelo Ativo"
-        )
-        st.caption("Equação Estruturada do Modelo: $$Atraso (s) = (Comprimento \times 0.15) + 12.0$$")
-        st.info("Insumo metodológico aplicado diretamente para avaliação de impacto em eixos de tráfego transfronteiriço e gargalos logísticos locais.")
-        
-    with col_p2:
-        # Gerar curva contínua de desempenho viário do modelo preditivo
-        comprimentos_eixo = np.linspace(50, 5000, 100)
-        atrasos_eixo_min = [predict_traffic_delay_impact(l) / 60.0 for l in comprimentos_eixo]
-        df_curva_pred = pd.DataFrame({"Comprimento (m)": comprimentos_eixo, "Atraso Esperado (min)": atrasos_eixo_min})
-        
-        fig_pred = px.line(
-            df_curva_pred, 
-            x="Comprimento (m)", 
-            y="Atraso Esperado (min)",
-            title="Curva de Sensibilidade: Extensão Espacial vs Impacto Temporal"
-        )
-        # Adicionar ponto dinâmico correspondente ao valor selecionado no slider
-        fig_pred.add_scatter(
-            x=[extensao_simulada], 
-            y=[atraso_minutos], 
-            mode="markers+text", 
-            name="Cenário Simulado", 
-            text=[f"{atraso_minutos:.1f} min"], 
-            textposition="top center",
-            marker=dict(size=14, color="red", line=dict(width=2, color="black"))
-        )
-        fig_pred.update_layout(height=380)
-        st.plotly_chart(fig_pred, use_container_width=True)
-
-# ---------------------------------------------------------
-# ABA 6 — GRÁFICOS
-# ---------------------------------------------------------
 with tab_graficos:
     if not df_filtered.empty:
         st.markdown(
@@ -1963,22 +1626,18 @@ with tab_graficos:
             df_hist = df_hist[df_hist["street"] == filtro_rua]
 
         DIAS_PT = {
-            "Monday": "Segunda",
-            "Tuesday": "Terça",
-            "Wednesday": "Quarta",
-            "Thursday": "Quinta",
-            "Friday": "Sexta",
-            "Saturday": "Sábado",
+            "Monday": "Segunda", "Tuesday": "Terça",  "Wednesday": "Quarta",
+            "Thursday": "Quinta", "Friday": "Sexta",  "Saturday": "Sábado",
             "Sunday": "Domingo",
         }
 
         CORES_TIPO = {
-            "ACIDENTE": "#e74c3c",
-            "VIA FECHADA": "#c0392b",
-            "PERIGO": "#e67e22",
+            "ACIDENTE":         "#e74c3c",
+            "VIA FECHADA":      "#c0392b",
+            "PERIGO":           "#e67e22",
             "PERIGO CLIMÁTICO": "#3498db",
             "CONGESTIONAMENTO": "#f39c12",
-            "ALERTA": "#9b59b6",
+            "ALERTA":           "#9b59b6",
         }
 
         col_g1, col_g2 = st.columns(2)
@@ -1995,21 +1654,13 @@ with tab_graficos:
             hora_pico = int(hora_counts.loc[hora_counts["Quantidade"].idxmax(), "Hora"])
 
             fig_hora = px.bar(
-                hora_counts,
-                x="Hora",
-                y="Quantidade",
-                color="Quantidade",
-                color_continuous_scale="Reds",
-                text="Quantidade",
+                hora_counts, x="Hora", y="Quantidade",
+                color="Quantidade", color_continuous_scale="Reds", text="Quantidade",
                 labels={"Hora": "Hora (UTC-3 / Foz)", "Quantidade": "Nº Incidentes"}
             )
             fig_hora.update_traces(textposition="outside")
-            fig_hora.add_vline(
-                x=hora_pico,
-                line_dash="dash",
-                line_color="darkred",
-                annotation_text=f"Pico {hora_pico:02d}h"
-            )
+            fig_hora.add_vline(x=hora_pico, line_dash="dash", line_color="darkred",
+                               annotation_text=f"Pico {hora_pico:02d}h")
             fig_hora.update_layout(coloraxis_showscale=False, height=360)
             st.plotly_chart(fig_hora, width="stretch")
 
@@ -2036,12 +1687,7 @@ with tab_graficos:
 
             sub_counts.columns = ["Natureza", "Quantidade"]
 
-            fig_pie = px.pie(
-                sub_counts,
-                names="Natureza",
-                values="Quantidade",
-                hole=0.38
-            )
+            fig_pie = px.pie(sub_counts, names="Natureza", values="Quantidade", hole=0.38)
             fig_pie.update_layout(height=380)
             st.plotly_chart(fig_pie, width="stretch")
 
@@ -2052,18 +1698,14 @@ with tab_graficos:
             df_dow = df_hist.copy()
             df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT)
 
-            dow_tipo = df_dow.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
+            dow_tipo   = df_dow.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
             ordem_dias = list(DIAS_PT.values())
 
             fig_dow = px.bar(
-                dow_tipo,
-                x="Dia",
-                y="Quantidade",
-                color="type",
+                dow_tipo, x="Dia", y="Quantidade", color="type",
                 color_discrete_map=CORES_TIPO,
                 category_orders={"Dia": ordem_dias},
-                barmode="stack",
-                text_auto=True
+                barmode="stack", text_auto=True
             )
             fig_dow.update_layout(height=420)
             st.plotly_chart(fig_dow, width="stretch")
@@ -2091,7 +1733,7 @@ with tab_graficos:
                 (~df_hist["subtype"].isin(["nan", ""]))
             ].copy()
 
-            rua_sub = df_rua.groupby(["street", "subtype"]).size().reset_index(name="Quantidade")
+            rua_sub    = df_rua.groupby(["street", "subtype"]).size().reset_index(name="Quantidade")
             ordem_ruas = (
                 rua_sub.groupby("street")["Quantidade"]
                 .sum()
@@ -2101,12 +1743,8 @@ with tab_graficos:
             )
 
             fig_rua = px.bar(
-                rua_sub,
-                x="Quantidade",
-                y="street",
-                color="subtype",
-                orientation="h",
-                barmode="stack",
+                rua_sub, x="Quantidade", y="street", color="subtype",
+                orientation="h", barmode="stack",
                 category_orders={"street": ordem_ruas}
             )
             fig_rua.update_layout(height=460)
@@ -2116,33 +1754,25 @@ with tab_graficos:
 
         st.subheader("Quais dias cada rua tem mais problemas?")
         if top_ruas_lista and "day_of_week" in df_hist.columns:
-            df_hm = df_hist[df_hist["street"].isin(top_ruas_lista)].copy()
+            df_hm     = df_hist[df_hist["street"].isin(top_ruas_lista)].copy()
             df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT)
 
             bubble_dow = df_hm.groupby(["street", "Dia"]).size().reset_index(name="Qtd")
-            total_dow = bubble_dow.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
+            total_dow  = bubble_dow.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
 
             vmax_dow = total_dow["Total"].max() if not total_dow.empty else 1
 
             def nivel_label(v, vmax):
-                if v == 0:
-                    return "Nenhum"
-                elif v <= vmax * 0.25:
-                    return "Baixo"
-                elif v <= vmax * 0.60:
-                    return "Médio"
+                if v == 0:         return "Nenhum"
+                elif v <= vmax * 0.25: return "Baixo"
+                elif v <= vmax * 0.60: return "Médio"
                 return "Alto"
 
             total_dow["Nível"] = total_dow["Total"].apply(lambda v: nivel_label(v, vmax_dow))
 
             fig_b1 = px.scatter(
-                total_dow,
-                x="Dia",
-                y="street",
-                size="Total",
-                color="Nível",
-                text="Total",
-                size_max=55,
+                total_dow, x="Dia", y="street", size="Total",
+                color="Nível", text="Total", size_max=55,
                 category_orders={"Dia": list(DIAS_PT.values())}
             )
             fig_b1.update_layout(height=460)
@@ -2151,9 +1781,6 @@ with tab_graficos:
         st.info("Sem incidentes para gerar gráficos no recorte atual.")
 
 
-# ---------------------------------------------------------
-# ABA 7 — DADOS DETALHADOS
-# ---------------------------------------------------------
 with tab_dados:
     st.subheader("Tabela de Incidentes")
 
@@ -2211,54 +1838,106 @@ with tab_dados:
 
 
 # =========================================================
-# BLOCO 7 — RODAPÉ CLARO / DESIGN ADAPTADO
+# BLOCO 7 — RODAPÉ  ← MODIFICAÇÃO 2 & 3: fundo branco + letras escuras
 # =========================================================
 
 st.markdown("---")
 rodape_html = f"""
-<div style="background:linear-gradient(135deg,#2563eb,#60a5fa);border:none;border-radius:16px;padding:2rem 2.5rem;margin-top:1rem;text-align:center;font-family:'Inter',sans-serif;box-shadow:0 4px 20px rgba(59,130,246,0.35);">
-  <div style="font-size:1.4rem;font-weight:800;color:#FFFFFF;margin-bottom:0.25rem;display:flex;align-items:center;justify-content:center;gap:10px;"><img src="https://cdn.simpleicons.org/waze/33CCC5" width="32" height="32" alt="Waze for Cities"> GEO_IA — Sistema de Suporte à Decisão Urbana (SAD)</div>
-  <div style="font-size:0.82rem;color:rgba(255,255,255,0.85);margin-bottom:1.5rem;">Sistema de análise de incidentes e congestionamentos via dados Waze for Cities · Foz do Iguaçu, PR</div>
-  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1.5rem;"></div>
-  <div style="margin-bottom:1.2rem;">
-    <div style="font-size:1rem;font-weight:700;color:#FFFFFF;margin-bottom:0.2rem;">🏛️ UNILA — Universidade Federal da Integração Latino-Americana</div>
-    <div style="font-size:0.78rem;color:rgba(255,255,255,0.75);">Foz do Iguaçu, Paraná · Brasil</div>
+<div style="
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 16px;
+    padding: 2rem 2.5rem;
+    margin-top: 1rem;
+    text-align: center;
+    font-family: 'Inter', sans-serif;
+    box-shadow: 0 2px 12px rgba(15,23,42,0.07);
+">
+  <!-- Título com ícone Waze -->
+  <div style="font-size:1.4rem;font-weight:800;color:#0F172A;margin-bottom:0.25rem;
+              display:flex;align-items:center;justify-content:center;gap:10px;">
+    <img src="https://cdn.simpleicons.org/waze/00C9D4" width="32" height="32" alt="Waze for Cities">
+    GEO_IA — Monitoramento de Tráfego
   </div>
-  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1.5rem;"></div>
-  <div style="font-size:0.75rem;color:rgba(255,255,255,0.7);margin-bottom:0.9rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Grupos &amp; Laboratórios de Pesquisa</div>
+  <div style="font-size:0.82rem;color:#475569;margin-bottom:1.5rem;">
+    Sistema de análise de incidentes e congestionamentos via dados Waze for Cities · Foz do Iguaçu, PR
+  </div>
+
+  <!-- Divider -->
+  <div style="border-top:1px solid #E2E8F0;margin-bottom:1.5rem;"></div>
+
+  <!-- UNILA -->
+  <div style="margin-bottom:1.2rem;">
+    <div style="font-size:1rem;font-weight:700;color:#0F172A;margin-bottom:0.2rem;">
+      🏛️ UNILA — Universidade Federal da Integração Latino-Americana
+    </div>
+    <div style="font-size:0.78rem;color:#64748B;">Foz do Iguaçu, Paraná · Brasil</div>
+  </div>
+
+  <div style="border-top:1px solid #E2E8F0;margin-bottom:1.5rem;"></div>
+
+  <!-- Labs label -->
+  <div style="font-size:0.75rem;color:#94A3B8;margin-bottom:0.9rem;
+              text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
+    Grupos &amp; Laboratórios de Pesquisa
+  </div>
+
+  <!-- 3 labs -->
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.5rem;">
     <div style="text-align:center;">
-      <div style="font-size:1rem;font-weight:700;color:#60a5fa;margin-bottom:0.2rem;">🔬 GPMME</div>
-      <div style="font-size:0.78rem;color:rgba(255,255,255,0.85);max-width:200px;line-height:1.5;">Grupo de Pesquisa em Mobilidade<br>e Matriz Energética</div>
+      <div style="font-size:1rem;font-weight:700;color:#2563EB;margin-bottom:0.2rem;">🔬 GPMME</div>
+      <div style="font-size:0.78rem;color:#475569;max-width:200px;line-height:1.5;">
+        Grupo de Pesquisa em Mobilidade<br>e Matriz Energética
+      </div>
     </div>
-    <div style="width:1px;background:rgba(255,255,255,0.25);align-self:stretch;margin:0 0.25rem;"></div>
+    <div style="width:1px;background:#E2E8F0;align-self:stretch;margin:0 0.25rem;"></div>
     <div style="text-align:center;">
-      <div style="font-size:1rem;font-weight:700;color:#34d399;margin-bottom:0.2rem;">🧪 LAGGRA</div>
-      <div style="font-size:0.78rem;color:rgba(255,255,255,0.85);max-width:220px;line-height:1.5;">Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental</div>
+      <div style="font-size:1rem;font-weight:700;color:#059669;margin-bottom:0.2rem;">🧪 LAGGRA</div>
+      <div style="font-size:0.78rem;color:#475569;max-width:220px;line-height:1.5;">
+        Lab. de Geologia, Geotecnia<br>e Recuperação Ambiental
+      </div>
     </div>
-    <div style="width:1px;background:rgba(255,255,255,0.25);align-self:stretch;margin:0 0.25rem;"></div>
+    <div style="width:1px;background:#E2E8F0;align-self:stretch;margin:0 0.25rem;"></div>
     <div style="text-align:center;">
-      <div style="font-size:1rem;font-weight:700;color:#f472b6;margin-bottom:0.2rem;">💻 LACA</div>
-      <div style="font-size:0.78rem;color:rgba(255,255,255,0.85);max-width:200px;line-height:1.5;">Laboratório de<br>Computação Aplicada</div>
+      <div style="font-size:1rem;font-weight:700;color:#7C3AED;margin-bottom:0.2rem;">💻 LACA</div>
+      <div style="font-size:0.78rem;color:#475569;max-width:200px;line-height:1.5;">
+        Laboratório de<br>Computação Aplicada
+      </div>
     </div>
   </div>
-  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1.2rem;"></div>
-  <div style="font-size:0.75rem;color:rgba(255,255,255,0.7);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">Equipe de Desenvolvimento</div>
+
+  <div style="border-top:1px solid #E2E8F0;margin-bottom:1.2rem;"></div>
+
+  <!-- Equipe -->
+  <div style="font-size:0.75rem;color:#94A3B8;margin-bottom:0.9rem;
+              text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
+    Equipe de Desenvolvimento
+  </div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.2rem;">
-    <span style="font-size:0.82rem;color:rgba(255,255,255,0.9);">👨‍💻 Luis Enrique Santacruz Alvarez</span>
-    <span style="font-size:0.82rem;color:rgba(255,255,255,0.9);">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
+    <span style="font-size:0.82rem;color:#334155;">👨‍💻 Luis Enrique Santacruz Alvarez</span>
+    <span style="font-size:0.82rem;color:#334155;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
   </div>
-  <div style="border-top:1px solid rgba(255,255,255,0.25);margin-bottom:1rem;"></div>
-  <div style="display:flex;justify-content:center;align-items:center;gap:1.5rem;flex-wrap:wrap;font-size:0.73rem;color:rgba(255,255,255,0.8);">
-    <span>📡 Fonte: <img src="https://cdn.simpleicons.org/waze/33CCC5" width="14" height="14" style="vertical-align:middle;"> <strong style="color:#FFFFFF;">Waze for Cities</strong></span>
+
+  <div style="border-top:1px solid #E2E8F0;margin-bottom:1rem;"></div>
+
+  <!-- Fontes e tecnologias  ← MODIFICAÇÃO 1: ícone Waze inline na fonte -->
+  <div style="display:flex;justify-content:center;align-items:center;gap:1.5rem;
+              flex-wrap:wrap;font-size:0.73rem;color:#64748B;">
+    <span>📡 Fonte:
+      <img src="https://cdn.simpleicons.org/waze/00C9D4" width="14" height="14"
+           style="vertical-align:middle;margin:0 2px;">
+      <strong style="color:#0F172A;">Waze for Cities</strong>
+    </span>
     <span>·</span>
-    <span>🐍 Python · Streamlit · Folium · Plotly · NumPy</span>
+    <span>🐍 Python · Streamlit · Folium · Plotly</span>
     <span>·</span>
     <span>☁️ Google Drive API</span>
     <span>·</span>
     <span>🕐 {hora_foz_atual.strftime('%d/%m/%Y %H:%M')} (Foz · UTC-3)</span>
   </div>
-  <div style="margin-top:0.75rem;font-size:0.68rem;color:rgba(255,255,255,0.6);">© {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa estruturado para urbe</div>
+  <div style="margin-top:0.75rem;font-size:0.68rem;color:#94A3B8;">
+    © {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa
+  </div>
 </div>
 """
 st.markdown(rodape_html, unsafe_allow_html=True)
