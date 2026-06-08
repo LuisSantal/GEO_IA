@@ -5,7 +5,7 @@ import io
 import re
 import ast
 import tempfile
-import numpy as np
+import numpy as np  # suporte matemático para modelo preditivo
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import folium
@@ -1243,6 +1243,7 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard    = df_jams_filtered.copy()
+
 # =========================================================
 # UPGRADE — ALGORITMO MULTICRITÉRIO (MCDA) E MODELO PREDITIVO
 # =========================================================
@@ -1252,19 +1253,25 @@ def calculate_road_criticism(df_alerts, df_jams):
     if df_jams.empty:
         return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
 
-    agg = {"Volume_Jams": ("street", "count")}
-    if "delay"  in df_jams.columns: agg["Atraso_Medio_Seg"]    = ("delay",  "mean")
-    if "length" in df_jams.columns: agg["Comprimento_Medio_M"] = ("length", "mean")
+    agg = {}
+    agg["Volume_Jams"] = ("street", "count")
+    if "delay" in df_jams.columns:
+        agg["Atraso_Medio_Seg"] = ("delay", "mean")
+    if "length" in df_jams.columns:
+        agg["Comprimento_Medio_M"] = ("length", "mean")
 
     grouped = df_jams.groupby("street").agg(**agg).reset_index()
-    if "Atraso_Medio_Seg"    not in grouped.columns: grouped["Atraso_Medio_Seg"]    = 0.0
-    if "Comprimento_Medio_M" not in grouped.columns: grouped["Comprimento_Medio_M"] = 0.0
+
+    if "Atraso_Medio_Seg" not in grouped.columns:
+        grouped["Atraso_Medio_Seg"] = 0.0
+    if "Comprimento_Medio_M" not in grouped.columns:
+        grouped["Comprimento_Medio_M"] = 0.0
 
     max_vol   = grouped["Volume_Jams"].max() or 1
     max_delay = grouped["Atraso_Medio_Seg"].max() or 1
 
     grouped["Criticidade_Index"] = (
-        (grouped["Volume_Jams"]      / max_vol)   * 0.4 +
+        (grouped["Volume_Jams"]     / max_vol)   * 0.4 +
         (grouped["Atraso_Medio_Seg"] / max_delay) * 0.6
     ) * 100
 
@@ -1272,13 +1279,19 @@ def calculate_road_criticism(df_alerts, df_jams):
 
 
 def predict_traffic_delay_impact(length_meters: float) -> float:
-    """Regressão linear calibrada com dados históricos WazeFoz. Retorna atraso em segundos."""
-    return (length_meters * 0.15) + 12.0
+    """
+    Modelo de regressão linear calibrado com dados históricos do WazeFoz.
+    Retorna o atraso estimado em segundos dado o comprimento da fila em metros.
+    """
+    coef_angular = 0.15   # segundos adicionais por metro de fila
+    intercepto   = 12.0   # custo fixo em cruzamentos travados
+    return (length_meters * coef_angular) + intercepto
 
 
 # Pré-computar criticidade com base no recorte filtrado
 df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
-via_mais_critica = df_criticidade_vias.iloc[0]["street"] if not df_criticidade_vias.empty else "Nenhuma"
+
+
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
 # =========================================================
@@ -1480,7 +1493,11 @@ kpi1.metric("Total Alertas", incidentes_dia)
 kpi2.metric("Acidentes",     acidentes)
 kpi3.metric("Vel. Média",    f"{vmedia_kmh:.1f} km/h")
 kpi4.metric("Status da Via", status_via)
-st.caption(f"🔴 **Gargalo Operacional Prioritário (MCDA):** {via_mais_critica}")
+
+# KPI extra — gargalo operacional prioritário (MCDA)
+via_mais_critica = df_criticidade_vias.iloc[0]["street"] if not df_criticidade_vias.empty else "Nenhuma"
+st.caption(f"🔴 Gargalo Operacional Prioritário (MCDA): **{via_mais_critica}**")
+
 st.markdown("---")
 
 
@@ -1816,6 +1833,8 @@ with tab_graficos:
     else:
         st.info("Sem incidentes para gerar gráficos no recorte atual.")
 
+
+
 # ── ABA MCDA ──────────────────────────────────────────────
 with tab_criticidade:
     st.subheader("📊 Classificação Hierárquica de Infraestrutura Viária Crítica")
@@ -1841,10 +1860,10 @@ with tab_criticidade:
                 df_criticidade_vias[["street","Volume_Jams","Atraso_Medio_Seg","Criticidade_Index"]].head(10),
                 hide_index=True,
                 column_config={
-                    "street":           "Logradouro",
-                    "Volume_Jams":      "Qtd Retenções",
-                    "Atraso_Medio_Seg": "Atraso Médio (s)",
-                    "Criticidade_Index":"Índice Geral (0–100)"
+                    "street":            "Logradouro",
+                    "Volume_Jams":       "Qtd Retenções",
+                    "Atraso_Medio_Seg":  "Atraso Médio (s)",
+                    "Criticidade_Index": "Índice Geral (0–100)"
                 }
             )
     else:
@@ -1853,14 +1872,16 @@ with tab_criticidade:
 
 # ── ABA MODELO PREDITIVO ──────────────────────────────────
 with tab_predicao:
-    st.subheader("🔮 Simulador Preditivo de Impacto Temporal por Engarrafamento")
+    st.subheader("🔮 Simulador Preditivo de Impacto e Propensão ao Congestionamento")
     st.markdown("""
-    Regressão inferencial fundamentada nos dados históricos do dataset WazeFoz.
-    Prevê o **tempo de atraso veicular** com base na extensão espacial observada da fila.
+    Combinação de **regressão inferencial** (impacto temporal por extensão de fila) com análise histórica de
+    **propensão ao congestionamento por via e dia da semana**, fundamentada nos dados reais do dataset WazeFoz.
     """)
+
+    # ── Seção 1: Simulador de Atraso ──────────────────────────────────
+    st.markdown("### 🧮 Simulador de Atraso por Extensão de Fila")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        st.markdown("#### Parâmetros de Simulação")
         extensao_sim = st.slider("Extensão da fila (metros):", 50, 5000, 500, 50)
         atraso_est   = predict_traffic_delay_impact(extensao_sim)
         minutos_est  = atraso_est / 60
@@ -1868,8 +1889,8 @@ with tab_predicao:
         st.caption("Fórmula: *Atraso (s) = Comprimento × 0,15 + 12*")
 
     with col_p2:
-        sim_x = np.linspace(50, 5000, 100)
-        sim_y = [predict_traffic_delay_impact(l) / 60 for l in sim_x]
+        sim_x  = np.linspace(50, 5000, 100)
+        sim_y  = [predict_traffic_delay_impact(l) / 60 for l in sim_x]
         df_sim = pd.DataFrame({"Comprimento (m)": sim_x, "Atraso Estimado (min)": sim_y})
         fig_pred = px.line(df_sim, x="Comprimento (m)", y="Atraso Estimado (min)",
                            title="Curva de Impacto: Extensão de Fila vs Atraso")
@@ -1880,6 +1901,105 @@ with tab_predicao:
             marker=dict(size=12, color="red")
         )
         st.plotly_chart(fig_pred, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Seção 2: Propensão por Via e Dia da Semana ────────────────────
+    st.markdown("### 🗓️ Vias com Maior Propensão ao Congestionamento por Dia da Semana")
+    st.caption("Baseado no histórico completo de congestionamentos carregados — independente do filtro de data.")
+
+    DIAS_PT_PRED = {
+        "Monday": "Segunda", "Tuesday": "Terça",  "Wednesday": "Quarta",
+        "Thursday": "Quinta", "Friday": "Sexta",  "Saturday": "Sábado", "Sunday": "Domingo"
+    }
+    ORDEM_DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+
+    df_jams_hist = df_jams_raw.copy() if not df_jams_raw.empty else pd.DataFrame()
+
+    if not df_jams_hist.empty and "street" in df_jams_hist.columns and "day_of_week" in df_jams_hist.columns:
+        df_jams_hist = df_jams_hist[
+            df_jams_hist["street"].notna() &
+            (~df_jams_hist["street"].isin(["NA", "nan", "Via", ""]))
+        ].copy()
+        df_jams_hist["Dia"] = df_jams_hist["day_of_week"].map(DIAS_PT_PRED)
+
+        # Top 15 vias por total de ocorrências históricas
+        top_vias_pred = (
+            df_jams_hist["street"].value_counts().head(15).index.tolist()
+        )
+        df_prop = df_jams_hist[df_jams_hist["street"].isin(top_vias_pred)]
+
+        # Matriz de contagem via × dia
+        heatmap_data = (
+            df_prop.groupby(["street", "Dia"]).size()
+            .reset_index(name="Ocorrências")
+        )
+
+        # Normalizar por via (propensão relativa 0–100)
+        total_por_via = heatmap_data.groupby("street")["Ocorrências"].transform("sum")
+        heatmap_data["Propensão (%)"] = (heatmap_data["Ocorrências"] / total_por_via * 100).round(1)
+
+        col_h1, col_h2 = st.columns([3, 2])
+
+        with col_h1:
+            # Heatmap principal: via × dia
+            pivot = heatmap_data.pivot_table(
+                index="street", columns="Dia", values="Propensão (%)", aggfunc="sum"
+            ).reindex(columns=[d for d in ORDEM_DIAS if d in heatmap_data["Dia"].unique()], fill_value=0)
+
+            fig_heat = px.imshow(
+                pivot,
+                color_continuous_scale="YlOrRd",
+                aspect="auto",
+                title="Mapa de Propensão: Via × Dia da Semana (% de ocorrências históricas)",
+                labels={"color": "Propensão (%)", "x": "Dia", "y": "Via"}
+            )
+            fig_heat.update_layout(height=480)
+            st.plotly_chart(fig_heat, use_container_width=True)
+
+        with col_h2:
+            st.markdown("#### 🔎 Filtro por Dia da Semana")
+            dia_selecionado = st.selectbox(
+                "Ver vias mais propensas em:", ORDEM_DIAS, key="pred_dia"
+            )
+            df_dia = heatmap_data[heatmap_data["Dia"] == dia_selecionado].sort_values(
+                "Propensão (%)", ascending=False
+            ).head(10)
+
+            if not df_dia.empty:
+                fig_dia = px.bar(
+                    df_dia, x="Propensão (%)", y="street", orientation="h",
+                    color="Propensão (%)", color_continuous_scale="Reds",
+                    title=f"Top 10 — {dia_selecionado}",
+                    labels={"street": "Via", "Propensão (%)": "% do tráfego semanal"}
+                )
+                fig_dia.update_layout(height=380, coloraxis_showscale=False)
+                st.plotly_chart(fig_dia, use_container_width=True)
+            else:
+                st.info(f"Sem dados históricos para {dia_selecionado}.")
+
+        # Tabela de pico: para cada via, qual é o pior dia
+        st.markdown("#### 📋 Pior Dia da Semana por Via")
+        pior_dia = (
+            heatmap_data.loc[heatmap_data.groupby("street")["Propensão (%)"].idxmax()]
+            [["street", "Dia", "Propensão (%)", "Ocorrências"]]
+            .sort_values("Ocorrências", ascending=False)
+            .head(15)
+            .reset_index(drop=True)
+        )
+        st.dataframe(
+            pior_dia,
+            hide_index=True,
+            column_config={
+                "street":        "Via / Avenida",
+                "Dia":           "Pior Dia",
+                "Propensão (%)": "% no Dia",
+                "Ocorrências":   "Total de Registros"
+            }
+        )
+    else:
+        st.info("Histórico de congestionamentos insuficiente para análise de propensão por via e dia.")
+
 with tab_dados:
     st.subheader("Tabela de Incidentes")
 
