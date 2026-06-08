@@ -1,8 +1,7 @@
-Markdown
-# 🚦 GEO_IA: Sistema de Suporte à Decisão e Auditoria de Infraestrutura Viária
+# 🚦 GEO_IA: Sistema de Suporte à Decisão e Auditoria de Infraestrutura Viária — Foz do Iguaçu
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge.svg)](https://wazefoz.streamlit.app/)
-[![License: MIT](https://img.shields.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.shields.shields.org/badge/License-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.shields.io/badge/Python-3.11%20%7C%203.12-blue)](https://www.python.org/downloads/)
 
 > **GEO_IA** é a arquitetura algorítmica e computacional *open-source* implantada na plataforma web **WazeFoz** ([wazefoz.streamlit.app](https://wazefoz.streamlit.app/)). O sistema opera como um Sistema de Apoio à Decisão (SAD) voltado à gestão de ativos viários, mapeamento de estrangulamentos de fluxo e comprovação técnica de prioridades para intervenções físicas e engenharia geométrica em Foz do Iguaçu (PR).
@@ -70,14 +69,14 @@ $$I_{crit} = \left( \left( \frac{V_{via}}{V_{max}} \times 0.4 \right) + \left( \
 ### 🔮 Módulo Computacional Preditivo de Impacto Temporal
 
 #### Seção 1 — Simulador de Atraso por Extensão de Fila
-Modelo matemático inferencial calibrado estatisticamente com dados históricos locais que estima o atraso acumulado esperado ($D_{pred}$, em segundos) com base exclusiva no comprimento espacial da fila de congestionamento ($L$, em metros):
+Modelo matemático inferencial calibrado estatisticamente com dados históricos locais que estima o atraso acumulado esperado ($D_{pred}$, em segundos) com base exclusiva no comprimento espacial della fila de congestionamento ($L$, em metros):
 
 $$D_{pred} = (L \times 0.15) + 12.0$$
 
 * Inclui controle deslizante interativo (*slider* de 50 m a 5.000 m) para simulação de cenários proativos e testes de estresse viário.
 
 #### Seção 2 — Matriz de Propensão Via × Dia da Semana
-Processamento estatístico contínuo sobre o banco histórico bruto que identifica quais vias têm maior propensão probabilística ao congestionamento em cada dia da semana. Exibido através de um mapa de calor bidimensional (YlOrRd do Plotly Express), revelando de forma inédita que os gargalos aduaneiros locais concentram-se nas **quintas-feiras e sábados**.
+Processamento estatístico contínuo sobre o banco histórico bruto que identifica quais vias têm maior propensão probabilística ao congestionamento em cada dia da semana. Exibido através de um mapa de calor adiacional bidimensional (YlOrRd do Plotly Express), revelando de forma inédita que os gargalos aduaneiros locais concentram-se nas **quintas-feiras e sábados**.
 
 #### Seção 3 — Comparador Mensal Interanual (2025 vs. 2026)
 Ferramenta analítica longitudinal para validação de impacto de políticas públicas anteriores, cruzando dados sob múltiplos parâmetros:
@@ -115,89 +114,3 @@ source .venv/bin/activate       # No Linux/macOS
 
 # Instalar dependências travadas
 pip install -r requirements.txt
-2. Injeção de Credenciais de Nuvem
-O sistema armazena variáveis sensíveis utilizando o ecossistema de Secrets do Streamlit. Crie o arquivo local .streamlit/secrets.toml e insira as chaves JSON de sua Service Account do Google Cloud Platform:
-
-Ini, TOML
-[gcp_service_account]
-type = "service_account"
-project_id = "seu-projeto-id"
-private_key_id = "sua-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\nSUA_CHAVE_CRIPTOGRAFADA_AQUI\n-----END PRIVATE KEY-----\n"
-client_email = "sua-service-account@seu-projeto.iam.gserviceaccount.com"
-client_id = "seu-client-id"
-auth_uri = "[https://accounts.google.com/o/oauth2/auth](https://accounts.google.com/o/oauth2/auth)"
-token_uri = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
-3. Rodar a Plataforma
-Bash
-streamlit run streamlit_app.py
-⚠️ Notas Técnicas de Estabilidade e Resolução de Erros
-Durante as fases de homologação e implantação no Streamlit Cloud e GitHub Codespaces, foram incorporadas correções de infraestrutura cruciais para manter o sistema estável:
-
-Erro de Malloc / Segmentation Fault: Falhas geradas pelo estouro de memória no processamento de matrizes de tráfego foram mitigadas fixando o limite de concorrência de threads da biblioteca OpenBLAS nas variáveis do contêiner:
-
-Bash
-OPENBLAS_NUM_THREADS=1
-Quebra Binária na Leitura HDF5: O empacotamento de dados primitivos via PyTables requer compatibilidade estrita de tipos. O repositório trava a versão do numpy < 2.0.0 no arquivo requirements.txt para impedir falhas de descomputação de arquivos binários.
-
-Estouro de Cota da API do Drive: Solucionado injetando a função @st.cache_data(ttl=600) na pipeline de carregamento e filtragem de dados (cache com TTL de 10 minutos) e @st.cache_resource no cliente da API, impedindo chamadas repetitivas à nuvem.
-
-📂 Estrutura Estrutural do Repositório
-Plaintext
-GEO_IA/
-│
-├── streamlit_app.py          # Código-fonte mestre organizado em 7 blocos
-├── requirements.txt          # Dependências Python estruturadas
-├── .python-version           # Fixador da versão estável do interpretador (3.11)
-│
-├── .streamlit/
-│   └── secrets.toml          # Credenciais criptografadas do GCP (Não versionar!)
-│
-└── README.md                 # Documentação técnica e científica do software
-Arquitetura do Módulo streamlit_app.py
-O arquivo mestre está dividido em 7 blocos funcionais estruturados:
-
-Bloco 1: Configurações base da página, injeção de CSS global temático claro e inicialização de variáveis de sessão.
-
-Bloco 2: Ingestão binária de arquivos HDF5 do Drive, normalização temporal via zoneinfo, tradução dos tipos e naturezas Waze para PT-BR e parsing de geolocalização.
-
-Bloco 3: Criação do mapa base em Folium, injeção de scripts JS (escala e indicador de zoom Leaflet) e funções geradoras cartográficas.
-
-Bloco 4: Sidebar de filtros dinâmicos, controle automático de ciclos e aplicação de máscaras lógicas de data/hora sobre os DataFrames.
-
-Módulo SAD: Funções matemáticas de backend para o cálculo composto de criticidade e modelos lineares preditivos.
-
-Bloco 5: Cabeçalho institucional em degradê com injeção de pulso CSS e renderização de KPIs analíticos mestres.
-
-Bloco 6: Instanciação das 7 abas de visualização do dashboard interativo.
-
-Bloco 7: Rodapé institucional claro com links e créditos aos núcleos científicos (GPMME / LAGGRA / LACA).
-
-🤝 Parcerias e Cooperação Técnica
-órgãos municipais de gestão de trânsito e planejamento urbano.
-
-Autoridades de trânsito e segurança pública (Programa Vida no Trânsito / Guarda Municipal).
-
-CNPq — Conselho Nacional de Desenvolvimento Científico e Tecnológico.
-
-📚 Referências Científicas e Técnicas
-Banister, D. (2008). The sustainable mobility paradigm. Transport Policy, 15(2), 73–80.
-
-Bucsky, P. (2020). Crowdsourced traffic data. Transportation Research Part A: Policy and Practice, 137, 385–397.
-
-Cardullo, P., & Kitchin, R. (2019). Being a ‘smart citizen’ in the smart city: Between datafication, tokenism and commodification. Urban Studies, 56(4), 813-830.
-
-Goodchild, M. F. (2007). Citizens as sensors: The world of volunteered geography. GeoJournal, 69(4), 211–221.
-
-Gonzalez, H., et al. (2008). Adaptive real-time traffic prediction using Waze data. Transportation Research Part C: Emerging Technologies, 16(6), 673–695.
-
-Herrera, J. C., et al. (2010). Evaluation of traffic data obtained via GPS-enabled mobile phones. Transportation Research Part C: Emerging Technologies, 18(4), 568–583.
-
-Hwang, C. L., & Yoon, K. (1981). Multiple Attribute Decision Making: Methods and Applications. Springer-Verlag.
-
-Zhang, J., Wang, F.-Y., Wang, K., Lin, W.-H., Xu, X., & Chen, C. (2011). Data-Driven Intelligent Transportation Systems: A Survey. IEEE Transactions on Intelligent Transportation Systems, 12(4), 1624-1639.
-
-📄 Licença
-Este projeto está sob a licença MIT License — consulte o arquivo LICENSE para detalhes.
-
-Desenvolvido para análise geoespacial de tráfego urbano e suporte à decisão. Universidade Federal da Integração Latino-Americana (UNILA) — Foz do Iguaçu, PR, Brasil.
