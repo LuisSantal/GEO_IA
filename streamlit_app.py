@@ -241,7 +241,6 @@ body { color: var(--text); }
 }
 
 hr { border-color: var(--border) !important; }
-
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 3px; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
@@ -1056,6 +1055,118 @@ def generate_heatmap(df_json: str) -> folium.Map | None:
     return m
 
 # =========================================================
+# BLOCO EXTRA — PIPELINE CIENTÍFICO
+# =========================================================
+
+def build_daily_series(df_alerts: pd.DataFrame, df_jams: pd.DataFrame, categoria: str = "TODOS") -> pd.Series:
+    frames = []
+
+    if df_alerts is not None and not df_alerts.empty:
+        da = df_alerts.copy()
+        da["origem"] = "ALERTA"
+        da["categoria_artigo"] = da["type"] if "type" in da.columns else "ALERTA"
+        frames.append(da[["timestamp", "categoria_artigo", "origem"]])
+
+    if df_jams is not None and not df_jams.empty:
+        dj = df_jams.copy()
+        dj["origem"] = "JAM"
+        dj["categoria_artigo"] = "CONGESTIONAMENTO"
+        frames.append(dj[["timestamp", "categoria_artigo", "origem"]])
+
+    if not frames:
+        return pd.Series(dtype=float)
+
+    base = pd.concat(frames, ignore_index=True)
+    base["timestamp"] = pd.to_datetime(base["timestamp"], errors="coerce")
+    base = base.dropna(subset=["timestamp"]).copy()
+    base["date"] = base["timestamp"].dt.floor("D")
+
+    if categoria != "TODOS":
+        base = base[base["categoria_artigo"] == categoria]
+
+    serie = base.groupby("date").size().sort_index()
+    if serie.empty:
+        return pd.Series(dtype=float)
+
+    idx = pd.date_range(serie.index.min(), serie.index.max(), freq="D")
+    serie = serie.reindex(idx, fill_value=0)
+    serie.index.name = "date"
+    serie.name = "ocorrencias"
+    return serie
+
+
+def run_stl_analysis(serie: pd.Series, period: int = 7):
+    try:
+        from statsmodels.tsa.seasonal import STL
+        stl = STL(serie, period=period, robust=True)
+        res = stl.fit()
+        return res
+    except Exception:
+        return None
+
+
+def run_pelt_analysis(serie: pd.Series, model: str = "l2", min_size: int = 7, jump: int = 1, pen: float = 3.0):
+    try:
+        import ruptures as rpt
+        signal = serie.values.astype(float)
+        algo = rpt.Pelt(model=model, min_size=min_size, jump=jump).fit(signal)
+        bkps = algo.predict(pen=pen)
+        return bkps
+    except Exception:
+        return []
+
+
+def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> pd.DataFrame:
+    blocos = []
+
+    if df_alerts is not None and not df_alerts.empty:
+        da = df_alerts.copy()
+        da["timestamp"] = pd.to_datetime(da["timestamp"], errors="coerce")
+        da = da.dropna(subset=["timestamp"])
+        da["date"] = da["timestamp"].dt.date
+        da["hour"] = da["timestamp"].dt.hour
+
+        diarios = da.groupby(["date", "type"]).size().reset_index(name="n")
+        pico = da.groupby(["type", "hour"]).size().reset_index(name="n_hora")
+        pico_idx = pico.groupby("type")["n_hora"].idxmax()
+        pico = pico.loc[pico_idx][["type", "hour"]].rename(columns={"hour": "Hora_Pico"})
+
+        resumo = diarios.groupby("type")["n"].agg(
+            Total_Alertas="sum",
+            Media_Diaria="mean",
+            Desvio_Padrao="std"
+        ).reset_index().rename(columns={"type": "Tipo"})
+        resumo = resumo.merge(pico, left_on="Tipo", right_on="type", how="left").drop(columns=["type"], errors="ignore")
+        blocos.append(resumo)
+
+    if df_jams is not None and not df_jams.empty:
+        dj = df_jams.copy()
+        dj["timestamp"] = pd.to_datetime(dj["timestamp"], errors="coerce")
+        dj = dj.dropna(subset=["timestamp"])
+        dj["date"] = dj["timestamp"].dt.date
+        dj["hour"] = dj["timestamp"].dt.hour
+        diarios = dj.groupby("date").size().reset_index(name="n")
+        pico = dj.groupby("hour").size().reset_index(name="n_hora")
+        hora_pico = int(pico.loc[pico["n_hora"].idxmax(), "hour"]) if not pico.empty else None
+
+        resumo_jam = pd.DataFrame([{
+            "Tipo": "CONGESTIONAMENTO",
+            "Total_Alertas": int(diarios["n"].sum()) if not diarios.empty else 0,
+            "Media_Diaria": float(diarios["n"].mean()) if not diarios.empty else 0.0,
+            "Desvio_Padrao": float(diarios["n"].std()) if not diarios.empty else 0.0,
+            "Hora_Pico": hora_pico
+        }])
+        blocos.append(resumo_jam)
+
+    if not blocos:
+        return pd.DataFrame(columns=["Tipo", "Total_Alertas", "Media_Diaria", "Desvio_Padrao", "Hora_Pico"])
+
+    out = pd.concat(blocos, ignore_index=True)
+    out["Media_Diaria"] = out["Media_Diaria"].round(2)
+    out["Desvio_Padrao"] = out["Desvio_Padrao"].round(2)
+    return out
+
+# =========================================================
 # BLOCO 4 — SIDEBAR, CARGA OPERACIONAL E FILTROS
 # =========================================================
 
@@ -1077,7 +1188,6 @@ if st.sidebar.button("🔄 ATUALIZAR DADOS AGORA", width="stretch", type="primar
     st.rerun()
 
 st.sidebar.divider()
-
 
 try:
     df_alerts_raw, df_jams_raw = load_all_data()
@@ -1283,14 +1393,12 @@ def predict_traffic_delay_impact(length_meters: float) -> float:
     Modelo de regressão linear calibrado com dados históricos do WazeFoz.
     Retorna o atraso estimado em segundos dado o comprimento da fila em metros.
     """
-    coef_angular = 0.15   # segundos adicionais por metro de fila
-    intercepto   = 12.0   # custo fixo em cruzamentos travados
+    coef_angular = 0.15
+    intercepto   = 12.0
     return (length_meters * coef_angular) + intercepto
 
 
-# Pré-computar criticidade com base no recorte filtrado
 df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
-
 
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
@@ -1332,9 +1440,6 @@ def build_selection_label(selected_values, total_available, singular_name, plura
     return f"{len(selected_values)} {plural_name}"
 
 
-# ---------------------------------------------------------
-# CABEÇALHO PRINCIPAL  ← MODIFICAÇÃO 1: ícone Waze + fundo escuro original
-# ---------------------------------------------------------
 st.markdown(f"""
 <div style="
     background: linear-gradient(135deg,
@@ -1428,7 +1533,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# SOBRE O DASHBOARD
 st.markdown("""
 <div style="
     background:#FFFFFF;
@@ -1449,7 +1553,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
 label_tipo = build_selection_label(filtro_tipo, len(tipos_na_data), "tipo", "tipos")
 label_natureza = build_selection_label(filtro_natureza, len(naturezas_na_data), "natureza", "naturezas")
 
@@ -1467,8 +1570,6 @@ st.caption(
 
 st.markdown("---")
 
-
-# KPIs
 st.subheader("📊 Resumo Estatístico")
 
 incidentes_dia = len(df_filtered)
@@ -1494,14 +1595,11 @@ kpi2.metric("Acidentes",     acidentes)
 kpi3.metric("Vel. Média",    f"{vmedia_kmh:.1f} km/h")
 kpi4.metric("Status da Via", status_via)
 
-# KPI extra — gargalo operacional prioritário (MCDA)
 via_mais_critica = df_criticidade_vias.iloc[0]["street"] if not df_criticidade_vias.empty else "Nenhuma"
 st.caption(f"🔴 Gargalo Operacional Prioritário (MCDA): **{via_mais_critica}**")
 
 st.markdown("---")
 
-
-# INDICADORES DE GRAVIDADE
 st.subheader("📈 Indicadores de Gravidade")
 
 nivel_risco,  emoji_risco, desc_risco  = classify_risk_level(incidentes_dia)
@@ -1542,9 +1640,17 @@ st.markdown("---")
 # =========================================================
 
 st.subheader("🗺️ Visualizações")
-tab_inc, tab_jams, tab_calor, tab_graficos, tab_criticidade, tab_predicao, tab_dados = st.tabs(
-    ["Incidentes", "Congestionamentos", "Mapa de Calor", "Gráficos",
-     "📊 Criticidade (MCDA)", "🔮 Modelo Preditivo", "Dados"]
+tab_inc, tab_jams, tab_calor, tab_graficos, tab_pipeline, tab_criticidade, tab_predicao, tab_dados = st.tabs(
+    [
+        "Incidentes",
+        "Congestionamentos",
+        "Mapa de Calor",
+        "Gráficos",
+        "🧪 Pipeline Científico",
+        "📊 Criticidade (MCDA)",
+        "🔮 Modelo Preditivo",
+        "Dados"
+    ]
 )
 
 with tab_inc:
@@ -1816,9 +1922,12 @@ with tab_graficos:
             vmax_dow = total_dow["Total"].max() if not total_dow.empty else 1
 
             def nivel_label(v, vmax):
-                if v == 0:         return "Nenhum"
-                elif v <= vmax * 0.25: return "Baixo"
-                elif v <= vmax * 0.60: return "Médio"
+                if v == 0:
+                    return "Nenhum"
+                elif v <= vmax * 0.25:
+                    return "Baixo"
+                elif v <= vmax * 0.60:
+                    return "Médio"
                 return "Alto"
 
             total_dow["Nível"] = total_dow["Total"].apply(lambda v: nivel_label(v, vmax_dow))
@@ -1834,8 +1943,104 @@ with tab_graficos:
         st.info("Sem incidentes para gerar gráficos no recorte atual.")
 
 
+with tab_pipeline:
+    st.subheader("🧪 Pipeline Científico para o Artigo")
+    st.caption("Geração de séries, decomposição STL, detecção de rupturas (PELT) e tabelas descritivas para apoio à redação acadêmica.")
 
-# ── ABA MCDA ──────────────────────────────────────────────
+    col_p1, col_p2, col_p3 = st.columns(3)
+
+    categorias_disp = ["TODOS"]
+    if not df_alerts_raw.empty and "type" in df_alerts_raw.columns:
+        categorias_disp += sorted(df_alerts_raw["type"].dropna().astype(str).unique().tolist())
+    categorias_disp = list(dict.fromkeys(categorias_disp + ["CONGESTIONAMENTO"]))
+
+    with col_p1:
+        categoria_artigo = st.selectbox("Categoria analisada", categorias_disp, index=0, key="pipe_categoria")
+
+    with col_p2:
+        periodo_stl = st.selectbox("Periodicidade STL", [7, 30], index=0, key="pipe_stl_period")
+
+    with col_p3:
+        penalidade_pelt = st.slider("Penalidade PELT", min_value=1.0, max_value=20.0, value=5.0, step=0.5, key="pipe_pelt_pen")
+
+    serie = build_daily_series(df_alerts_raw, df_jams_raw, categoria=categoria_artigo)
+
+    if serie.empty:
+        st.info("Sem dados suficientes para montar a série temporal.")
+    else:
+        st.markdown("### Série diária")
+        df_serie = serie.reset_index()
+        df_serie.columns = ["Data", "Ocorrências"]
+
+        fig_ts = px.line(
+            df_serie,
+            x="Data",
+            y="Ocorrências",
+            title=f"Série diária de ocorrências — {categoria_artigo}",
+            markers=False
+        )
+        fig_ts.update_layout(height=360)
+        st.plotly_chart(fig_ts, use_container_width=True)
+
+        st.markdown("### Decomposição STL")
+        res_stl = run_stl_analysis(serie, period=periodo_stl)
+
+        if res_stl is not None:
+            from plotly.subplots import make_subplots
+            import plotly.graph_objects as go
+
+            fig_stl = make_subplots(
+                rows=4, cols=1, shared_xaxes=True,
+                subplot_titles=["Observed", "Trend", "Seasonal", "Residual"],
+                vertical_spacing=0.04
+            )
+
+            x_vals = serie.index
+
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.observed, name="Observed", line=dict(color="#2563EB")), row=1, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.trend, name="Trend", line=dict(color="#DC2626")), row=2, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.seasonal, name="Seasonal", line=dict(color="#16A34A")), row=3, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.resid, name="Residual", mode="lines", line=dict(color="#7C3AED")), row=4, col=1)
+
+            fig_stl.update_layout(height=900, showlegend=False, title=f"STL — {categoria_artigo} (period={periodo_stl})")
+            st.plotly_chart(fig_stl, use_container_width=True)
+        else:
+            st.warning("Não foi possível executar a STL. Verifique se `statsmodels` está instalado.")
+
+        st.markdown("### Rupturas estruturais — PELT")
+        bkps = run_pelt_analysis(serie, model="l2", min_size=7, jump=1, pen=penalidade_pelt)
+
+        fig_pelt = px.line(df_serie, x="Data", y="Ocorrências", title="Mudanças estruturais detectadas por PELT")
+        for b in bkps[:-1]:
+            if 0 <= b - 1 < len(df_serie):
+                data_bkp = df_serie.iloc[b - 1]["Data"]
+                fig_pelt.add_vline(x=data_bkp, line_dash="dash", line_color="red")
+        fig_pelt.update_layout(height=360)
+        st.plotly_chart(fig_pelt, use_container_width=True)
+
+        if bkps:
+            datas_ruptura = []
+            for b in bkps[:-1]:
+                if 0 <= b - 1 < len(df_serie):
+                    datas_ruptura.append(pd.to_datetime(df_serie.iloc[b - 1]["Data"]).strftime("%Y-%m-%d"))
+            st.write("Datas estimadas de ruptura:", datas_ruptura if datas_ruptura else "Nenhuma ruptura relevante.")
+
+    st.markdown("---")
+    st.markdown("### Tabela 1 — Estatísticas descritivas")
+    tabela_desc = build_descriptive_table(df_alerts_raw, df_jams_raw)
+    if not tabela_desc.empty:
+        st.dataframe(tabela_desc, hide_index=True, use_container_width=True)
+        csv_desc = tabela_desc.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Baixar CSV — Tabela 1",
+            data=csv_desc,
+            file_name="tabela_1_estatisticas_descritivas.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("Sem dados suficientes para a tabela descritiva.")
+
+
 with tab_criticidade:
     st.subheader("📊 Classificação Hierárquica de Infraestrutura Viária Crítica")
     st.markdown("""
@@ -1870,7 +2075,6 @@ with tab_criticidade:
         st.info("Dados insuficientes para o ranking multicritério.")
 
 
-# ── ABA MODELO PREDITIVO ──────────────────────────────────
 with tab_predicao:
     st.subheader("🔮 Simulador Preditivo de Impacto e Propensão ao Congestionamento")
     st.markdown("""
@@ -1878,7 +2082,6 @@ with tab_predicao:
     **propensão ao congestionamento por via e dia da semana**, fundamentada nos dados reais do dataset WazeFoz.
     """)
 
-    # ── Seção 1: Simulador de Atraso ──────────────────────────────────
     st.markdown("### 🧮 Simulador de Atraso por Extensão de Fila")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
@@ -1904,7 +2107,6 @@ with tab_predicao:
 
     st.markdown("---")
 
-    # ── Seção 2: Propensão por Via e Dia da Semana ────────────────────
     st.markdown("### 🗓️ Vias com Maior Propensão ao Congestionamento por Dia da Semana")
     st.caption("Baseado no histórico completo de congestionamentos carregados — independente do filtro de data.")
 
@@ -1923,26 +2125,22 @@ with tab_predicao:
         ].copy()
         df_jams_hist["Dia"] = df_jams_hist["day_of_week"].map(DIAS_PT_PRED)
 
-        # Top 15 vias por total de ocorrências históricas
         top_vias_pred = (
             df_jams_hist["street"].value_counts().head(15).index.tolist()
         )
         df_prop = df_jams_hist[df_jams_hist["street"].isin(top_vias_pred)]
 
-        # Matriz de contagem via × dia
         heatmap_data = (
             df_prop.groupby(["street", "Dia"]).size()
             .reset_index(name="Ocorrências")
         )
 
-        # Normalizar por via (propensão relativa 0–100)
         total_por_via = heatmap_data.groupby("street")["Ocorrências"].transform("sum")
         heatmap_data["Propensão (%)"] = (heatmap_data["Ocorrências"] / total_por_via * 100).round(1)
 
         col_h1, col_h2 = st.columns([3, 2])
 
         with col_h1:
-            # Heatmap principal: via × dia
             pivot = heatmap_data.pivot_table(
                 index="street", columns="Dia", values="Propensão (%)", aggfunc="sum"
             ).reindex(columns=[d for d in ORDEM_DIAS if d in heatmap_data["Dia"].unique()], fill_value=0)
@@ -1978,7 +2176,6 @@ with tab_predicao:
             else:
                 st.info(f"Sem dados históricos para {dia_selecionado}.")
 
-        # Tabela de pico: para cada via, qual é o pior dia
         st.markdown("#### 📋 Pior Dia da Semana por Via")
         pior_dia = (
             heatmap_data.loc[heatmap_data.groupby("street")["Propensão (%)"].idxmax()]
@@ -2000,10 +2197,8 @@ with tab_predicao:
     else:
         st.info("Histórico de congestionamentos insuficiente para análise de propensão por via e dia.")
 
-
     st.markdown("---")
 
-    # ── Seção 3: Comparador Mensal 2025 vs 2026 ───────────────────────
     st.markdown("### 📆 Comparador Mensal: 2025 vs 2026")
     st.caption("Selecione um dia da semana e uma categoria para comparar a evolução mês a mês entre os dois anos.")
 
@@ -2017,22 +2212,18 @@ with tab_predicao:
         "Thursday":"Quinta","Friday":"Sexta","Saturday":"Sábado","Sunday":"Domingo"
     }
 
-    # Unir alertas + jams para análise combinada
     frames_cmp = []
     if not df_alerts_raw.empty:
         df_a_cmp = df_alerts_raw.copy()
         df_a_cmp["categoria"] = df_a_cmp.get("type", pd.Series("ALERTA", index=df_a_cmp.index))
         df_a_cmp["origem"] = "alerta"
-        frames_cmp.append(df_a_cmp[["timestamp","categoria","origem","street","day_of_week"]
-                                    if all(c in df_a_cmp.columns for c in ["timestamp","categoria","origem","street","day_of_week"])
-                                    else [c for c in ["timestamp","categoria","origem","street","day_of_week"] if c in df_a_cmp.columns]])
+        frames_cmp.append(df_a_cmp[[c for c in ["timestamp","categoria","origem","street","day_of_week"] if c in df_a_cmp.columns]])
+
     if not df_jams_raw.empty:
         df_j_cmp = df_jams_raw.copy()
         df_j_cmp["categoria"] = "CONGESTIONAMENTO"
         df_j_cmp["origem"] = "jams"
-        frames_cmp.append(df_j_cmp[["timestamp","categoria","origem","street","day_of_week"]
-                                    if all(c in df_j_cmp.columns for c in ["timestamp","categoria","origem","street","day_of_week"])
-                                    else [c for c in ["timestamp","categoria","origem","street","day_of_week"] if c in df_j_cmp.columns]])
+        frames_cmp.append(df_j_cmp[[c for c in ["timestamp","categoria","origem","street","day_of_week"] if c in df_j_cmp.columns]])
 
     if frames_cmp:
         df_cmp_all = pd.concat(frames_cmp, ignore_index=True)
@@ -2058,7 +2249,6 @@ with tab_predicao:
         with col_c4:
             cat_cmp = st.multiselect("Categorias:", cats_disp, default=cats_disp[:3] if len(cats_disp) >= 3 else cats_disp, key="cmp_cat")
 
-        # Aplicar filtros
         df_f = df_cmp_all[df_cmp_all["categoria"].isin(cat_cmp)] if cat_cmp else df_cmp_all.copy()
         if dia_cmp != "Todos":
             df_f = df_f[df_f["Dia"] == dia_cmp]
@@ -2081,7 +2271,6 @@ with tab_predicao:
             df_comp = df_comp.sort_values("mes")
             ordem_meses = [MESES_PT[m] for m in sorted(df_comp["mes"].unique())]
 
-            # ── Gráfico 1: Linha comparativa total por mês ──
             total_mes = df_comp.groupby(["mes","mes_nome","Ano"])["Total"].sum().reset_index()
             total_mes = total_mes.sort_values("mes")
 
@@ -2096,7 +2285,6 @@ with tab_predicao:
             fig_linha.update_layout(height=380)
             st.plotly_chart(fig_linha, use_container_width=True)
 
-            # ── Gráfico 2: Barras lado-a-lado por categoria e mês ──
             fig_bar = px.bar(
                 df_comp, x="mes_nome", y="Total", color="Ano",
                 facet_col="categoria", facet_col_wrap=3,
@@ -2110,7 +2298,6 @@ with tab_predicao:
             fig_bar.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
             st.plotly_chart(fig_bar, use_container_width=True)
 
-            # ── Gráfico 3: Variação % mês a mês (crescimento / queda) ──
             st.markdown("#### 📈 Variação Percentual Mês a Mês (Crescimento / Decrescimento)")
             pivot_var = total_mes.pivot_table(index="mes_nome", columns="Ano", values="Total").reindex(ordem_meses)
             pivot_var.columns = [str(c) for c in pivot_var.columns]
@@ -2138,15 +2325,16 @@ with tab_predicao:
                 fig_var.update_layout(height=360, showlegend=True)
                 st.plotly_chart(fig_var, use_container_width=True)
 
-            # ── Tabela resumo ──
             st.markdown("#### 📋 Tabela Resumo Comparativa")
             tbl = pivot_var[["mes_nome", col_a_str, col_b_str, "Variação (%)"]].copy() if "Variação (%)" in pivot_var.columns else pivot_var
-            tbl.columns = ["Mês", str(ano_a), str(ano_b), "Δ (%)"] if "Variação (%)" in pivot_var.columns else tbl.columns
+            if "Variação (%)" in tbl.columns:
+                tbl.columns = ["Mês", str(ano_a), str(ano_b), "Δ (%)"]
             st.dataframe(tbl, hide_index=True, use_container_width=True)
         else:
             st.info("Sem dados suficientes para o comparativo mensal com os filtros selecionados.")
     else:
         st.info("Nenhum dado histórico disponível para comparação.")
+
 
 with tab_dados:
     st.subheader("Tabela de Incidentes")
@@ -2203,9 +2391,8 @@ with tab_dados:
     else:
         st.info("Nenhum dado de congestionamento disponível.")
 
-
 # =========================================================
-# BLOCO 7 — RODAPÉ  ← MODIFICAÇÃO 2 & 3: fundo branco + letras escuras
+# BLOCO 7 — RODAPÉ
 # =========================================================
 
 st.markdown("---")
@@ -2220,7 +2407,6 @@ rodape_html = f"""
     font-family: 'Inter', sans-serif;
     box-shadow: 0 2px 12px rgba(15,23,42,0.07);
 ">
-  <!-- Título com ícone Waze -->
   <div style="font-size:1.4rem;font-weight:800;color:#0F172A;margin-bottom:0.25rem;
               display:flex;align-items:center;justify-content:center;gap:10px;">
     <img src="https://cdn.simpleicons.org/waze/00C9D4" width="32" height="32" alt="Waze for Cities">
@@ -2230,10 +2416,8 @@ rodape_html = f"""
     Sistema de análise de incidentes e congestionamentos via dados Waze for Cities · Foz do Iguaçu, PR
   </div>
 
-  <!-- Divider -->
   <div style="border-top:1px solid #E2E8F0;margin-bottom:1.5rem;"></div>
 
-  <!-- UNILA -->
   <div style="margin-bottom:1.2rem;">
     <div style="font-size:1rem;font-weight:700;color:#0F172A;margin-bottom:0.2rem;">
       🏛️ UNILA — Universidade Federal da Integração Latino-Americana
@@ -2243,13 +2427,11 @@ rodape_html = f"""
 
   <div style="border-top:1px solid #E2E8F0;margin-bottom:1.5rem;"></div>
 
-  <!-- Labs label -->
   <div style="font-size:0.75rem;color:#94A3B8;margin-bottom:0.9rem;
               text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
     Grupos &amp; Laboratórios de Pesquisa
   </div>
 
-  <!-- 3 labs -->
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.5rem;">
     <div style="text-align:center;">
       <div style="font-size:1rem;font-weight:700;color:#2563EB;margin-bottom:0.2rem;">🔬 GPMME</div>
@@ -2275,7 +2457,6 @@ rodape_html = f"""
 
   <div style="border-top:1px solid #E2E8F0;margin-bottom:1.2rem;"></div>
 
-  <!-- Equipe -->
   <div style="font-size:0.75rem;color:#94A3B8;margin-bottom:0.9rem;
               text-transform:uppercase;letter-spacing:0.8px;font-weight:600;">
     Equipe de Desenvolvimento
@@ -2287,7 +2468,6 @@ rodape_html = f"""
 
   <div style="border-top:1px solid #E2E8F0;margin-bottom:1rem;"></div>
 
-  <!-- Fontes e tecnologias  ← MODIFICAÇÃO 1: ícone Waze inline na fonte -->
   <div style="display:flex;justify-content:center;align-items:center;gap:1.5rem;
               flex-wrap:wrap;font-size:0.73rem;color:#64748B;">
     <span>📡 Fonte:
