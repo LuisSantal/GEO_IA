@@ -1912,7 +1912,7 @@ with tab_pipeline:
     categorias_disp = list(dict.fromkeys(categorias_disp + ["CONGESTIONAMENTO"]))
 
     with col_p1:
-        categoria_artigo = st.selectbox("Categoria analisada", categories_disp, index=0, key="pipe_categoria")
+        categoria_artigo = st.selectbox("Categoria analisada", categorias_disp, index=0, key="pipe_categoria")
     with col_p2:
         periodo_stl = st.selectbox("Periodicidade STL", [7, 30], index=0, key="pipe_stl_period")
     with col_p3:
