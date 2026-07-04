@@ -584,12 +584,12 @@ SUBTYPE_MAP = {
     "HAZARD_ON_ROAD":                     "PERIGO NA VIA",
     "HAZARD_ON_ROAD_POT_HOLE":            "BURACO NA VIA",
     "HAZARD_ON_ROAD_ROAD_KILL":           "ANIMAL NA VIA",
-    "HAZARD_ON_ROAD_CAR_STOPPED":         "VEÍCULO PARADO NA VIA",
+    "HAZARD_ON_ROAD_CAR_STOPPED":          "VEÍCULO PARADO NA VIA",
     "HAZARD_ON_ROAD_CONSTRUCTION":        "OBRAS NA VIA",
     "HAZARD_ON_ROAD_OBJECT":              "OBJETO NA VIA",
     "HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT": "SEMÁFORO QUEBRADO",
     "HAZARD_ON_ROAD_ICE":                 "PISTA COM GELO",
-    "HAZARD_ON_ROAD_LANE_CLOSED":         "FAIXA INTERDITADA",
+    "HAZARD_ON_ROAD_LANE_CLOSED":          "FAIXA INTERDITADA",
     "HAZARD_ON_SHOULDER":                 "PERIGO NO ACOSTAMENTO",
     "HAZARD_ON_SHOULDER_CAR_STOPPED":     "VEÍCULO PARADO NO ACOSTAMENTO",
     "HAZARD_ON_SHOULDER_ANIMALS":         "ANIMAIS NO ACOSTAMENTO",
@@ -1473,7 +1473,7 @@ st.markdown(f"""
       &nbsp;·&nbsp;
       🕒 Hora local: <strong style="color:#94a3b8;">{hora_foz_atual.strftime('%H:%M:%S')}</strong>
       &nbsp;·&nbsp;
-      🔄 Atualização automática a cada 10 minutos
+      🔄 Atualização automática a cada 10 minutes
   </p>
   <div style="
       margin-top: 1rem;
@@ -1594,7 +1594,7 @@ with col_vel:
 
 st.caption(
     "Os indicadores acima resumem o comportamento do período filtrado: "
-    "o risco operacional considera o volume de incidentes, enquanto a condição "
+    "o risco operacional considera o volume de incidentes, enquanto a condition "
     "do tráfego é baseada na velocidade média observada nos congestionamentos."
 )
 
@@ -1605,11 +1605,12 @@ st.markdown("---")
 # =========================================================
 
 st.subheader("🗺️ Visualizações")
-tab_inc, tab_jams, tab_calor, tab_graficos, tab_pipeline, tab_criticidade, tab_predicao, tab_dados = st.tabs(
+tab_inc, tab_jams, tab_calor, tab_temporal_danos, tab_graficos, tab_pipeline, tab_criticidade, tab_predicao, tab_dados = st.tabs(
     [
         "Incidentes",
         "Congestionamentos",
         "Mapa de Calor",
+        "📅 Análise Temporal",
         "Gráficos",
         "🧪 Pipeline Científico",
         "📊 Criticidade (MCDA)",
@@ -1727,6 +1728,26 @@ with tab_calor:
             st.info("Sem coordenadas válidas para gerar o mapa de calor.")
     else:
         st.info("Sem dados suficientes para mapa de calor.")
+
+with tab_temporal_danos:
+    st.subheader("📅 Análise Temporal de Patologias Viárias")
+    st.markdown("""
+    Esta seção exibe o perfil de distribuição e reincidência de anomalias viárias nos arquivos ativos carregados atualmente.
+    """)
+    if not df_alerts_raw.empty:
+        subtipos = clean_unique_values(df_alerts_raw["subtype"], invalid_values=["nan", ""])
+        subtipo_sel = st.selectbox("Selecione a natureza do dano:", subtipos, key="sel_dano_temporal")
+        
+        df_sub = df_alerts_raw[df_alerts_raw["subtype"] == subtipo_sel]
+        if not df_sub.empty:
+            fig_temp = px.histogram(df_sub, x="hour", nbins=24, color_discrete_sequence=['#dc2626'],
+                                    title=f"Distribuição Horária Total de: {subtipo_sel}",
+                                    labels={"hour": "Hora do Dia (Recorte Atual)", "count": "Volume de Alertas"})
+            st.plotly_chart(fig_temp, use_container_width=True)
+        else:
+            st.info("Sem registros para a patologia selecionada na data ativa.")
+    else:
+        st.warning("Base de dados de alertas vazia ou indisponível.")
 
 with tab_graficos:
     if not df_filtered.empty:
@@ -1984,8 +2005,7 @@ with tab_pipeline:
         st.dataframe(tabela_desc, hide_index=True, use_container_width=True)
         csv_desc = tabela_desc.to_csv(index=False).encode("utf-8")
         st.download_button(
-            "Baixar CSV — Tabela 1",
-            data=csv_desc,
+            "Baixar CSV — Tabela 1", data=csv_desc,
             file_name="tabela_1_estatisticas_descritivas.csv",
             mime="text/csv"
         )
@@ -2035,7 +2055,7 @@ with tab_predicao:
     st.markdown("### 🧮 Simulador de Atraso por Extensão de Fila")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        extensao_sim = st.slider("Extensão da fila (metros):", 50, 5000, 500, 50)
+        extensao_sim = st.slider("Extensão da fila (metros):", 50, 5000, 500, 50, key="slider_pred_ext")
         atraso_est   = predict_traffic_delay_impact(extensao_sim)
         minutos_est  = atraso_est / 60
         st.metric("Atraso Estimado", f"{minutos_est:.2f} min")
@@ -2113,7 +2133,7 @@ with tab_predicao:
 
             if not df_dia.empty:
                 fig_dia = px.bar(
-                    df_dia, x="Propensã o (%)", y="street", orientation="h",
+                    df_dia, x="Propensão (%)", y="street", orientation="h",
                     color="Propensão (%)", color_continuous_scale="Reds",
                     title=f"Top 10 — {dia_selecionado}",
                     labels={"street": "Via", "Propensão (%)": "% do tráfego semanal"}
@@ -2144,7 +2164,7 @@ with tab_predicao:
         st.info("Histórico de congestionamentos insuficiente para análise de propensão por via e dia.")
 
     st.markdown("---")
-    st.markdown("### 📅 Comparador Mensal: 2025 vs 2026")
+    st.markdown("### 📆 Comparador Mensal: 2025 vs 2026")
     st.caption("Selecione um dia da semana e uma categoria para comparar a evolução mês a mês entre os dois anos.")
 
     MESES_PT = {
@@ -2414,7 +2434,7 @@ rodape_html = f"""
     <span>·</span>
     <span>☁️ Google Drive API</span>
     <span>·</span>
-    <span>🕒 {hora_foz_atual.strftime('%d/%m/%Y %H:%M')} (Foz · UTC-3)</span>
+    <span>Local: Foz do Iguaçu (UTC-3)</span>
   </div>
   <div style="margin-top:0.75rem;font-size:0.68rem;color:#94A3B8;">
     © {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa
