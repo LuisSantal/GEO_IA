@@ -1221,7 +1221,7 @@ today_foz = hora_foz_atual.date()
 all_dates = set()
 if not df_alerts_raw.empty and "date" in df_alerts_raw.columns:
     all_dates.update(pd.to_datetime(df_alerts_raw["date"]).dt.date.unique())
-if not df_jams_raw.empty && "date" in df_jams_raw.columns:
+if not df_jams_raw.empty and "date" in df_jams_raw.columns:
     all_dates.update(pd.to_datetime(df_jams_raw["date"]).dt.date.unique())
 
 if all_dates:
