@@ -6,19 +6,21 @@ import re
 import ast
 import tempfile
 import numpy as np  # suporte matemático para modelo preditivo
+import os
+import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import folium
 from folium import plugins
-from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # =========================================================
 # BLOCO 1 — CONFIGURAÇÃO BASE DO APP
 # =========================================================
 
-# ---------------------------------------------------------
 # 1. CONFIGURAÇÃO DA PÁGINA
-# ---------------------------------------------------------
 st.set_page_config(
     page_title="Waze Foz do Iguaçu",
     page_icon="https://cdn.simpleicons.org/waze",
@@ -26,9 +28,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ---------------------------------------------------------
 # 2. TOKENS VISUAIS E CSS GLOBAL
-# ---------------------------------------------------------
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -301,6 +301,7 @@ FOLDER_ALERTS_ID  = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
 FOLDER_JAMS_ID    = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
 FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
+LOCAL_CSV_PATH    = "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv"
 
 # ---------------------------------------------------------
 # 6. FUNÇÕES DE COR
@@ -362,10 +363,8 @@ def get_danger_color(incident_type: str, subtype: str | None = None) -> str:
     return color_map.get(t, "#90A4AE")
 
 # =========================================================
-# BLOCO 2 — CONEXÃO, INGESTÃO E NORMALIZAÇÃO DOS DADOS
+# BLOCO 2 — CONEXÃO, INGESTÃO E ESTIMADOR PROBABILÍSTICO
 # =========================================================
-
-import os
 
 @st.cache_resource(show_spinner=False)
 def get_drive_service():
@@ -381,60 +380,80 @@ def get_drive_service():
 
 def get_latest_h5_id(folder_id: str) -> str | None:
     service = get_drive_service()
-    query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
+    if not service: return None
+    try:
+        query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
 
-    results = service.files().list(
-        q=query,
-        fields="files(id, name, modifiedTime)",
-        orderBy="modifiedTime desc",
-        pageSize=20
-    ).execute()
+        results = service.files().list(
+            q=query,
+            fields="files(id, name, modifiedTime)",
+            orderBy="modifiedTime desc",
+            pageSize=5
+        ).execute()
 
-    files = results.get("files", [])
-    if not files:
+        files = results.get("files", [])
+        return files[0]["id"] if files else None
+    except Exception:
         return None
 
-    latest_id = None
-    latest_ts = -1
-
-    for file_meta in files:
-        match = re.search(r"(\d{8,})", file_meta["name"])
-        if match:
-            ts = int(match.group(1))
-            if ts > latest_ts:
-                latest_ts = ts
-                latest_id = file_meta["id"]
-
-    return latest_id if latest_id else files[0]["id"]
-
-@st.cache_data(ttl=600, show_spinner="📥 Baixando dados do Drive...")
 def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     from googleapiclient.http import MediaIoBaseDownload
 
     service = get_drive_service()
-    request = service.files().get_media(fileId=file_id)
-
-    buffer = io.BytesIO()
-    downloader = MediaIoBaseDownload(buffer, request)
-
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-
-    buffer.seek(0)
-    tmp_path = None
-
+    if not service: return pd.DataFrame()
     try:
+        request = service.files().get_media(fileId=file_id)
+
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, request)
+
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+
+        buffer.seek(0)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".h5") as tmp:
             tmp.write(buffer.getvalue())
             tmp_path = tmp.name
 
         df = pd.read_hdf(tmp_path, key="s")
+        os.remove(tmp_path)
         return df
+    except Exception:
+        return pd.DataFrame()
 
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
+def parse_pt_date(date_str):
+    if not isinstance(date_str, str): return pd.NaT
+    meses = {
+        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
+        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
+        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
+    }
+    try:
+        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
+        if match:
+            dia, mes_nome, ano = match.groups()
+            mes = meses.get(mes_nome, 1)
+            return datetime(int(ano), int(mes), int(dia))
+    except Exception:
+        pass
+    return pd.to_datetime(date_str, errors='coerce')
+
+def extract_wkt_coordinates(df: pd.DataFrame) -> pd.DataFrame:
+    if "Location" in df.columns and ('lat' not in df.columns):
+        def _parse_wkt(val):
+            if not isinstance(val, str): return None, None
+            try:
+                m = re.search(r'point\(([-\s\d\.]+)\)', val, re.IGNORECASE)
+                if m:
+                    coords = m.group(1).strip().split()
+                    return float(coords[1]), float(coords[0])
+            except Exception: pass
+            return None, None
+        coords = df["Location"].apply(lambda x: pd.Series(_parse_wkt(x), index=["lat", "lon"]))
+        df["lat"] = coords["lat"]
+        df["lon"] = coords["lon"]
+    return df
 
 def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -448,14 +467,16 @@ def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
             .dt.tz_convert("America/Sao_Paulo")
             .dt.tz_localize(None)
         )
+    elif "Date" in df.columns:
+        df["timestamp"] = df["Date"].apply(parse_pt_date)
     elif "timestamp" in df.columns:
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     else:
         df["timestamp"] = now_foz()
 
-    df["date"]       = df["timestamp"].dt.date
-    df["hour"]       = df["timestamp"].dt.hour
-    df["day_of_week"]= df["timestamp"].dt.day_name()
+    df["date"]        = df["timestamp"].dt.date
+    df["hour"]        = df["timestamp"].dt.hour
+    df["day_of_week"] = df["timestamp"].dt.day_name()
 
     return df
 
@@ -641,43 +662,73 @@ def translate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-@st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
+@st.cache_data(ttl=600, show_spinner="🔄 Executando Cruzamento Histórico (MHDH)...")
 def load_all_data():
-    alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
-    alerts_id2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
-    jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
-    jams_id2   = get_latest_h5_id(FOLDER_JAMS_ID2)
+    df_alerts = pd.DataFrame()
+    df_jams = pd.DataFrame()
 
-    frames_alerts = []
-    if alerts_id:
-        frames_alerts.append(load_hdf_from_drive(alerts_id))
-    if alerts_id2:
-        frames_alerts.append(load_hdf_from_drive(alerts_id2))
+    alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
+    jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
+
+    if alerts_id: frames_alerts = [load_hdf_from_drive(alerts_id)]
+    else: frames_alerts = []
+    
+    alerts_id2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
+    if alerts_id2: frames_alerts.append(load_hdf_from_drive(alerts_id2))
 
     if frames_alerts:
         df_alerts = pd.concat(frames_alerts, ignore_index=True)
         dedup_cols = ["uuid"] if "uuid" in df_alerts.columns else ["pubMillis", "street"]
         df_alerts = df_alerts.drop_duplicates(subset=dedup_cols)
-    else:
-        df_alerts = pd.DataFrame()
+        df_alerts = normalize_timestamps(df_alerts)
 
     frames_jams = []
-    if jams_id:
-        frames_jams.append(load_hdf_from_drive(jams_id))
-    if jams_id2:
-        frames_jams.append(load_hdf_from_drive(jams_id2))
+    if jams_id: frames_jams.append(load_hdf_from_drive(jams_id))
+    jams_id2 = get_latest_h5_id(FOLDER_JAMS_ID2)
+    if jams_id2: frames_jams.append(load_hdf_from_drive(jams_id2))
 
     if frames_jams:
         df_jams = pd.concat(frames_jams, ignore_index=True)
         dedup_cols = ["uuid"] if "uuid" in df_jams.columns else ["pubMillis", "street"]
         df_jams = df_jams.drop_duplicates(subset=dedup_cols)
-    else:
-        df_jams = pd.DataFrame()
+
+    prob_matrix = {}
+    if not df_alerts.empty and "hour" in df_alerts.columns:
+        grp = df_alerts.groupby(["type", "day_of_week", "hour"]).size().unstack(fill_value=0)
+        for idx, row in grp.iterrows():
+            total = row.sum()
+            prob_matrix[idx] = row.values / total if total > 0 else np.ones(24)/24.0
+
+    if os.path.exists(LOCAL_CSV_PATH):
+        try:
+            df_local_csv = pd.read_csv(LOCAL_CSV_PATH)
+            df_local_csv = extract_wkt_coordinates(df_local_csv)
+            df_local_csv = normalize_timestamps(df_local_csv)
+            df_local_csv = df_local_csv.rename(columns={'Street': 'street', 'Type': 'type', 'Subtype': 'subtype'})
+            df_local_csv = translate_dataframe(df_local_csv)
+
+            hours_estimated = []
+            for _, row in df_local_csv.iterrows():
+                t_val = row.get("type", "HAZARD")
+                d_val = row.get("day_of_week", "Monday")
+                if (t_val, d_val) in prob_matrix:
+                    hours_estimated.append(int(np.random.choice(range(24), p=prob_matrix[(t_val, d_val)])))
+                else:
+                    hours_estimated.append(int(np.random.choice(range(24))))
+            
+            df_local_csv["hour"] = hours_estimated
+            df_local_csv["timestamp"] = df_local_csv.apply(
+                lambda r: datetime.combine(r["date"], datetime.min.time().replace(hour=int(r["hour"]))) if pd.notna(r["date"]) else r["timestamp"], axis=1
+            )
+            df_alerts = pd.concat([df_alerts, df_local_csv], ignore_index=True) if not df_alerts.empty else df_local_csv
+        except Exception:
+            pass
 
     if not df_alerts.empty:
+        dedup = ["uuid"] if "uuid" in df_alerts.columns else ["timestamp", "street"]
+        df_alerts = df_alerts.drop_duplicates(subset=[c for c in dedup if c in df_alerts.columns])
         df_alerts = normalize_timestamps(df_alerts)
         df_alerts = extract_coordinates(df_alerts)
-        df_alerts = translate_dataframe(df_alerts)
         if "street" not in df_alerts.columns:
             df_alerts["street"] = "N/A"
 
@@ -840,33 +891,7 @@ def _safe_time_label(value) -> str:
 
 def generate_incidents_map(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
-    if df.empty:
-        return None
-
-    if ("lat" not in df.columns or df["lat"].isna().all()) and "location" in df.columns:
-        def _gy(x):
-            try:
-                parsed = ast.literal_eval(x) if isinstance(x, str) else x
-                return float(parsed.get("y"))
-            except Exception:
-                return None
-
-        def _gx(x):
-            try:
-                parsed = ast.literal_eval(x) if isinstance(x, str) else x
-                return float(parsed.get("x"))
-            except Exception:
-                return None
-
-        df["lat"] = df["location"].apply(_gy)
-        df["lon"] = df["location"].apply(_gx)
-
-    if "lat" not in df.columns and "y" in df.columns:
-        df["lat"] = pd.to_numeric(df["y"], errors="coerce")
-    if "lon" not in df.columns and "x" in df.columns:
-        df["lon"] = pd.to_numeric(df["x"], errors="coerce")
-
-    if "lat" not in df.columns or "lon" not in df.columns:
+    if df.empty or "lat" not in df.columns or "lon" not in df.columns:
         return None
 
     df_map = filter_bbox_foz(df.dropna(subset=["lat", "lon"])).head(50)
@@ -914,56 +939,7 @@ def generate_incidents_map(df_json: str) -> folium.Map | None:
 
 def generate_jams_map(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
-    if df.empty:
-        return None
-
-    if ("lat" not in df.columns or df["lat"].isna().all()) and "line" in df.columns:
-        def _midpoint(val):
-            try:
-                pts = val if isinstance(val, list) else ast.literal_eval(str(val))
-                if not pts:
-                    return None, None
-                mid = pts[len(pts) // 2]
-                return float(mid.get("y")), float(mid.get("x"))
-            except Exception:
-                return None, None
-
-        coords = df["line"].apply(lambda x: pd.Series(_midpoint(x), index=["lat", "lon"]))
-        df["lat"] = coords["lat"]
-        df["lon"] = coords["lon"]
-
-    if ("lat" not in df.columns or df["lat"].isna().all()) and "location" in df.columns:
-        def _get_y(x):
-            try:
-                parsed = ast.literal_eval(x) if isinstance(x, str) else x
-                return float(parsed.get("y"))
-            except Exception:
-                return None
-
-        def _get_x(x):
-            try:
-                parsed = ast.literal_eval(x) if isinstance(x, str) else x
-                return float(parsed.get("x"))
-            except Exception:
-                return None
-
-        df["lat"] = df["location"].apply(_get_y)
-        df["lon"] = df["location"].apply(_get_x)
-
-    if "lat" not in df.columns and "y" in df.columns:
-        df["lat"] = pd.to_numeric(df["y"], errors="coerce")
-    if "lon" not in df.columns and "x" in df.columns:
-        df["lon"] = pd.to_numeric(df["x"], errors="coerce")
-
-    if "speed" not in df.columns:
-        for alt in ["speedKMH", "speedkmh", "speed_kmh", "velocity"]:
-            if alt in df.columns:
-                df["speed"] = pd.to_numeric(df[alt], errors="coerce") / 3.6
-                break
-        else:
-            df["speed"] = float("nan")
-
-    if "lat" not in df.columns or "lon" not in df.columns:
+    if df.empty or "lat" not in df.columns or "lon" not in df.columns:
         return None
 
     df_valid = filter_bbox_foz(df.dropna(subset=["lat", "lon"])).head(40)
@@ -1010,15 +986,7 @@ def generate_jams_map(df_json: str) -> folium.Map | None:
 
 def generate_heatmap(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
-    if df.empty:
-        return None
-
-    if "lat" not in df.columns and "y" in df.columns:
-        df["lat"] = pd.to_numeric(df["y"], errors="coerce")
-    if "lon" not in df.columns and "x" in df.columns:
-        df["lon"] = pd.to_numeric(df["x"], errors="coerce")
-
-    if "lat" not in df.columns or "lon" not in df.columns:
+    if df.empty or "lat" not in df.columns or "lon" not in df.columns:
         return None
 
     df_map = filter_bbox_foz(df.dropna(subset=["lat", "lon"]))
@@ -1074,7 +1042,6 @@ def build_daily_series(df_alerts: pd.DataFrame, df_jams: pd.DataFrame, categoria
     idx = pd.date_range(serie.index.min(), serie.index.max(), freq="D")
     serie = serie.reindex(idx, fill_value=0)
     serie.index.name = "date"
-    serie.name = "ocorrencias"
     return serie
 
 def run_stl_analysis(serie: pd.Series, period: int = 7):
@@ -1173,12 +1140,6 @@ try:
     df_alerts_raw, df_jams_raw = load_all_data()
 except Exception as e:
     st.error(f"❌ Erro ao conectar com o Google Drive: {e}")
-    st.markdown("""
-    **Verifique:**
-    - As credenciais `gcp_service_account` estão configuradas em **Settings → Secrets**
-    - A Service Account tem acesso às pastas do Drive
-    - Os arquivos `.h5` existem nas pastas configuradas
-    """)
     st.stop()
 
 for df_ref in [df_alerts_raw, df_jams_raw]:
@@ -1188,35 +1149,7 @@ for df_ref in [df_alerts_raw, df_jams_raw]:
         if "date" not in df_ref.columns:
             df_ref["date"] = pd.to_datetime(df_ref["timestamp"], errors="coerce").dt.date
 
-def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[int, int]) -> pd.DataFrame:
-    if df is None or df.empty:
-        return pd.DataFrame()
-    if "date" not in df.columns or "hour" not in df.columns:
-        return pd.DataFrame()
-    return df[
-        (df["date"] == selected_date) &
-        (df["hour"].between(hora_range[0], hora_range[1]))
-    ].copy()
-
-def clean_unique_values(series: pd.Series, invalid_values=None):
-    if series is None:
-        return []
-    invalid_values = set(invalid_values or [])
-    values = series.dropna().astype(str).str.strip()
-    values = values[~values.isin(invalid_values)]
-    return sorted(values.unique().tolist())
-
-def classify_traffic_status(media_vel_kmh: float) -> str:
-    if media_vel_kmh < 20:
-        return "🔴 Crítico"
-    elif media_vel_kmh < 40:
-        return "🟠 Lento"
-    elif media_vel_kmh < 60:
-        return "🟡 Moderado"
-    return "🟢 Fluindo"
-
 st.sidebar.subheader("🔍 Filtros")
-today_foz = hora_foz_atual.date()
 
 all_dates = set()
 if not df_alerts_raw.empty and "date" in df_alerts_raw.columns:
@@ -1227,7 +1160,7 @@ if not df_jams_raw.empty and "date" in df_jams_raw.columns:
 if all_dates:
     min_date     = min(all_dates)
     max_date     = max(all_dates)
-    default_date = today_foz if today_foz in all_dates else max_date
+    default_date = max(all_dates) if max(all_dates) in all_dates else today_foz
 else:
     min_date = max_date = default_date = today_foz
 
@@ -1235,7 +1168,7 @@ selected_date = st.sidebar.date_input(
     "📅 Data",
     value=default_date,
     min_value=min_date,
-    max_value=max(max_date, today_foz),
+    max_value=max_date,
 )
 
 hora_range = st.sidebar.slider("🕒 Horário", min_value=0, max_value=23, value=(0, 23))
@@ -1276,19 +1209,11 @@ ruas_na_data = (
 filtro_rua = st.sidebar.selectbox("🛣️ Rua", options=["(Todas)"] + ruas_na_data, index=0)
 filtro_rua = "" if filtro_rua == "(Todas)" else filtro_rua
 
-vel_min_data, vel_max_data = 0.0, 120.0
-
-if not jams_date_base.empty and "speed" in jams_date_base.columns:
-    speeds_na_data = jams_date_base["speed"].dropna() * 3.6
-    if not speeds_na_data.empty:
-        vel_min_data = max(0.0, float(speeds_na_data.min()))
-        vel_max_data = max(5.0, float(speeds_na_data.max()))
-
 vel_range = st.sidebar.slider(
     "🚗 Velocidade (km/h)",
     min_value=0.0,
-    max_value=max(120.0, vel_max_data),
-    value=(vel_min_data, max(vel_min_data, min(120.0, vel_max_data))),
+    max_value=120.0,
+    value=(0.0, 120.0),
     step=5.0,
 )
 
@@ -1327,293 +1252,29 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard    = df_jams_filtered.copy()
-
-# =========================================================
-# UPGRADE — ALGORITMO MULTICRITÉRIO (MCDA) E MODELO PREDITIVO
-# =========================================================
-
-def calculate_road_criticism(df_alerts, df_jams):
-    """Índice de criticidade viária ponderando volume de retenções e atraso médio."""
-    if df_jams.empty:
-        return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
-
-    agg = {}
-    agg["Volume_Jams"] = ("street", "count")
-    if "delay" in df_jams.columns:
-        agg["Atraso_Medio_Seg"] = ("delay", "mean")
-    if "length" in df_jams.columns:
-        agg["Comprimento_Medio_M"] = ("length", "mean")
-
-    grouped = df_jams.groupby("street").agg(**agg).reset_index()
-
-    if "Atraso_Medio_Seg" not in grouped.columns:
-        grouped["Atraso_Medio_Seg"] = 0.0
-    if "Comprimento_Medio_M" not in grouped.columns:
-        grouped["Comprimento_Medio_M"] = 0.0
-
-    max_vol   = grouped["Volume_Jams"].max() or 1
-    max_delay = grouped["Atraso_Medio_Seg"].max() or 1
-
-    grouped["Criticidade_Index"] = (
-        (grouped["Volume_Jams"]     / max_vol)   * 0.4 +
-        (grouped["Atraso_Medio_Seg"] / max_delay) * 0.6
-    ) * 100
-
-    return grouped.sort_values("Criticidade_Index", ascending=False)
-
-def predict_traffic_delay_impact(length_meters: float) -> float:
-    """
-    Modelo de regressão linear calibrado com dados históricos do WazeFoz.
-    Retorna o atraso estimado em segundos dado o comprimento da fila em metros.
-    """
-    coef_angular = 0.15
-    intercepto   = 12.0
-    return (length_meters * coef_angular) + intercepto
-
 df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
 
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
 # =========================================================
 
-def classify_risk_level(total_incidentes: int):
-    if total_incidentes >= 15:
-        return "Crítico",  "🔴", "Volume muito alto de incidentes no período filtrado."
-    elif total_incidentes >= 10:
-        return "Alto",     "🟠", "Quantidade elevada de ocorrências; atenção operacional recomendada."
-    elif total_incidentes >= 5:
-        return "Moderado", "🟡", "Ocorrências acima do nível de normalidade para o recorte atual."
-    return "Baixo", "🟢", "Baixa pressão operacional no período filtrado."
-
-def classify_flow_status(vmedia_kmh: float):
-    if vmedia_kmh < 20:
-        return "Travado",  "🔴", "Fluxo muito comprometido, com forte retenção nas vias."
-    elif vmedia_kmh < 40:
-        return "Lento",    "🟠", "Tráfego com perda relevante de fluidez."
-    elif vmedia_kmh < 60:
-        return "Moderado", "🟡", "Fluxo estável, mas com redução perceptível de velocidade."
-    return "Fluindo", "🟢", "Boas condições de circulação no recorte selecionado."
-
-def classify_road_status(total_incidentes: int) -> str:
-    if total_incidentes >= 15:
-        return "🚫 Crítico"
-    elif total_incidentes >= 5:
-        return "⚠️ Moderado"
-    return "✅ Normal"
-
-def build_selection_label(selected_values, total_available, singular_name, plural_name):
-    if not selected_values or len(selected_values) == total_available:
-        return "Todos" if plural_name == "tipos" else "Todas"
-    if len(selected_values) <= 2:
-        return ", ".join(selected_values)
-    return f"{len(selected_values)} {plural_name}"
-
-st.markdown(f"""
-<div style="
-    background: linear-gradient(135deg,
-        rgba(30,41,59,0.95) 0%,
-        rgba(15,23,42,0.98) 50%,
-        rgba(17,24,39,0.95) 100%);
-    border: 1px solid rgba(59,130,246,0.2);
-    border-radius: 20px;
-    padding: 2rem 2.5rem;
-    margin-bottom: 1.5rem;
-    backdrop-filter: blur(20px);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
-    position: relative;
-    overflow: hidden;
-">
-  <div style="
-      position:absolute; top:-60px; right:-60px;
-      width:200px; height:200px;
-      background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%);
-      pointer-events:none;
-  "></div>
-  <div style="
-      display:inline-flex; align-items:center; gap:6px;
-      background: rgba(34,197,94,0.12);
-      border: 1px solid rgba(34,197,94,0.25);
-      border-radius: 20px;
-      padding: 4px 12px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #4ade80;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      margin-bottom: 0.75rem;
-  ">
-      <span style="width:7px;height:7px;background:#4ade80;border-radius:50%;
-                   animation:pulse 2s infinite;display:inline-block;"></span>
-      SISTEMA ATIVO — DADOS REAIS
-  </div>
-  <h1 style="
-      margin: 0 0 0.25rem 0;
-      font-size: clamp(1.4rem, 3vw, 2rem);
-      font-weight: 800;
-      color: #f1f5f9;
-      letter-spacing: -0.5px;
-      line-height: 1.2;
-  ">
-      <img src="https://cdn.simpleicons.org/waze/33CCC5" width="36" height="36"
-           style="vertical-align:middle;margin-right:8px;" alt="Waze for Cities">
-      Monitoramento de Tráfego
-      <span style="
-          background: linear-gradient(135deg, #3b82f6, #60a5fa);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-      "> — Foz do Iguaçu</span>
-  </h1>
-  <p style="
-      margin: 0.4rem 0 0 0;
-      color: #64748b;
-      font-size: 0.88rem;
-      font-weight: 400;
-  ">
-      📅 {selected_date.strftime('%d/%m/%Y')}
-      &nbsp;·&nbsp;
-      🕒 Hora local: <strong style="color:#94a3b8;">{hora_foz_atual.strftime('%H:%M:%S')}</strong>
-      &nbsp;·&nbsp;
-      🔄 Atualização automática a cada 10 minutes
-  </p>
-  <div style="
-      margin-top: 1rem;
-      padding-top: 0.75rem;
-      border-top: 1px solid rgba(255,255,255,0.06);
-      font-size: 0.72rem;
-      color: #475569;
-      display: flex;
-      gap: 1.5rem;
-      flex-wrap: wrap;
-      align-items: center;
-  ">
-      <span>🔬 <strong style="color:#64748b;">GPMME</strong> — Grupo de Pesquisa em Mobilidade e Matriz Energética</span>
-      <span>🧪 <strong style="color:#64748b;">LAGGRA</strong> — Lab. de Geologia, Geotecnia e Recuperação Ambiental</span>
-      <span>💻 <strong style="color:#64748b;">LACA</strong> — Laboratório de Computação Aplicada</span>
-      <span style="margin-left:auto; color:#334155;">UNILA · FOZ DO IGUAÇU</span>
-  </div>
-</div>
-<style>
-@keyframes pulse {{
-    0%, 100% {{ opacity: 1; }}
-    50% {{ opacity: 0.4; }}
-}}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
-<div style="
-    background:#FFFFFF;
-    border:1px solid #E2E8F0;
-    border-radius:12px;
-    padding:16px 18px;
-    margin-bottom:16px;
-    box-shadow:0 1px 4px rgba(15,23,42,0.04);
-">
-    <div style="font-size:15px;font-weight:700;color:#0F172A;margin-bottom:6px;">
-        Sobre o Sistema
-    </div>
-    <div style="font-size:14px;line-height:1.7;color:#475569;">
-        Este sistema mostra o monitoramento de incidentes viários e congestionamentos em Foz do Iguaçu com base em dados do Waze.
-        Os painéis reúnem mapas, filtros e indicadores para apoiar análises espaciais, temporais e históricas da mobilidade urbana.
-        Os dados podem ser explorados por tipo de ocorrência, natureza, via, horário e intensidade do tráfego.
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-label_tipo = build_selection_label(filtro_tipo, len(tipos_na_data), "tipo", "tipos")
-label_natureza = build_selection_label(filtro_natureza, len(naturezas_na_data), "natureza", "naturezas")
-
-col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
-col_f1.metric("📅 Data",     selected_date.strftime("%d/%m/%Y"))
-col_f2.metric("🚨 Tipo",     label_tipo)
-col_f3.metric("🔍 Natureza", label_natureza)
-col_f4.metric("Road",     filtro_rua if filtro_rua else "Todas")
-col_f5.metric("🕒 Horário",  f"{hora_range[0]:02d}h – {hora_range[1]:02d}h")
-
-st.caption(
-    f"🔍 Filtros ativos → {len(df_filtered)} incidente(s) exibidos em "
-    f"{selected_date.strftime('%d/%m/%Y')} | Congestionamentos: {len(df_jams_filtered)}"
-)
-
-st.markdown("---")
-st.subheader("📊 Resumo Estatístico")
-
-incidentes_dia = len(df_filtered)
-acidentes = (
-    len(df_filtered[df_filtered["type"] == "ACIDENTE"])
-    if not df_filtered.empty and "type" in df_filtered.columns
-    else 0
-)
-
-vmedia_kmh = (
-    df_jams_filtered["speed"].mean() * 3.6
-    if not df_jams_filtered.empty
-    and "speed" in df_jams_filtered.columns
-    and df_jams_filtered["speed"].notna().any()
-    else 0
-)
-
-status_via = classify_road_status(incidentes_dia)
-
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric("Total Alertas", incidentes_dia)
-kpi2.metric("Acidentes",     acidentes)
-kpi3.metric("Vel. Média",    f"{vmedia_kmh:.1f} km/h")
-kpi4.metric("Status da Via", status_via)
-
-via_mais_critica = df_criticidade_vias.iloc[0]["street"] if not df_criticidade_vias.empty else "Nenhuma"
-st.caption(f"🔴 Gargalo Operacional Prioritário (MCDA): **{via_mais_critica}**")
-
-st.markdown("---")
-st.subheader("📈 Indicadores de Gravidade")
-
-nivel_risco,  emoji_risco, desc_risco  = classify_risk_level(incidentes_dia)
-status_fluxo, emoji_fluxo, desc_fluxo = classify_flow_status(vmedia_kmh)
-
-col_grav, col_vel = st.columns(2)
-
-with col_grav:
-    with st.container(border=True):
-        st.markdown(f"### {emoji_risco} Risco operacional")
-        st.metric("Classificação", nivel_risco)
-        st.metric("Incidentes no período", incidentes_dia)
-        st.caption(desc_risco)
-        st.write(f"🚨 Acidentes: {acidentes}")
-        st.write(f"📍 Status geral: {status_via}")
-        st.caption("Faixas: 0–4 = Baixo · 5–9 = Moderado · 10–14 = Alto · 15+ = Crítico")
-
-with col_vel:
-    with st.container(border=True):
-        st.markdown(f"### {emoji_fluxo} Condição do tráfego")
-        st.metric("Classificação", status_fluxo)
-        st.metric("Velocidade média", f"{vmedia_kmh:.1f} km/h")
-        st.caption(desc_fluxo)
-        st.write(f"🚗 Média observada: {vmedia_kmh:.1f} km/h")
-        st.write(f"📍 Total de jams: {len(df_jams_filtered)}")
-        st.caption("Faixas: <20 = Travado · 20–39 = Lento · 40–59 = Moderado · 60+ = Fluindo")
-
-st.caption(
-    "Os indicadores acima resumem o comportamento do período filtrado: "
-    "o risco operacional considera o volume de incidentes, enquanto a condition "
-    "do tráfego é baseada na velocidade média observada nos congestionamentos."
-)
-
-st.markdown("---")
+st.markdown(f"<h1>Monitoramento de Tráfego — Foz do Iguaçu (Unificado)</h1>", unsafe_allow_html=True)
+col_f1, col_f2, col_f3 = st.columns(3)
+col_f1.metric("📅 Data Ativa", selected_date.strftime("%d/%m/%Y"))
+col_f2.metric("Incidentes Carregados (H5 + Planilha)", len(df_filtered))
+col_f3.metric("Retenções Ativas (Jams)", len(df_jams_filtered))
 
 # =========================================================
 # BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS
 # =========================================================
-
-st.subheader("🗺️ Visualizações")
-tab_inc, tab_jams, tab_calor, tab_temporal_danos, tab_graficos, tab_pipeline, tab_criticidade, tab_predicao, tab_dados = st.tabs(
+tab_inc, tab_jams, tab_calor, tab_temporal_danos, tab_graficos, tab_pipeline, tab_predicao, tab_dados = st.tabs(
     [
         "Incidentes",
         "Congestionamentos",
         "Mapa de Calor",
-        "📅 Análise Temporal",
+        "📅 Análise Geométrica de Danos",
         "Gráficos",
         "🧪 Pipeline Científico",
-        "📊 Criticidade (MCDA)",
         "🔮 Modelo Preditivo",
         "Dados"
     ]
@@ -1730,24 +1391,149 @@ with tab_calor:
         st.info("Sem dados suficientes para mapa de calor.")
 
 with tab_temporal_danos:
-    st.subheader("📅 Análise Temporal de Patologias Viárias")
+    st.subheader("📅 Estudo Espacial Plurianual e Geometria Viária (2024 - 2026)")
     st.markdown("""
-    Esta seção exibe o perfil de distribuição e reincidência de anomalias viárias nos arquivos ativos carregados atualmente.
+    Esta seção analisa de forma geoespacial e estatística as **Top 5 vias urbanas com maior recorrência de buracos**. 
+    O sistema realiza requisições dinâmicas de infraestrutura ao ecossistema *OpenStreetMap (Nominatim)* para reconstruir as polilinhas das vias.
     """)
-    if not df_alerts_raw.empty:
-        subtipos = clean_unique_values(df_alerts_raw["subtype"], invalid_values=["nan", ""])
-        subtipo_sel = st.selectbox("Selecione a natureza do dano:", subtipos, key="sel_dano_temporal")
-        
-        df_sub = df_alerts_raw[df_alerts_raw["subtype"] == subtipo_sel]
-        if not df_sub.empty:
-            fig_temp = px.histogram(df_sub, x="hour", nbins=24, color_discrete_sequence=['#dc2626'],
-                                    title=f"Distribuição Horária Total de: {subtipo_sel}",
-                                    labels={"hour": "Hora do Dia (Recorte Atual)", "count": "Volume de Alertas"})
-            st.plotly_chart(fig_temp, use_container_width=True)
-        else:
-            st.info("Sem registros para a patologia selecionada na data ativa.")
+
+    def extract_lat_lon_wkt(location_str):
+        if pd.isna(location_str): return None, None
+        match = re.search(r'Point\(([-\s\d\.]+)\)', str(location_str), re.IGNORECASE)
+        if match:
+            try:
+                coords = match.group(1).strip().split()
+                return float(coords[1]), float(coords[0])
+            except Exception: pass
+        return None, None
+
+    def get_street_geometry_nominatim(street_name: str, city: str):
+        search_query = f'{street_name}, {city}, Brazil'
+        url = 'https://nominatim.openstreetmap.org/search'
+        params = {'q': search_query, 'format': 'json', 'limit': 1, 'polygon_geojson': 1}
+        headers = {'User-Agent': 'GeoIA_Streamlit_Academic/2.0'}
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data and 'geojson' in data[0]:
+                    geojson = data[0]['geojson']
+                    if geojson['type'] == 'LineString':
+                        return [[c[1], c[0]] for c in geojson['coordinates']]
+                    elif geojson['type'] == 'MultiLineString':
+                        coords = []
+                        for segment in geojson['coordinates']:
+                            coords.extend([[c[1], c[0]] for c in segment])
+                        return coords
+        except Exception: pass
+        return None
+
+    if df_alerts_raw.empty:
+        st.warning("A base de dados de alertas não foi carregada corretamente.")
     else:
-        st.warning("Base de dados de alertas vazia ou indisponível.")
+        df_base_danos = df_alerts_raw.copy()
+        if "Subtype" in df_base_danos.columns:
+            df_base_danos["subtype"] = df_base_danos["Subtype"]
+        if "Street" in df_base_danos.columns:
+            df_base_danos["street"] = df_base_danos["Street"]
+        if "City" in df_base_danos.columns:
+            df_base_danos["city"] = df_base_danos["City"]
+        if "Location" in df_base_danos.columns:
+            df_base_danos["location_str"] = df_base_danos["Location"]
+        elif "location" in df_base_danos.columns:
+            df_base_danos["location_str"] = df_base_danos["location"]
+
+        df_all_potholes = df_base_danos[
+            df_base_danos['subtype'].isin(['BURACO NA VIA', 'HAZARD_ON_ROAD_POT_HOLE', 'Buraco Na Via'])
+        ].copy()
+
+        if df_all_potholes.empty:
+            st.info("Nenhum registro de 'BURACO NA VIA' identificado para processamento plurianual.")
+        else:
+            df_all_potholes['ano_item'] = pd.to_datetime(df_all_potholes['timestamp']).dt.year
+            ano_selecionado = st.selectbox("Selecione o Ano Fiscal para Visualização:", [2024, 2025, 2026], index=2)
+            df_potholes_year = df_all_potholes[df_all_potholes['ano_item'] == ano_selecionado].copy()
+
+            if df_potholes_year.empty:
+                st.warning(f"Não foram encontrados dados consolidados para o ano de {ano_selecionado}.")
+            else:
+                if 'latitude' not in df_potholes_year.columns:
+                    res_coords = df_potholes_year['location_str'].apply(lambda x: pd.Series(extract_lat_lon_wkt(x), index=['latitude', 'longitude']))
+                    df_potholes_year['latitude'] = res_coords['latitude']
+                    df_potholes_year['longitude'] = res_coords['longitude']
+                
+                df_potholes_year = df_potholes_year.dropna(subset=['latitude', 'longitude'])
+
+                st.markdown(f"### 📊 Ranking das Top 5 Vias Afetadas — {ano_selecionado}")
+                top_streets = df_potholes_year['street'].value_counts().nlargest(5).reset_index()
+                top_streets.columns = ['Rua', 'Contagem de Buracos']
+
+                if top_streets.empty or top_streets['Rua'].isnull().all():
+                    st.info(f"Nenhum nome de rua válido identificado em {ano_selecionado}.")
+                else:
+                    col_chart, col_table = st.columns([3, 2])
+                    with col_chart:
+                        fig_bar_top, ax_top = plt.subplots(figsize=(10, 5))
+                        sns.barplot(x='Contagem de Buracos', y='Rua', hue='Rua', data=top_streets, palette='magma', legend=False, ax=ax_top)
+                        ax_top.set_title(f'Top 5 Ruas com Mais Reportes de Buracos - {ano_selecionado}', fontsize=12, fontweight='bold')
+                        ax_top.set_xlabel('Número Absoluto de Queixas (Waze)', fontsize=10)
+                        ax_top.set_ylabel('Logradouro', fontsize=10)
+                        st.pyplot(fig_bar_top)
+                        plt.close(fig_bar_top)
+                        
+                    with col_table:
+                        st.markdown("#### Quantitativo Crítico Acumulado")
+                        st.dataframe(top_streets, hide_index=True, use_container_width=True)
+
+                st.markdown(f"### 🗺️ Malha Vetorial de Severidade Viária — {ano_selecionado}")
+                st.caption("Abaixo, o mapa reconstrói a geometria das ruas principais e agrupa os clusters de reclamações gerados pela população.")
+
+                top_streets_geo = (
+                    df_potholes_year.dropna(subset=['street', 'city'])
+                    .groupby(['street', 'city'])
+                    .size()
+                    .nlargest(5)
+                    .reset_index(name='PotholeCount')
+                )
+
+                street_geometries_to_plot = {}
+                for _, row_geo in top_streets_geo.iterrows():
+                    s_name = row_geo['street']
+                    c_name = row_geo['city']
+                    p_count = row_geo['PotholeCount']
+                    geom = get_street_geometry_nominatim(s_name, c_name)
+                    if geom and len(geom) >= 2:
+                        street_geometries_to_plot[(s_name, c_name)] = {'geometry': geom, 'pothole_count': p_count}
+
+                if not street_geometries_to_plot:
+                    m_yearly = folium.Map(location=[df_potholes_year["latitude"].mean(), df_potholes_year["longitude"].mean()], zoom_start=13)
+                else:
+                    first_key = list(street_geometries_to_plot.keys())[0]
+                    first_coords = street_geometries_to_plot[first_key]['geometry'][0]
+                    m_yearly = folium.Map(location=[first_coords[0], first_coords[1]], zoom_start=13, tiles='OpenStreetMap')
+
+                all_coords = []
+                for (s_name, c_name), data_geo in street_geometries_to_plot.items():
+                    geo_coords = data_geo['geometry']
+                    p_count = data_geo['pothole_count']
+                    all_coords.extend(geo_coords)
+
+                    street_group = folium.FeatureGroup(name=f"Eixo: {s_name} ({p_count} un)", show=True)
+                    folium.PolyLine(locations=geo_coords, color='#2563eb', weight=6, opacity=0.85, tooltip=f"<b>Via:</b> {s_name}<br><b>Alertas:</b> {p_count}").add_to(street_group)
+
+                    df_single_street = df_potholes_year[df_potholes_year['street'] == s_name].head(200)
+                    cluster = MarkerCluster(name=f"Clusters em {s_name}", disableClusteringAtZoom=16).add_to(street_group)
+
+                    for _, row_point in df_single_street.iterrows():
+                        popup_txt = f"<b>Via:</b> {row_point['street']}<br><b>Data:</b> {row_point.get('Date', selected_date)}"
+                        folium.CircleMarker(location=[row_point['latitude'], row_point['longitude']], radius=4, color='#991b1b', fill=True, fillColor='#ef4444', fillOpacity=0.8, popup=folium.Popup(popup_txt, max_width=200)).add_to(cluster)
+
+                    street_group.add_to(m_yearly)
+
+                if all_coords:
+                    m_yearly.fit_bounds(all_coords)
+                
+                st_folium(m_yearly, width="100%", height=550, key=f"mapa_geom_anual_{ano_selecionado}")
 
 with tab_graficos:
     if not df_filtered.empty:
@@ -2012,39 +1798,6 @@ with tab_pipeline:
     else:
         st.info("Sem dados suficientes para a tabela descritiva.")
 
-with tab_criticidade:
-    st.subheader("📊 Classificação Hierárquica de Infraestrutura Viária Crítica")
-    st.markdown("""
-    Análise multicritério ponderando **volume de congestionamentos** e **atraso médio (s)**.
-    Permite à **Foztrans** priorizar envio de agentes ou investimentos nas vias de maior peso operacional.
-    """)
-    if not df_criticidade_vias.empty:
-        col_t1, col_t2 = st.columns([3, 2])
-        with col_t1:
-            fig_crit = px.bar(
-                df_criticidade_vias.head(10),
-                x="Criticidade_Index", y="street", orientation="h",
-                title="Top 10 Vias Críticas — Intervenção Prioritária",
-                labels={"Criticidade_Index": "Índice de Criticidade (0–100)", "street": "Logradouro"},
-                color="Criticidade_Index", color_continuous_scale="Oranges"
-            )
-            fig_crit.update_layout(height=400)
-            st.plotly_chart(fig_crit, use_container_width=True)
-        with col_t2:
-            st.markdown("#### Ranking de Prioridade Viária")
-            st.dataframe(
-                df_criticidade_vias[["street","Volume_Jams","Atraso_Medio_Seg","Criticidade_Index"]].head(10),
-                hide_index=True,
-                column_config={
-                    "street":            "Logradouro",
-                    "Volume_Jams":       "Qtd Retenções",
-                    "Atraso_Medio_Seg":  "Atraso Médio (s)",
-                    "Criticidade_Index": "Índice Geral (0–100)"
-                }
-            )
-    else:
-        st.info("Dados insuficientes para o ranking multicritério.")
-
 with tab_predicao:
     st.subheader("🔮 Simulador Preditivo de Impacto e Propensão ao Congestionamento")
     st.markdown("""
@@ -2164,7 +1917,7 @@ with tab_predicao:
         st.info("Histórico de congestionamentos insuficiente para análise de propensão por via e dia.")
 
     st.markdown("---")
-    st.markdown("### 📆 Comparador Mensal: 2025 vs 2026")
+    st.markdown("### 📅 Comparador Mensal: 2025 vs 2026")
     st.caption("Selecione um dia da semana e uma categoria para comparar a evolução mês a mês entre os dois anos.")
 
     MESES_PT = {
@@ -2298,52 +2051,9 @@ with tab_predicao:
         st.info("Nenhum dado histórico disponível para comparação.")
 
 with tab_dados:
-    st.subheader("Tabela de Incidentes")
-
-    if not df_filtered.empty:
-        colunas_exibir = [
-            c for c in [
-                "timestamp", "type", "subtype", "street", "lat", "lon",
-                "confidence", "reportRating"
-            ] if c in df_filtered.columns
-        ]
-        st.dataframe(
-            df_filtered[colunas_exibir].sort_values("timestamp", ascending=False),
-            width="stretch"
-        )
-        csv = df_filtered[colunas_exibir].to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Baixar CSV — Incidentes", data=csv,
-            file_name=f"incidentes_{selected_date}.csv", mime="text/csv"
-        )
-    else:
-        st.info("Nenhum dado de incidente disponível.")
-
-    st.subheader("Tabela de Congestionamentos")
-
-    if not df_jams_filtered.empty:
-        colunas_jams = [
-            c for c in [
-                "timestamp", "street", "speed", "length", "delay",
-                "type", "subtype", "lat", "lon"
-            ] if c in df_jams_filtered.columns
-        ]
-
-        df_jams_show = df_jams_filtered[colunas_jams].copy()
-        if "speed" in df_jams_show.columns:
-            df_jams_show["speed_kmh"] = (df_jams_show["speed"] * 3.6).round(1)
-
-        st.dataframe(
-            df_jams_show.sort_values("timestamp", ascending=False),
-            width="stretch"
-        )
-        csv_jams = df_jams_show.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Baixar CSV — Congestionamentos", data=csv_jams,
-            file_name=f"jams_{selected_date}.csv", mime="text/csv"
-        )
-    else:
-        st.info("Nenhum dado de congestionamento disponível.")
+    st.subheader("Base de Registros Unificada e Estimada (H5 ╳ Planilha)")
+    if not df_filtered.empty: 
+        st.dataframe(df_filtered.sort_values(by="timestamp", ascending=False).head(500), use_container_width=True)
 
 # =========================================================
 # BLOCO 7 — RODAPÉ
@@ -2442,4 +2152,3 @@ rodape_html = f"""
 </div>
 """
 st.markdown(rodape_html, unsafe_allow_html=True)
-                        
