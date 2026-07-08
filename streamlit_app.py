@@ -13,13 +13,7 @@ from zoneinfo import ZoneInfo
 import folium
 from folium import plugins
 from folium.plugins import MarkerCluster
-
-# Validação e Fallback seguro de importação do componente Streamlit-Folium
-try:
-    from streamlit_folium import st_folium
-    ST_FOLIUM_AVAILABLE = True
-except ImportError:
-    ST_FOLIUM_AVAILABLE = False
+from streamlit_folium import st_folium
 
 # =========================================================
 # BLOCO 1 — CONFIGURAÇÃO BASE DO APP
@@ -60,7 +54,7 @@ st.markdown("""
     --text-muted:   #475569;
     --text-faint:   #94a3b8;
     --border:       #dde3ea;
-    --primary:      #2563eb;
+    --primary:      --primary:      #2563eb;
     --primary-dark: #1d4ed8;
     --primary-soft: #eff6ff;
     --primary-hover:#1e40af;
@@ -309,7 +303,7 @@ def get_danger_color(incident_type: str, subtype: str | None = None) -> str:
     return color_map.get(t, "#90A4AE")
 
 # =========================================================
-# BLOCO 2 — CONEXÃO, INGESTÃO E ESTIMADOR PROBABILÍSTICO
+# BLOCO 2 — CONEXÃO, INGESTÃO E AUXILIARES DE TRATAMENTO
 # =========================================================
 
 @st.cache_resource(show_spinner=False)
@@ -331,14 +325,9 @@ def get_latest_h5_id(folder_id: str) -> str | None:
     if not service: return None
     try:
         query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
-
         results = service.files().list(
-            q=query,
-            fields="files(id, name, modifiedTime)",
-            orderBy="modifiedTime desc",
-            pageSize=5
+            q=query, fields="files(id, name, modifiedTime)", orderBy="modifiedTime desc", pageSize=5
         ).execute()
-
         files = results.get("files", [])
         return files[0]["id"] if files else None
     except Exception:
@@ -346,29 +335,41 @@ def get_latest_h5_id(folder_id: str) -> str | None:
 
 def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     from googleapiclient.http import MediaIoBaseDownload
-
     service = get_drive_service()
     if not service: return pd.DataFrame()
     try:
         request = service.files().get_media(fileId=file_id)
-
         buffer = io.BytesIO()
         downloader = MediaIoBaseDownload(buffer, request)
-
         done = False
         while not done:
             _, done = downloader.next_chunk()
-
         buffer.seek(0)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".h5") as tmp:
             tmp.write(buffer.getvalue())
             tmp_path = tmp.name
-
         df = pd.read_hdf(tmp_path, key="s")
         os.remove(tmp_path)
         return df
     except Exception:
         return pd.DataFrame()
+
+def parse_pt_date(date_str):
+    if not isinstance(date_str, str): return pd.NaT
+    meses = {
+        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
+        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
+        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
+    }
+    try:
+        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
+        if match:
+            dia, mes_nome, ano = match.groups()
+            mes = meses.get(mes_nome, 1)
+            return datetime(int(ano), int(mes), int(dia))
+    except Exception:
+        pass
+    return pd.to_datetime(date_str, errors='coerce')
 
 def extract_wkt_coordinates(location_str):
     if pd.isna(location_str):
@@ -381,98 +382,104 @@ def extract_wkt_coordinates(location_str):
         except Exception: pass
     return None, None
 
+def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    if "pubMillis" in df.columns:
+        df["timestamp"] = (
+            pd.to_datetime(df["pubMillis"], unit="ms", utc=True)
+            .dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        )
+    elif "Date" in df.columns:
+        df["timestamp"] = df["Date"].apply(parse_pt_date)
+    elif "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    else:
+        df["timestamp"] = now_foz()
+
+    df["date"]        = df["timestamp"].dt.date
+    df["hour"]        = df["timestamp"].dt.hour
+    df["day_of_week"] = df["timestamp"].dt.day_name()
+    df["month"]       = df["timestamp"].dt.month
+    df["year"]        = df["timestamp"].dt.year
+    return df
+
 def _parse_dict_like(value):
-    if isinstance(value, dict):
-        return value
+    if isinstance(value, dict): return value
     if isinstance(value, str):
-        try:
-            return ast.literal_eval(value)
-        except Exception:
-            return None
+        try: return ast.literal_eval(value)
+        except Exception: return None
     return None
 
 def _extract_lat_lon_from_location(value):
     parsed = _parse_dict_like(value)
     if isinstance(parsed, dict):
-        try:
-            return float(parsed.get("y")), float(parsed.get("x"))
-        except Exception:
-            return None, None
+        try: return float(parsed.get("y")), float(parsed.get("x"))
+        except Exception: return None, None
     return None, None
 
 def extract_coordinates(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df
-
     df = df.copy()
-
     if "lat" in df.columns and "lon" in df.columns:
         df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
         df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
         return df
-
     if "location" in df.columns:
-        coords = df["location"].apply(
-            lambda x: pd.Series(_extract_lat_lon_from_location(x), index=["lat", "lon"])
-        )
+        coords = df["location"].apply(lambda x: pd.Series(_extract_lat_lon_from_location(x), index=["lat", "lon"]))
         df["lat"] = coords["lat"]
         df["lon"] = coords["lon"]
-
-    if "lat" not in df.columns and "y" in df.columns:
-        df["lat"] = pd.to_numeric(df["y"], errors="coerce")
-
-    if "lon" not in df.columns and "x" in df.columns:
-        df["lon"] = pd.to_numeric(df["x"], errors="coerce")
-
     return df
 
 def _extract_midpoint_from_line(value):
     try:
         points = value if isinstance(value, list) else ast.literal_eval(str(value))
-        if not points:
-            return None, None
+        if not points: return None, None
         mid = points[len(points) // 2]
         return float(mid.get("y")), float(mid.get("x"))
-    except Exception:
-        return None, None
+    except Exception: return None, None
 
 def extract_jams_coordinates(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-
+    if df is None or df.empty: return df
     df = df.copy()
-
     if "lat" in df.columns and "lon" in df.columns:
         df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
         df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-        if df["lat"].notna().any():
-            return df
-
+        if df["lat"].notna().any(): return df
     if "line" in df.columns:
-        coords = df["line"].apply(
-            lambda x: pd.Series(_extract_midpoint_from_line(x), index=["lat", "lon"])
-        )
+        coords = df["line"].apply(lambda x: pd.Series(_extract_midpoint_from_line(x), index=["lat", "lon"]))
         df["lat"] = coords["lat"]
         df["lon"] = coords["lon"]
-
     return df
 
 def normalize_speed(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-
+    if df is None or df.empty: return df
     df = df.copy()
-
     if "speed" in df.columns:
         df["speed"] = pd.to_numeric(df["speed"], errors="coerce")
         return df
-
     for alt in ["speedKMH", "speedkmh", "speed_kmh", "velocity"]:
         if alt in df.columns:
             df["speed"] = pd.to_numeric(df[alt], errors="coerce") / 3.6
             return df
-
     df["speed"] = float("nan")
+    return df
+
+def translate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty: return df
+    df = df.copy()
+    if "type" in df.columns: df["type"] = df["type"].replace(TYPE_MAP)
+    if "subtype" in df.columns:
+        df["subtype"] = df["subtype"].replace(SUBTYPE_MAP)
+        known_values = set(SUBTYPE_MAP.values())
+        mask = df["subtype"].notna() & ~df["subtype"].isin(known_values)
+        df.loc[mask, "subtype"] = (
+            df.loc[mask, "subtype"].astype(str)
+            .str.replace(r"^(HAZARD_ON_ROAD_|HAZARD_ON_SHOULDER_|HAZARD_WEATHER_|HAZARD_|ACCIDENT_|JAM_|ROAD_CLOSED_)", "", regex=True)
+            .str.replace("_", " ", regex=False).str.title()
+        )
     return df
 
 @st.cache_data(ttl=600, show_spinner="🔄 Executando Cruzamento Histórico (MHDH)...")
@@ -485,7 +492,6 @@ def load_all_data():
 
     frames_alerts = []
     if alerts_id: frames_alerts.append(load_hdf_from_drive(alerts_id))
-    
     alerts_id2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
     if alerts_id2: frames_alerts.append(load_hdf_from_drive(alerts_id2))
 
@@ -515,11 +521,9 @@ def load_all_data():
     if os.path.exists(LOCAL_CSV_PATH):
         try:
             df_local_csv = pd.read_csv(LOCAL_CSV_PATH)
-            
             coords_wkt = df_local_csv["Location"].apply(lambda x: pd.Series(extract_wkt_coordinates(x), index=["lat", "lon"]))
             df_local_csv["lat"] = coords_wkt["lat"]
             df_local_csv["lon"] = coords_wkt["lon"]
-            
             df_local_csv = normalize_timestamps(df_local_csv)
             df_local_csv = df_local_csv.rename(columns={'Street': 'street', 'Type': 'type', 'Subtype': 'subtype'})
             df_local_csv = translate_dataframe(df_local_csv)
@@ -546,280 +550,87 @@ def load_all_data():
         df_alerts = df_alerts.drop_duplicates(subset=[c for c in dedup if c in df_alerts.columns])
         df_alerts = normalize_timestamps(df_alerts)
         df_alerts = extract_coordinates(df_alerts)
-        if "street" not in df_alerts.columns:
-            df_alerts["street"] = "N/A"
+        if "street" not in df_alerts.columns: df_alerts["street"] = "N/A"
 
     if not df_jams.empty:
         df_jams = normalize_timestamps(df_jams)
         df_jams = extract_jams_coordinates(df_jams)
         df_jams = normalize_speed(df_jams)
-        if "street" not in df_jams.columns:
-            df_jams["street"] = "Via"
+        if "street" not in df_jams.columns: df_jams["street"] = "Via"
 
     return df_alerts, df_jams
 
 # =========================================================
 # BLOCO 3 — MAPAS E VISUALIZAÇÕES GEOESPACIAIS
 # =========================================================
-
 LAT_MIN, LAT_MAX = -25.70, -25.40
 LON_MIN, LON_MAX = -54.75, -54.45
 
 def filter_bbox_foz(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-
+    if df is None or df.empty: return df
     df = df.copy()
-
-    if "lat" not in df.columns or "lon" not in df.columns:
-        return pd.DataFrame()
-
+    if "lat" not in df.columns or "lon" not in df.columns: return pd.DataFrame()
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-
-    return df[
-        df["lat"].between(LAT_MIN, LAT_MAX) &
-        df["lon"].between(LON_MIN, LON_MAX)
-    ].copy()
+    return df[df["lat"].between(LAT_MIN, LAT_MAX) & df["lon"].between(LON_MIN, LON_MAX)].copy()
 
 def create_folium_map_with_compass(lat: float, lon: float, zoom_level: int = 13) -> folium.Map:
-    m = folium.Map(
-        location=[lat, lon],
-        zoom_start=zoom_level,
-        tiles="OpenStreetMap",
-        max_bounds=True,
-        control_scale=False
-    )
-
-    plugins.MousePosition(
-        position="topright",
-        separator=" | ",
-        prefix="Lat/Lon: ",
-        num_digits=5
-    ).add_to(m)
-
-    plugins.Fullscreen(
-        position="topleft",
-        title="Expandir mapa",
-        title_cancel="Sair da tela cheia",
-        force_separate_button=True
-    ).add_to(m)
-
-    scale_js = """
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        setTimeout(function() {
-            var maps = Object.values(window).filter(function(v) {
-                return v && v._leaflet_id && typeof v.addControl === 'function';
-            });
-
-            maps.forEach(function(map) {
-                L.control.scale({
-                    position: 'bottomleft',
-                    metric: true,
-                    imperial: false,
-                    maxWidth: 120
-                }).addTo(map);
-
-                var ZoomIndicator = L.Control.extend({
-                    options: { position: 'bottomleft' },
-                    onAdd: function(map) {
-                        var div = L.DomUtil.create('div');
-                        div.style.cssText = [
-                            'background:white',
-                            'border:2px solid #555',
-                            'border-radius:6px',
-                            'padding:3px 8px',
-                            'font-size:12px',
-                            'font-family:Arial,sans-serif',
-                            'font-weight:bold',
-                            'color:#333',
-                            'box-shadow:0 2px 6px rgba(0,0,0,0.3)',
-                            'min-width:64px',
-                            'text-align:center',
-                            'margin-bottom:4px'
-                        ].join(';');
-
-                        div.innerHTML = '🔍 Zoom: ' + map.getZoom();
-
-                        map.on('zoomend', function() {
-                            div.innerHTML = '🔍 Zoom: ' + map.getZoom();
-                        });
-
-                        return div;
-                    }
-                });
-
-                new ZoomIndicator().addTo(map);
-            });
-        }, 800);
-    });
-    </script>
-    """
-    m.get_root().html.add_child(folium.Element(scale_js))
-
-    compass_html = """
-    <div style="
-        position:absolute;
-        bottom:110px;
-        left:10px;
-        z-index:9999;
-        pointer-events:none;
-    ">
-      <svg width="54" height="54" viewBox="0 0 54 54"
-           xmlns="http://www.w3.org/2000/svg"
-           style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));">
-        <circle cx="27" cy="27" r="26" fill="white" stroke="#555" stroke-width="2"/>
-        <polygon points="27,4 22,27 27,22 32,27" fill="#d32f2f"/>
-        <polygon points="27,50 22,27 27,32 32,27" fill="#999"/>
-        <polygon points="50,27 27,22 32,27 27,32" fill="#ccc"/>
-        <polygon points="4,27 27,22 22,27 27,32" fill="#ccc"/>
-        <circle cx="27" cy="27" r="4" fill="#555"/>
-        <text x="27" y="16" text-anchor="middle" font-size="9" font-weight="bold"
-              font-family="Arial" fill="#d32f2f">N</text>
-        <text x="27" y="51" text-anchor="middle" font-size="9" font-weight="bold"
-              font-family="Arial" fill="#777">S</text>
-        <text x="49" y="30" text-anchor="middle" font-size="8"
-              font-family="Arial" fill="#888">L</text>
-        <text x="6" y="30" text-anchor="middle" font-size="8"
-              font-family="Arial" fill="#888">O</text>
-      </svg>
-    </div>
-    """
-    m.get_root().html.add_child(folium.Element(compass_html))
-
-    folium.LayerControl(position="topright", collapsed=True).add_to(m)
+    m = folium.Map(location=[lat, lon], zoom_start=zoom_level, tiles="OpenStreetMap", max_bounds=True, control_scale=False)
+    plugins.MousePosition(position="topright", separator=" | ", prefix="Lat/Lon: ", num_digits=5).add_to(m)
+    plugins.Fullscreen(position="topleft", title="Expandir mapa", title_cancel="Sair da tela cheia", force_separate_button=True).add_to(m)
     return m
 
 def _load_json_df(df_json: str) -> pd.DataFrame:
-    try:
-        df = pd.read_json(io.StringIO(df_json))
-        return df if df is not None else pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+    try: return pd.read_json(io.StringIO(df_json))
+    except Exception: return pd.DataFrame()
 
 def _safe_time_label(value) -> str:
     try:
-        if pd.notna(value):
-            return pd.to_datetime(value).strftime("%H:%M")
-    except Exception:
-        pass
+        if pd.notna(value): return pd.to_datetime(value).strftime("%H:%M")
+    except Exception: pass
     return "--"
 
 def generate_incidents_map(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
-    if df.empty or "lat" not in df.columns or "lon" not in df.columns:
-        return None
-
+    if df.empty or "lat" not in df.columns or "lon" not in df.columns: return None
     df_map = filter_bbox_foz(df.dropna(subset=["lat", "lon"])).head(50)
-    if df_map.empty:
-        return None
-
+    if df_map.empty: return None
     m = create_folium_map_with_compass(df_map["lat"].mean(), df_map["lon"].mean())
-
     for _, row in df_map.iterrows():
         try:
-            tipo    = str(row.get("type", "?"))
-            subtipo = str(row.get("subtype", ""))
-            rua     = str(row.get("street", "N/A"))
-            color   = get_danger_color(tipo, row.get("subtype"))
-            ts      = _safe_time_label(row.get("timestamp"))
-            lat_val = float(row["lat"])
-            lon_val = float(row["lon"])
-
-            popup_html = f"""
-            <div style='min-width:200px;font-family:Arial,sans-serif;'>
-                <b style='color:{color};font-size:16px;'>🚨 {tipo}</b><br>
-                <b>{subtipo}</b><br>
-                🛣️ <i>{rua}</i><br>
-                🕒 {ts}<br>
-                📍 {lat_val:.4f}, {lon_val:.4f}
-            </div>
-            """
-
-            folium.CircleMarker(
-                location=[lat_val, lon_val],
-                radius=9,
-                popup=folium.Popup(popup_html, max_width=260),
-                tooltip=f"{tipo}: {rua}",
-                color=color,
-                fill=True,
-                fillColor=color,
-                fillOpacity=0.8,
-                weight=2
-            ).add_to(m)
-
-        except Exception:
-            continue
-
+            tipo, subtipo, rua = str(row.get("type", "?")), str(row.get("subtype", "")), str(row.get("street", "N/A"))
+            color = get_danger_color(tipo, row.get("subtype"))
+            ts, lat_val, lon_val = _safe_time_label(row.get("timestamp")), float(row["lat"]), float(row["lon"])
+            popup_html = f"<div style='min-width:200px;'><b>🚨 {tipo}</b><br><b>{subtipo}</b><br>🛣️ <i>{rua}</i><br>🕒 {ts}</div>"
+            folium.CircleMarker(location=[lat_val, lon_val], radius=9, popup=folium.Popup(popup_html, max_width=260), tooltip=f"{tipo}: {rua}", color=color, fill=True, fillColor=color, fillOpacity=0.8, weight=2).add_to(m)
+        except Exception: continue
     return m
 
 def generate_jams_map(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
-    if df.empty or "lat" not in df.columns or "lon" not in df.columns:
-        return None
-
+    if df.empty or "lat" not in df.columns or "lon" not in df.columns: return None
     df_valid = filter_bbox_foz(df.dropna(subset=["lat", "lon"])).head(40)
-    if df_valid.empty:
-        return None
-
+    if df_valid.empty: return None
     m = create_folium_map_with_compass(df_valid["lat"].mean(), df_valid["lon"].mean())
-
     for _, row in df_valid.iterrows():
         try:
             speed_raw = row.get("speed", float("nan"))
             speed_kmh = float(speed_raw) * 3.6 if pd.notna(speed_raw) else 0.0
-            color     = get_congestion_color(speed_kmh)
-            rua       = str(row.get("street", "Via"))
-            ts        = _safe_time_label(row.get("timestamp"))
-            lat_val   = float(row["lat"])
-            lon_val   = float(row["lon"])
-            spd_str   = f"{speed_kmh:.0f} km/h"
-
-            popup_html = f"""
-            <div style='min-width:180px;font-family:Arial,sans-serif;'>
-                <b style='color:{color}'>🚗 {spd_str}</b><br>
-                🛣️ <i>{rua}</i><br>
-                🕒 {ts}
-            </div>
-            """
-
-            folium.CircleMarker(
-                location=[lat_val, lon_val],
-                radius=7,
-                popup=folium.Popup(popup_html, max_width=220),
-                tooltip=f"{spd_str} — {rua}",
-                color=color,
-                fill=True,
-                fillColor=color,
-                fillOpacity=0.7,
-                weight=2
-            ).add_to(m)
-
-        except Exception:
-            continue
-
+            color, rua, ts = get_congestion_color(speed_kmh), str(row.get("street", "Via")), _safe_time_label(row.get("timestamp"))
+            lat_val, lon_val = float(row["lat"]), float(row["lon"])
+            popup_html = f"<div style='min-width:180px;'><b>🚗 {speed_kmh:.0f} km/h</b><br>🛣️ <i>{rua}</i><br>🕒 {ts}</div>"
+            folium.CircleMarker(location=[lat_val, lon_val], radius=7, popup=folium.Popup(popup_html, max_width=220), tooltip=f"{speed_kmh:.0f} km/h — {rua}", color=color, fill=True, fillColor=color, fillOpacity=0.7, weight=2).add_to(m)
+        except Exception: continue
     return m
 
 def generate_heatmap(df_json: str) -> folium.Map | None:
     df = _load_json_df(df_json)
-    if df.empty or "lat" not in df.columns or "lon" not in df.columns:
-        return None
-
+    if df.empty or "lat" not in df.columns or "lon" not in df.columns: return None
     df_map = filter_bbox_foz(df.dropna(subset=["lat", "lon"]))
-    if df_map.empty:
-        return None
-
+    if df_map.empty: return None
     m = create_folium_map_with_compass(df_map["lat"].mean(), df_map["lon"].mean())
-
     heat_data = [[row["lat"], row["lon"]] for _, row in df_map.iterrows()]
-    plugins.HeatMap(
-        heat_data,
-        radius=15,
-        blur=10,
-        min_opacity=0.35
-    ).add_to(m)
-
+    plugins.HeatMap(heat_data, radius=15, blur=10, min_opacity=0.35).add_to(m)
     return m
 
 # =========================================================
@@ -828,166 +639,80 @@ def generate_heatmap(df_json: str) -> folium.Map | None:
 
 def build_daily_series(df_alerts: pd.DataFrame, df_jams: pd.DataFrame, categoria: str = "TODOS") -> pd.Series:
     frames = []
-
     if df_alerts is not None and not df_alerts.empty:
         da = df_alerts.copy()
         da["origem"] = "ALERTA"
         da["categoria_artigo"] = da["type"] if "type" in da.columns else "ALERTA"
         frames.append(da[["timestamp", "categoria_artigo", "origem"]])
-
     if df_jams is not None and not df_jams.empty:
         dj = df_jams.copy()
         dj["origem"] = "JAM"
         dj["categoria_artigo"] = "CONGESTIONAMENTO"
         frames.append(dj[["timestamp", "categoria_artigo", "origem"]])
-
-    if not frames:
-        return pd.Series(dtype=float)
-
+    if not frames: return pd.Series(dtype=float)
     base = pd.concat(frames, ignore_index=True)
     base["timestamp"] = pd.to_datetime(base["timestamp"], errors="coerce")
     base = base.dropna(subset=["timestamp"]).copy()
     base["date"] = base["timestamp"].dt.floor("D")
-
-    if categoria != "TODOS":
-        base = base[base["categoria_artigo"] == categoria]
-
+    if categoria != "TODOS": base = base[base["categoria_artigo"] == categoria]
     serie = base.groupby("date").size().sort_index()
-    if serie.empty:
-        return pd.Series(dtype=float)
-
-    idx = pd.date_range(serie.index.min(), serie.index.max(), freq="D")
-    serie = serie.reindex(idx, fill_value=0)
+    if serie.empty: return pd.Series(dtype=float)
+    serie = serie.reindex(pd.date_range(serie.index.min(), serie.index.max(), freq="D"), fill_value=0)
     serie.index.name = "date"
     return serie
 
 def run_stl_analysis(serie: pd.Series, period: int = 7):
     try:
         from statsmodels.tsa.seasonal import STL
-        stl = STL(serie, period=period, robust=True)
-        res = stl.fit()
-        return res
-    except Exception:
-        return None
+        return STL(serie, period=period, robust=True).fit()
+    except Exception: return None
 
 def run_pelt_analysis(serie: pd.Series, model: str = "l2", min_size: int = 7, jump: int = 1, pen: float = 3.0):
     try:
         import ruptures as rpt
-        signal = serie.values.astype(float)
-        algo = rpt.Pelt(model=model, min_size=min_size, jump=jump).fit(signal)
-        bkps = algo.predict(pen=pen)
-        return bkps
-    except Exception:
-        return []
+        return rpt.Pelt(model=model, min_size=min_size, jump=jump).fit(serie.values.astype(float)).predict(pen=pen)
+    except Exception: return []
 
 def calculate_road_criticism(df_alerts, df_jams):
-    """Índice de criticidade viária (MCDA) ponderando volume de retenções e atraso médio."""
-    if df_jams.empty:
-        return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
-
-    agg = {}
-    agg["Volume_Jams"] = ("street", "count")
-    if "delay" in df_jams.columns:
-        agg["Atraso_Medio_Seg"] = ("delay", "mean")
-    if "length" in df_jams.columns:
-        agg["Comprimento_Medio_M"] = ("length", "mean")
-
+    if df_jams.empty: return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
+    agg = {"Volume_Jams": ("street", "count")}
+    if "delay" in df_jams.columns: agg["Atraso_Medio_Seg"] = ("delay", "mean")
+    if "length" in df_jams.columns: agg["Comprimento_Medio_M"] = ("length", "mean")
     grouped = df_jams.groupby("street").agg(**agg).reset_index()
-
-    if "Atraso_Medio_Seg" not in grouped.columns:
-        grouped["Atraso_Medio_Seg"] = 0.0
-    if "Comprimento_Medio_M" not in grouped.columns:
-        grouped["Comprimento_Medio_M"] = 0.0
-
-    max_vol   = grouped["Volume_Jams"].max() or 1
+    if "Atraso_Medio_Seg" not in grouped.columns: grouped["Atraso_Medio_Seg"] = 0.0
+    max_vol = grouped["Volume_Jams"].max() or 1
     max_delay = grouped["Atraso_Medio_Seg"].max() or 1
-
-    grouped["Criticidade_Index"] = (
-        (grouped["Volume_Jams"]     / max_vol)   * 0.4 +
-        (grouped["Atraso_Medio_Seg"] / max_delay) * 0.6
-    ) * 100
-
+    grouped["Criticidade_Index"] = ((grouped["Volume_Jams"] / max_vol) * 0.4 + (grouped["Atraso_Medio_Seg"] / max_delay) * 0.6) * 100
     return grouped.sort_values("Criticidade_Index", ascending=False)
 
 def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> pd.DataFrame:
     blocos = []
-
     if df_alerts is not None and not df_alerts.empty:
         da = df_alerts.copy()
         da["timestamp"] = pd.to_datetime(da["timestamp"], errors="coerce")
         da = da.dropna(subset=["timestamp"])
-        da["date"] = da["timestamp"].dt.date
-        da["hour"] = da["timestamp"].dt.hour
-
+        da["date"], da["hour"] = da["timestamp"].dt.date, da["timestamp"].dt.hour
         diarios = da.groupby(["date", "type"]).size().reset_index(name="n")
         pico = da.groupby(["type", "hour"]).size().reset_index(name="n_hora")
-        pico_idx = pico.groupby("type")["n_hora"].idxmax()
-        pico = pico.loc[pico_idx][["type", "hour"]].rename(columns={"hour": "Hora_Pico"})
-
-        resumo = diarios.groupby("type")["n"].agg(
-            Total_Alertas="sum",
-            Media_Diaria="mean",
-            Desvio_Padrao="std"
-        ).reset_index().rename(columns={"type": "Tipo"})
-        resumo = resumo.merge(pico, left_on="Tipo", right_on="type", how="left").drop(columns=["type"], errors="ignore")
-        blocos.append(resumo)
-
-    if df_jams_filtered is not None and not df_jams_filtered.empty:
-        dj = df_jams_filtered.copy()
+        pico = pico.loc[pico.groupby("type")["n_hora"].idxmax()][["type", "hour"]].rename(columns={"hour": "Hora_Pico"})
+        resumo = diarios.groupby("type")["n"].agg(Total_Alertas="sum", Media_Diaria="mean", Desvio_Padrao="std").reset_index().rename(columns={"type": "Tipo"})
+        blocos.append(resumo.merge(pico, left_on="Tipo", right_on="type", how="left").drop(columns=["type"], errors="ignore"))
+    if df_jams is not None and not df_jams.empty:
+        dj = df_jams.copy()
         dj["timestamp"] = pd.to_datetime(dj["timestamp"], errors="coerce")
         dj = dj.dropna(subset=["timestamp"])
-        dj["date"] = dj["timestamp"].dt.date
-        dj["hour"] = dj["timestamp"].dt.hour
+        dj["date"], dj["hour"] = dj["timestamp"].dt.date, dj["timestamp"].dt.hour
         diarios = dj.groupby("date").size().reset_index(name="n")
         pico = dj.groupby("hour").size().reset_index(name="n_hora")
-        hora_pico = int(pico.loc[pico["n_hora"].idxmax(), "hour"]) if not pico.empty else None
-
-        resumo_jam = pd.DataFrame([{
-            "Tipo": "CONGESTIONAMENTO",
-            "Total_Alertas": int(diarios["n"].sum()) if not diarios.empty else 0,
-            "Media_Diaria": float(diarios["n"].mean()) if not diarios.empty else 0.0,
-            "Desvio_Padrao": float(diarios["n"].std()) if not diarios.empty else 0.0,
-            "Hora_Pico": hora_pico
-        }])
-        blocos.append(resumo_jam)
-
-    if not blocos:
-        return pd.DataFrame(columns=["Tipo", "Total_Alertas", "Media_Diaria", "Desvio_Padrao", "Hora_Pico"])
-
+        blocos.append(pd.DataFrame([{"Tipo": "CONGESTIONAMENTO", "Total_Alertas": int(diarios["n"].sum()) if not diarios.empty else 0, "Media_Diaria": float(diarios["n"].mean()) if not diarios.empty else 0.0, "Desvio_Padrao": float(diarios["n"].std()) if not diarios.empty else 0.0, "Hora_Pico": int(pico.loc[pico["n_hora"].idxmax(), "hour"]) if not pico.empty else None}]))
+    if not blocos: return pd.DataFrame(columns=["Tipo", "Total_Alertas", "Media_Diaria", "Desvio_Padrao", "Hora_Pico"])
     out = pd.concat(blocos, ignore_index=True)
-    out["Media_Diaria"] = out["Media_Diaria"].round(2)
-    out["Desvio_Padrao"] = out["Desvio_Padrao"].round(2)
+    out["Media_Diaria"], out["Desvio_Padrao"] = out["Media_Diaria"].round(2), out["Desvio_Padrao"].round(2)
     return out
 
 # =========================================================
 # BLOCO 4 — SIDEBAR, CARGA OPERACIONAL E FILTROS
 # =========================================================
-
-def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[int, int]) -> pd.DataFrame:
-    if df is None or df.empty: return pd.DataFrame()
-    df = df.copy()
-    if "date" not in df.columns or "hour" not in df.columns: return pd.DataFrame()
-    
-    df_date_col = pd.to_datetime(df["date"]).dt.date
-    target_date = pd.to_datetime(selected_date).date()
-    return df[(df_date_col == target_date) & (df["hour"].between(hora_range[0], hora_range[1]))].copy()
-
-def clean_unique_values(series: pd.Series, invalid_values=None):
-    if series is None:
-        return []
-    invalid_values = set(invalid_values or [])
-    values = series.dropna().astype(str).str.strip()
-    values = values[~values.isin(invalid_values)]
-    return sorted(values.unique().tolist())
-
-def classify_traffic_status(media_vel_kmh: float) -> str:
-    if media_vel_kmh < 20:
-        return "🔴 Crítico"
-    elif media_vel_kmh < 40:
-        return "🟠 Lento"
-    elif media_vel_kmh < 60:
-        return "🟡 Moderado"
-    return "🟢 Fluindo"
 
 st.sidebar.header("⚙️ Controles")
 st.sidebar.markdown("### ⏳ Status da Sessão")
@@ -1366,6 +1091,21 @@ with tab_graficos:
         if filtro_rua and "street" in df_hist.columns:
             df_hist = df_hist[df_hist["street"] == filtro_rua]
 
+        DIAS_PT = {
+            "Monday": "Segunda", "Tuesday": "Terça",  "Wednesday": "Quarta",
+            "Thursday": "Quinta", "Friday": "Sexta",  "Saturday": "Sábado",
+            "Sunday": "Domingo",
+        }
+
+        CORES_TIPO = {
+            "ACIDENTE":         "#e74c3c",
+            "VIA FECHADA":      "#c0392b",
+            "PERIGO":           "#e67e22",
+            "PERIGO CLIMÁTICO": "#3498db",
+            "CONGESTIONAMENTO": "#f39c12",
+            "ALERTA":           "#9b59b6",
+        }
+
         col_g1, col_g2 = st.columns(2)
 
         with col_g1:
@@ -1421,10 +1161,10 @@ with tab_graficos:
         if "day_of_week" in df_hist.columns and not df_hist.empty:
             st.subheader("Incidentes por Dia da Semana")
             df_dow = df_hist.copy()
-            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT_CMP)
+            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT)
 
             dow_tipo   = df_dow.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
-            ordem_dias = list(DIAS_PT_CMP.values())
+            ordem_dias = list(DIAS_PT.values())
 
             fig_dow = px.bar(
                 dow_tipo, x="Dia", y="Quantidade", color="type",
@@ -1624,8 +1364,6 @@ with tab_predicao:
     st.markdown("---")
     st.markdown("### 📅 Vias com Maior Propensão ao Congestionamento por Dia da Semana")
     st.caption("Baseado no histórico completo de congestionamentos carregados — independente do filtro de data.")
-
-    df_jams_hist = df_jams_raw.copy() if not df_jams_raw.empty else pd.DataFrame()
 
     if not df_jams_hist.empty and "street" in df_jams_hist.columns and "day_of_week" in df_jams_hist.columns:
         df_jams_hist = df_jams_hist[
