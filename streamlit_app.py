@@ -14,6 +14,13 @@ import folium
 from folium import plugins
 from folium.plugins import MarkerCluster
 
+# Validação e Fallback seguro de importação do componente Streamlit-Folium
+try:
+    from streamlit_folium import st_folium
+    ST_FOLIUM_AVAILABLE = True
+except ImportError:
+    ST_FOLIUM_AVAILABLE = False
+
 # =========================================================
 # BLOCO 1 — CONFIGURAÇÃO BASE DO APP
 # =========================================================
@@ -191,10 +198,6 @@ body { color: var(--text); }
     box-shadow: var(--shadow-sm) !important;
 }
 
-[data-testid="stExpander"]:hover {
-    border-color: #bcd0f0 !important;
-}
-
 [data-testid="stTextInput"] input,
 [data-testid="stNumberInput"] input,
 [data-testid="stSelectbox"] > div,
@@ -367,23 +370,6 @@ def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
-def parse_pt_date(date_str):
-    if not isinstance(date_str, str): return pd.NaT
-    meses = {
-        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
-        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
-        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
-    }
-    try:
-        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
-        if match:
-            dia, mes_nome, ano = match.groups()
-            mes = meses.get(mes_nome, 1)
-            return datetime(int(ano), int(mes), int(dia))
-    except Exception:
-        pass
-    return pd.to_datetime(date_str, errors='coerce')
-
 def extract_wkt_coordinates(location_str):
     if pd.isna(location_str):
         return None, None
@@ -394,33 +380,6 @@ def extract_wkt_coordinates(location_str):
             return float(coords[1]), float(coords[0])
         except Exception: pass
     return None, None
-
-def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-
-    df = df.copy()
-
-    if "pubMillis" in df.columns:
-        df["timestamp"] = (
-            pd.to_datetime(df["pubMillis"], unit="ms", utc=True)
-            .dt.tz_convert("America/Sao_Paulo")
-            .dt.tz_localize(None)
-        )
-    elif "Date" in df.columns:
-        df["timestamp"] = df["Date"].apply(parse_pt_date)
-    elif "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    else:
-        df["timestamp"] = now_foz()
-
-    df["date"]        = df["timestamp"].dt.date
-    df["hour"]        = df["timestamp"].dt.hour
-    df["day_of_week"] = df["timestamp"].dt.day_name()
-    df["month"]       = df["timestamp"].dt.month
-    df["year"]        = df["timestamp"].dt.year
-
-    return df
 
 def _parse_dict_like(value):
     if isinstance(value, dict):
@@ -820,7 +779,7 @@ def generate_jams_map(df_json: str) -> folium.Map | None:
             popup_html = f"""
             <div style='min-width:180px;font-family:Arial,sans-serif;'>
                 <b style='color:{color}'>🚗 {spd_str}</b><br>
-                # 🛣️ <i>{rua}</i><br>
+                🛣️ <i>{rua}</i><br>
                 🕒 {ts}
             </div>
             """
@@ -1119,7 +1078,6 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard    = df_jams_filtered.copy()
 
-# Segurança adicionada: Impede erro na checagem multicritério (MCDA) caso o banco de congestionamentos venha limpo
 if not base_jams_dashboard.empty:
     df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
 else:
@@ -1157,7 +1115,7 @@ with tab_inc:
     if not df_filtered.empty:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format="iso"))
 
-        if m_inc:
+        if ST_FOLIUM_AVAILABLE and m_inc:
             st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
 
             st.markdown("""
@@ -1171,6 +1129,8 @@ with tab_inc:
             | 🟦 | Perigo climático / Condições adversas |
             | 🟪 | Congestionamento / Trânsito parado |
             """)
+        elif not ST_FOLIUM_AVAILABLE:
+            st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado. Certifique-se de adicioná-lo ao seu arquivo requirements.txt.")
         else:
             st.info("Nenhum incidente mapeável dentro do recorte geográfico de Foz do Iguaçu.")
     else:
@@ -1182,7 +1142,7 @@ with tab_jams:
     if not df_jams_filtered.empty:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format="iso"))
 
-        if m_jam:
+        if ST_FOLIUM_AVAILABLE and m_jam:
             st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
 
             st.markdown("""
@@ -1195,6 +1155,8 @@ with tab_jams:
             | 🔴 | 5–20 km/h | Muito lento |
             | 🟣 | <5 km/h | Parado / Travado |
             """)
+        elif not ST_FOLIUM_AVAILABLE:
+            st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado.")
         else:
             st.info("Nenhum congestionamento ativo no mapa para este recorte.")
     else:
@@ -1235,7 +1197,10 @@ with tab_calor:
                     }
                 ).add_to(m_heat)
 
-                st_folium(m_heat, width="100%", height=500, key=f"mapa_heat_{len(df_heat)}")
+                if ST_FOLIUM_AVAILABLE:
+                    st_folium(m_heat, width="100%", height=500, key=f"mapa_heat_{len(df_heat)}")
+                else:
+                    st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado.")
 
                 st.markdown("""
                 | Cor | Concentração |
@@ -1378,7 +1343,10 @@ with tab_temporal_danos:
                 if all_coords:
                     m_yearly.fit_bounds(all_coords)
                 
-                st_folium(m_yearly, width="100%", height=550, key=f"mapa_geom_anual_{ano_selecionado}")
+                if ST_FOLIUM_AVAILABLE:
+                    st_folium(m_yearly, width="100%", height=550, key=f"mapa_geom_anual_{ano_selecionado}")
+                else:
+                    st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado.")
 
 with tab_graficos:
     if not df_filtered.empty:
