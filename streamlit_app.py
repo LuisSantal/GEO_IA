@@ -193,6 +193,10 @@ body { color: var(--text); }
 }
 
 hr { border-color: var(--border) !important; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -223,7 +227,7 @@ FOLDER_JAMS_ID    = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
 FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
 
-# Lista dinâmica de arquivos CSV complementares mapeados no repositório GitHub
+# Matriz de fontes locais presentes no GitHub para fusão plurianual
 CSV_FILES_TO_MERGE = [
     "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv",
     "Waze for Cities Data _ buracos na via maio 2025 a maio 2026.csv",
@@ -232,8 +236,52 @@ CSV_FILES_TO_MERGE = [
 ]
 
 # =========================================================
-# BLOCO 2 — CONEXÃO, INGESTÃO E ESTIMADOR PROBABILÍSTICO
+# BLOCO 2 — CONEXÃO, INGESTÃO E SUPORTE DE TRATAMENTO
 # =========================================================
+
+TYPE_MAP = {
+    "ROAD_CLOSED":              "VIA FECHADA",
+    "ROAD_CLOSED_CONSTRUCTION": "VIA FECHADA",
+    "ROAD_CLOSED_EVENT":        "VIA FECHADA",
+    "HAZARD":                   "PERIGO",
+    "ACCIDENT":                 "ACIDENTE",
+    "JAM":                      "CONGESTIONAMENTO",
+    "WEATHERHAZARD":            "PERIGO CLIMÁTICO",
+}
+
+SUBTYPE_MAP = {
+    "ROAD_CLOSED_CONSTRUCTION":           "OBRAS",
+    "ROAD_CLOSED_EVENT":                  "EVENTO",
+    "HAZARD_ON_ROAD":                     "PERIGO NA VIA",
+    "HAZARD_ON_ROAD_POT_HOLE":            "BURACO NA VIA",
+    "HAZARD_ON_ROAD_ROAD_KILL":           "ANIMAL NA VIA",
+    "HAZARD_ON_ROAD_CAR_STOPPED":          "VEÍCULO PARADO NA VIA",
+    "HAZARD_ON_ROAD_CONSTRUCTION":        "OBRAS NA VIA",
+    "HAZARD_ON_ROAD_OBJECT":              "OBJETO NA VIA",
+    "HAZARD_ON_ROAD_TRAFFIC_LIGHT_FAULT": "SEMÁFORO QUEBRADO",
+    "HAZARD_ON_ROAD_ICE":                 "PISTA COM GELO",
+    "HAZARD_ON_ROAD_LANE_CLOSED":          "FAIXA INTERDITADA",
+    "HAZARD_ON_SHOULDER":                 "PERIGO NO ACOSTAMENTO",
+    "HAZARD_ON_SHOULDER_CAR_STOPPED":     "VEÍCULO PARADO NO ACOSTAMENTO",
+    "HAZARD_ON_SHOULDER_ANIMALS":         "ANIMAIS NO ACOSTAMENTO",
+    "HAZARD_ON_SHOULDER_MISSING_SIGN":    "SINALIZAÇÃO AUSENTE",
+    "HAZARD_WEATHER":                     "CONDIÇÕES CLIMÁTICAS",
+    "HAZARD_WEATHER_FOG":                 "NEBLINA",
+    "HAZARD_WEATHER_HAIL":                "GRANIZO",
+    "HAZARD_WEATHER_HEAVY_RAIN":          "CHUVA FORTE",
+    "HAZARD_WEATHER_FLOOD":               "INUNDAÇÃO",
+    "HAZARD_WEATHER_MONSOON":             "TEMPORAL",
+    "HAZARD_WEATHER_TORNADO":             "TORNADO",
+    "HAZARD_WEATHER_HEAT_WAVE":           "ONDA DE CALOR",
+    "HAZARD_WEATHER_HEAVY_SNOW":          "NEVE INTENSA",
+    "HAZARD_WEATHER_FREEZING_RAIN":       "CHUVA COM GELO",
+    "ACCIDENT_MAJOR":                     "ACIDENTE GRAVE",
+    "ACCIDENT_MINOR":                     "ACIDENTE LEVE",
+    "JAM_HEAVY_TRAFFIC":                  "TRÂNSITO PESADO",
+    "JAM_MODERATE_TRAFFIC":               "TRÂNSITO MODERADO",
+    "JAM_STAND_STILL_TRAFFIC":            "TRÂNSITO PARADO",
+    "JAM_LIGHT_TRAFFIC":                  "TRÂNSITO LEVE",
+}
 
 @st.cache_resource(show_spinner=False)
 def get_drive_service():
@@ -242,8 +290,7 @@ def get_drive_service():
     try:
         creds_info = st.secrets["gcp_service_account"]
         creds = service_account.Credentials.from_service_account_info(
-            creds_info,
-            scopes=["https://www.googleapis.com/auth/drive.readonly"]
+            creds_info, scopes=["https://www.googleapis.com/auth/drive.readonly"]
         )
         return build("drive", "v3", credentials=creds)
     except Exception:
@@ -255,10 +302,7 @@ def get_latest_h5_id(folder_id: str) -> str | None:
     try:
         query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
         results = service.files().list(
-            q=query,
-            fields="files(id, name, modifiedTime)",
-            orderBy="modifiedTime desc",
-            pageSize=5
+            q=query, fields="files(id, name, modifiedTime)", orderBy="modifiedTime desc", pageSize=5
         ).execute()
         files = results.get("files", [])
         return files[0]["id"] if files else None
@@ -304,8 +348,7 @@ def parse_pt_date(date_str):
     return pd.to_datetime(date_str, errors='coerce')
 
 def extract_wkt_coordinates(location_str):
-    if pd.isna(location_str):
-        return None, None
+    if pd.isna(location_str): return None, None
     match = re.search(r'Point\(([-\s\d\.]+)\)', str(location_str), re.IGNORECASE)
     if match:
         try:
@@ -315,8 +358,7 @@ def extract_wkt_coordinates(location_str):
     return None, None
 
 def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
+    if df is None or df.empty: return df
     df = df.copy()
     if "pubMillis" in df.columns:
         df["timestamp"] = (
@@ -352,8 +394,7 @@ def _extract_lat_lon_from_location(value):
     return None, None
 
 def extract_coordinates(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
+    if df is None or df.empty: return df
     df = df.copy()
     if "lat" in df.columns and "lon" in df.columns:
         df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
@@ -399,12 +440,26 @@ def normalize_speed(df: pd.DataFrame) -> pd.DataFrame:
     df["speed"] = float("nan")
     return df
 
+def translate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty: return df
+    df = df.copy()
+    if "type" in df.columns: df["type"] = df["type"].replace(TYPE_MAP)
+    if "subtype" in df.columns:
+        df["subtype"] = df["subtype"].replace(SUBTYPE_MAP)
+        known_values = set(SUBTYPE_MAP.values())
+        mask = df["subtype"].notna() & ~df["subtype"].isin(known_values)
+        df.loc[mask, "subtype"] = (
+            df.loc[mask, "subtype"].astype(str)
+            .str.replace(r"^(HAZARD_ON_ROAD_|HAZARD_ON_SHOULDER_|HAZARD_WEATHER_|HAZARD_|ACCIDENT_|JAM_|ROAD_CLOSED_)", "", regex=True)
+            .str.replace("_", " ", regex=False).str.title()
+        )
+    return df
+
 @st.cache_data(ttl=600, show_spinner="🔄 Executando Cruzamento e Fusão Multiarquivos (MHDH)...")
 def load_all_data():
     df_alerts = pd.DataFrame()
     df_jams = pd.DataFrame()
 
-    # 1. Carrega dados de tempo real conhecidos do H5 via Drive
     alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
     jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
 
@@ -436,13 +491,15 @@ def load_all_data():
             total = row.sum()
             prob_matrix[idx] = row.values / total if total > 0 else np.ones(24)/24.0
 
-    # 2. Varredura e concatenação automatizada dos múltiplos arquivos CSV do GitHub
     local_frames = []
     for csv_path in CSV_FILES_TO_MERGE:
         if os.path.exists(csv_path):
             try:
                 df_csv = pd.read_csv(csv_path)
-                df_csv = extract_wkt_coordinates(df_csv)
+                if "Location" in df_csv.columns:
+                    coords_wkt = df_csv["Location"].apply(lambda x: pd.Series(extract_wkt_coordinates(x), index=["lat", "lon"]))
+                    df_csv["lat"] = coords_wkt["lat"]
+                    df_csv["lon"] = coords_wkt["lon"]
                 df_csv = normalize_timestamps(df_csv)
                 df_csv = df_csv.rename(columns={'Street': 'street', 'Type': 'type', 'Subtype': 'subtype'})
                 df_csv = translate_dataframe(df_csv)
@@ -453,7 +510,6 @@ def load_all_data():
     if local_frames:
         df_merged_csv = pd.concat(local_frames, ignore_index=True)
         
-        # Estimação temporal bayesiana para as lacunas da planilha
         hours_estimated = []
         for _, row in df_merged_csv.iterrows():
             t_val = row.get("type", "HAZARD")
@@ -485,81 +541,13 @@ def load_all_data():
     return df_alerts, df_jams
 
 # =========================================================
-# BLOCO 3 — MAPAS E VISUALIZAÇÕES GEOESPACIAIS
+# BLOCO EXTRA — PIPELINE CIENTÍFICO E MODELOS
 # =========================================================
-LAT_MIN, LAT_MAX = -25.70, -25.40
-LON_MIN, LON_MAX = -54.75, -54.45
 
-def filter_bbox_foz(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty: return df
-    df = df.copy()
-    if "lat" not in df.columns or "lon" not in df.columns: return pd.DataFrame()
-    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
-    df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
-    return df[df["lat"].between(LAT_MIN, LAT_MAX) & df["lon"].between(LON_MIN, LON_MAX)].copy()
-
-def create_folium_map_with_compass(lat: float, lon: float, zoom_level: int = 13) -> folium.Map:
-    m = folium.Map(location=[lat, lon], zoom_start=zoom_level, tiles="OpenStreetMap", max_bounds=True, control_scale=False)
-    plugins.MousePosition(position="topright", separator=" | ", prefix="Lat/Lon: ", num_digits=5).add_to(m)
-    plugins.Fullscreen(position="topleft", title="Expandir mapa", title_cancel="Sair da tela cheia", force_separate_button=True).add_to(m)
-    return m
-
-def _load_json_df(df_json: str) -> pd.DataFrame:
-    try: return pd.read_json(io.StringIO(df_json))
-    except Exception: return pd.DataFrame()
-
-def _safe_time_label(value) -> str:
-    try:
-        if pd.notna(value): return pd.to_datetime(value).strftime("%H:%M")
-    except Exception: pass
-    return "--"
-
-def generate_incidents_map(df_json: str) -> folium.Map | None:
-    df = _load_json_df(df_json)
-    if df.empty or "lat" not in df.columns or "lon" not in df.columns: return None
-    df_map = filter_bbox_foz(df.dropna(subset=["lat", "lon"])).head(50)
-    if df_map.empty: return None
-    m = create_folium_map_with_compass(df_map["lat"].mean(), df_map["lon"].mean())
-    for _, row in df_map.iterrows():
-        try:
-            tipo, subtipo, rua = str(row.get("type", "?")), str(row.get("subtype", "")), str(row.get("street", "N/A"))
-            color = get_danger_color(tipo, row.get("subtype"))
-            ts, lat_val, lon_val = _safe_time_label(row.get("timestamp")), float(row["lat"]), float(row["lon"])
-            popup_html = f"<div style='min-width:200px;'><b>🚨 {tipo}</b><br><b>{subtipo}</b><br>🛣️ <i>{rua}</i><br>🕒 {ts}</div>"
-            folium.CircleMarker(location=[lat_val, lon_val], radius=9, popup=folium.Popup(popup_html, max_width=260), tooltip=f"{tipo}: {rua}", color=color, fill=True, fillColor=color, fillOpacity=0.8, weight=2).add_to(m)
-        except Exception: continue
-    return m
-
-def generate_jams_map(df_json: str) -> folium.Map | None:
-    df = _load_json_df(df_json)
-    if df.empty or "lat" not in df.columns or "lon" not in df.columns: return None
-    df_valid = filter_bbox_foz(df.dropna(subset=["lat", "lon"])).head(40)
-    if df_valid.empty: return None
-    m = create_folium_map_with_compass(df_valid["lat"].mean(), df_valid["lon"].mean())
-    for _, row in df_valid.iterrows():
-        try:
-            speed_raw = row.get("speed", float("nan"))
-            speed_kmh = float(speed_raw) * 3.6 if pd.notna(speed_raw) else 0.0
-            color, rua, ts = get_congestion_color(speed_kmh), str(row.get("street", "Via")), _safe_time_label(row.get("timestamp"))
-            lat_val, lon_val = float(row["lat"]), float(row["lon"])
-            popup_html = f"<div style='min-width:180px;'><b>🚗 {speed_kmh:.0f} km/h</b><br>🛣️ <i>{rua}</i><br>🕒 {ts}</div>"
-            folium.CircleMarker(location=[lat_val, lon_val], radius=7, popup=folium.Popup(popup_html, max_width=220), tooltip=f"{speed_kmh:.0f} km/h — {rua}", color=color, fill=True, fillColor=color, fillOpacity=0.7, weight=2).add_to(m)
-        except Exception: continue
-    return m
-
-def generate_heatmap(df_json: str) -> folium.Map | None:
-    df = _load_json_df(df_json)
-    if df.empty or "lat" not in df.columns or "lon" not in df.columns: return None
-    df_map = filter_bbox_foz(df.dropna(subset=["lat", "lon"]))
-    if df_map.empty: return None
-    m = create_folium_map_with_compass(df_map["lat"].mean(), df_map["lon"].mean())
-    heat_data = [[row["lat"], row["lon"]] for _, row in df_map.iterrows()]
-    plugins.HeatMap(heat_data, radius=15, blur=10, min_opacity=0.35).add_to(m)
-    return m
-
-# =========================================================
-# BLOCO EXTRA — PIPELINE CIENTÍFICO E MCDA
-# =========================================================
+def predict_traffic_delay_impact(length_meters: float) -> float:
+    coef_angular = 0.15
+    intercepto   = 12.0
+    return (length_meters * coef_angular) + intercepto
 
 def build_daily_series(df_alerts: pd.DataFrame, df_jams: pd.DataFrame, categoria: str = "TODOS") -> pd.Series:
     frames = []
@@ -636,20 +624,16 @@ def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[in
     return df[(df_date_col == target_date) & (df["hour"].between(hora_range[0], hora_range[1]))].copy()
 
 def clean_unique_values(series: pd.Series, invalid_values=None):
-    if series is None:
-        return []
+    if series is None: return []
     invalid_values = set(invalid_values or [])
     values = series.dropna().astype(str).str.strip()
     values = values[~values.isin(invalid_values)]
     return sorted(values.unique().tolist())
 
 def classify_traffic_status(media_vel_kmh: float) -> str:
-    if media_vel_kmh < 20:
-        return "🔴 Crítico"
-    elif media_vel_kmh < 40:
-        return "🟠 Lento"
-    elif media_vel_kmh < 60:
-        return "🟡 Moderado"
+    if media_vel_kmh < 20: return "🔴 Crítico"
+    elif media_vel_kmh < 40: return "🟠 Lento"
+    elif media_vel_kmh < 60: return "🟡 Moderado"
     return "🟢 Fluindo"
 
 st.sidebar.header("⚙️ Controles")
@@ -759,7 +743,7 @@ col_f3.metric("Retenções Ativas (Jams)", len(df_jams_filtered))
 # =========================================================
 # BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS
 # =========================================================
-tab_inc, tab_jams, tab_calor, tab_temporal_danos, tab_graficos, tab_pipeline, tab_predicao, tab_dados = st.tabs(
+tab_inc, tab_jams, tab_calor, tab_temporal_danos, tab_graficos, tab_pipeline, tab_criticidade, tab_predicao, tab_dados = st.tabs(
     [
         "Incidentes",
         "Congestionamentos",
@@ -767,6 +751,7 @@ tab_inc, tab_jams, tab_calor, tab_temporal_danos, tab_graficos, tab_pipeline, ta
         "📅 Análise Geométrica de Danos",
         "Gráficos",
         "🧪 Pipeline Científico",
+        "📊 Criticidade (MCDA)",
         "🔮 Modelo Preditivo",
         "Dados"
     ]
@@ -884,27 +869,6 @@ with tab_temporal_danos:
     O sistema realiza requisições dinâmicas de infraestrutura ao ecossistema *OpenStreetMap (Nominatim)* para reconstruir as polilinhas das vias.
     """)
 
-    def get_street_geometry_nominatim(street_name: str, city: str):
-        search_query = f'{street_name}, {city}, Brazil'
-        url = 'https://nominatim.openstreetmap.org/search'
-        params = {'q': search_query, 'format': 'json', 'limit': 1, 'polygon_geojson': 1}
-        headers = {'User-Agent': 'GeoIA_Streamlit_Academic/2.0'}
-        try:
-            response = requests.get(url, params=params, headers=headers, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if data and 'geojson' in data[0]:
-                    geojson = data[0]['geojson']
-                    if geojson['type'] == 'LineString':
-                        return [[c[1], c[0]] for c in geojson['coordinates']]
-                    elif geojson['type'] == 'MultiLineString':
-                        coords = []
-                        for segment in geojson['coordinates']:
-                            coords.extend([[c[1], c[0]] for c in segment])
-                        return coords
-        except Exception: pass
-        return None
-
     if df_alerts_raw.empty:
         st.warning("A base de dados de alertas não foi carregada corretamente.")
     else:
@@ -967,6 +931,29 @@ with tab_temporal_danos:
                     s_name = row_geo['street']
                     c_name = row_geo['city_field']
                     p_count = row_geo['PotholeCount']
+                    
+                    # Chamada direta para a função utilitária local do OpenStreetMap
+                    def get_street_geometry_nominatim(street_name: str, city: str):
+                        search_query = f'{street_name}, {city}, Brazil'
+                        url = 'https://nominatim.openstreetmap.org/search'
+                        params = {'q': search_query, 'format': 'json', 'limit': 1, 'polygon_geojson': 1}
+                        headers = {'User-Agent': 'GeoIA_Streamlit_Academic/2.0'}
+                        try:
+                            response = requests.get(url, params=params, headers=headers, timeout=10)
+                            if response.status_code == 200:
+                                data = response.json()
+                                if data and 'geojson' in data[0]:
+                                    geojson = data[0]['geojson']
+                                    if geojson['type'] == 'LineString':
+                                        return [[c[1], c[0]] for c in geojson['coordinates']]
+                                    elif geojson['type'] == 'MultiLineString':
+                                        coords = []
+                                        for segment in geojson['coordinates']:
+                                            coords.extend([[c[1], c[0]] for c in segment])
+                                        return coords
+                        except Exception: pass
+                        return None
+
                     geom = get_street_geometry_nominatim(s_name, c_name)
                     if geom and len(geom) >= 2:
                         street_geometries_to_plot[(s_name, c_name)] = {'geometry': geom, 'pothole_count': p_count}
@@ -1245,6 +1232,38 @@ with tab_pipeline:
     else:
         st.info("Sem dados suficientes para a tabela descritiva.")
 
+with tab_criticidade:
+    st.subheader("📊 Classificação Hierárquica de Infraestrutura Viária Crítica")
+    st.markdown("""
+    Análise multicritério (MCDA) ponderando **volume de congestionamentos** (40%) e **atraso médio** (60%).
+    """)
+    if not df_criticidade_vias.empty:
+        col_t1, col_t2 = st.columns([3, 2])
+        with col_t1:
+            fig_crit = px.bar(
+                df_criticidade_vias.head(10),
+                x="Criticidade_Index", y="street", orientation="h",
+                title="Top 10 Vias Críticas — Intervenção Prioritária",
+                labels={"Criticidade_Index": "Índice de Criticidade (0–100)", "street": "Logradouro"},
+                color="Criticidade_Index", color_continuous_scale="Oranges"
+            )
+            fig_crit.update_layout(height=400)
+            st.plotly_chart(fig_crit, use_container_width=True)
+        with col_t2:
+            st.markdown("#### Ranking de Prioridade Viária")
+            st.dataframe(
+                df_criticidade_vias[["street","Volume_Jams","Atraso_Medio_Seg","Criticidade_Index"]].head(10),
+                hide_index=True,
+                column_config={
+                    "street":            "Logradouro",
+                    "Volume_Jams":       "Qtd Retenções",
+                    "Atraso_Medio_Seg":  "Atraso Médio (s)",
+                    "Criticidade_Index": "Índice Geral (0–100)"
+                }
+            )
+    else:
+        st.info("Dados insuficientes para o ranking multicritério.")
+
 with tab_predicao:
     st.subheader("🔮 Simulador Preditivo de Impacto e Propensão ao Congestionamento")
     st.markdown("""
@@ -1278,6 +1297,12 @@ with tab_predicao:
     st.markdown("### 📅 Vias com Maior Propensão ao Congestionamento por Dia da Semana")
     st.caption("Baseado no histórico completo de congestionamentos carregados — independente do filtro de data.")
 
+    # Correção de segurança estrutural: evita quebra na checagem caso o HDF5 de Jams venha limpo
+    if not df_jams_raw.empty and "street" in df_jams_raw.columns:
+        df_jams_hist = df_jams_raw.copy()
+    else:
+        df_jams_hist = pd.DataFrame(columns=["street", "day_of_week"])
+
     if not df_jams_hist.empty and "street" in df_jams_hist.columns and "day_of_week" in df_jams_hist.columns:
         df_jams_hist = df_jams_hist[
             df_jams_hist["street"].notna() &
@@ -1295,6 +1320,7 @@ with tab_predicao:
         col_h1, col_h2 = st.columns([3, 2])
 
         with col_h1:
+            ORDEM_DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
             pivot = heatmap_data.pivot_table(
                 index="street", columns="Dia", values="Propensão (%)", aggfunc="sum"
             ).reindex(columns=[d for d in ORDEM_DIAS if d in heatmap_data["Dia"].unique()], fill_value=0)
@@ -1344,7 +1370,7 @@ with tab_predicao:
         st.info("Histórico de congestionamentos insuficiente para análise de propensão por via e dia.")
 
     st.markdown("---")
-    st.markdown("### 2025 vs 2026")
+    st.markdown("### 📆 Comparador Mensal: 2025 vs 2026")
     st.caption("Selecione um dia da semana e uma categoria para comparar a evolução mês a mês entre os dois anos.")
 
     frames_cmp = []
@@ -1585,8 +1611,8 @@ rodape_html = f"""
     Equipe de Desenvolvimento
   </div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.2rem;">
-    <span style="font-size:0.82rem;color:#334155;">👨‍💻 Luis Enrique Santacruz Alvarez[cite: 2]</span>
-    <span style="font-size:0.82rem;color:#334155;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA[cite: 2]</span>
+    <span style="font-size:0.82rem;color:#334155;">👨‍💻 Luis Enrique Santacruz Alvarez</span>
+    <span style="font-size:0.82rem;color:#334155;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
   </div>
 
   <div style="border-top:1px solid #E2E8F0;margin-bottom:1rem;"></div>
