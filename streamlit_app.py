@@ -222,7 +222,7 @@ FOLDER_ALERTS_ID  = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
 FOLDER_JAMS_ID    = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
 FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
-LOCAL_CSV_PATH    = "https://drive.google.com/file/d/1T8y2gtke6E4QFQNr_1xvaLcsaaQUe8MZ/view?usp=drive_link, https://drive.google.com/file/d/1BLLQ_7RK_USFYHJvOLn6pJTdtbXOBIxf/view?usp=drive_link, https://drive.google.com/file/d/1omX7Nk1begsekJGNH8yYlF2E4V4e77c8/view?usp=drive_link, https://drive.google.com/drive/folders/1-Iu3Z-N5mIasyvcnLY_UcYcpmjKBfNNp?usp=drive_link"
+LOCAL_CSV_PATH    = "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv"
 
 # =========================================================
 # BLOCO 2 — CONEXÃO, INGESTÃO E ESTIMADOR PROBABILÍSTICO
