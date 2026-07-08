@@ -257,6 +257,65 @@ FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
 FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
 LOCAL_CSV_PATH    = "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv"
 
+# ---------------------------------------------------------
+# 6. FUNÇÕES DE COR
+# ---------------------------------------------------------
+def get_congestion_color(speed_kmh: float) -> str:
+    if speed_kmh >= 80:
+        return "#2196F3"
+    elif speed_kmh >= 60:
+        return "#4CAF50"
+    elif speed_kmh >= 40:
+        return "#8BC34A"
+    elif speed_kmh >= 20:
+        return "#FF9800"
+    elif speed_kmh >= 5:
+        return "#F44336"
+    return "#7B1FA2"
+
+def get_danger_color(incident_type: str, subtype: str | None = None) -> str:
+    leves = {
+        "ACIDENTE LEVE",
+        "TRÂNSITO MODERADO",
+        "PERIGO NA VIA",
+        "OBJETO NA VIA",
+        "ANIMAL NA VIA",
+        "VEÍCULO PARADO",
+        "CONDIÇÕES CLIMÁTICAS",
+    }
+
+    t = str(incident_type).upper().strip() if incident_type else ""
+    s = str(subtype).upper().strip() if subtype else ""
+    is_leve = s in leves
+
+    color_map = {
+        "ACIDENTE":         "#F44336" if not is_leve else "#EF9A9A",
+        "VIA FECHADA":      "#B71C1C",
+        "CONGESTIONAMENTO": "#7B1FA2" if not is_leve else "#CE93D8",
+        "PERIGO":           "#FF9800" if not is_leve else "#FFCC80",
+        "PERIGO CLIMÁTICO": "#29B6F6",
+        "OBRAS":            "#78909C",
+        "ALERTA":           "#FDD835",
+    }
+
+    subtype_override = {
+        "ACIDENTE GRAVE":    "#B71C1C",
+        "ACIDENTE LEVE":     "#EF9A9A",
+        "BURACO NA VIA":     "#FF9800",
+        "OBRAS NA VIA":      "#78909C",
+        "SEMÁFORO QUEBRADO": "#FDD835",
+        "INUNDAÇÃO":         "#0288D1",
+        "NEBLINA":           "#B0BEC5",
+        "TRÂNSITO PARADO":   "#7B1FA2",
+        "TRÂNSITO PESADO":   "#F44336",
+        "TRÂNSITO MODERADO": "#FF9800",
+    }
+
+    if s in subtype_override:
+        return subtype_override[s]
+
+    return color_map.get(t, "#90A4AE")
+
 # =========================================================
 # BLOCO 2 — CONEXÃO, INGESTÃO E ESTIMADOR PROBABILÍSTICO
 # =========================================================
@@ -318,23 +377,6 @@ def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame()
-
-def parse_pt_date(date_str):
-    if not isinstance(date_str, str): return pd.NaT
-    meses = {
-        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
-        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
-        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
-    }
-    try:
-        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
-        if match:
-            dia, mes_nome, ano = match.groups()
-            mes = meses.get(mes_nome, 1)
-            return datetime(int(ano), int(mes), int(dia))
-    except Exception:
-        pass
-    return pd.to_datetime(date_str, errors='coerce')
 
 def extract_wkt_coordinates(location_str):
     if pd.isna(location_str):
@@ -724,7 +766,7 @@ def generate_incidents_map(df_json: str) -> folium.Map | None:
             <div style='min-width:200px;font-family:Arial,sans-serif;'>
                 <b style='color:{color};font-size:16px;'>🚨 {tipo}</b><br>
                 <b>{subtipo}</b><br>
-                # 🛣️ <i>{rua}</i><br>
+                🛣️ <i>{rua}</i><br>
                 🕒 {ts}<br>
                 📍 {lat_val:.4f}, {lon_val:.4f}
             </div>
@@ -956,7 +998,6 @@ def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> p
 # BLOCO 4 — SIDEBAR, CARGA OPERACIONAL E FILTROS
 # =========================================================
 
-# DECLARAÇÃO DE FUNÇÕES DO BLOCO 4 NO INÍCIO PARA EVITAR SUTIS EXCEÇÕES DE NAMEERROR
 def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[int, int]) -> pd.DataFrame:
     if df is None or df.empty: return pd.DataFrame()
     df = df.copy()
@@ -1010,7 +1051,6 @@ if all_dates:
 else:
     min_date = max_date = default_date = today_foz
 
-# Recebe os seletores estruturados de data antes de acionar a filtragem base
 selected_date = st.sidebar.date_input("📅 Data", value=default_date, min_value=min_date, max_value=max_date)
 hora_range = st.sidebar.slider("🕒 Horário", min_value=0, max_value=23, value=(0, 23))
 
@@ -1110,7 +1150,8 @@ with tab_inc:
     if not df_filtered.empty:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format="iso"))
 
-        if ST_FOLIUM_AVAILABLE and m_inc:
+        # Removida a verificação redundante 'ST_FOLIUM_AVAILABLE'. O Streamlit chama direto o mapa estruturado.
+        if m_inc:
             st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
 
             st.markdown("""
@@ -1124,8 +1165,6 @@ with tab_inc:
             | 🟦 | Perigo climático / Condições adversas |
             | 🟪 | Congestionamento / Trânsito parado |
             """)
-        elif not ST_FOLIUM_AVAILABLE:
-            st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado. Certifique-se de adicioná-lo ao seu arquivo requirements.txt.")
         else:
             st.info("Nenhum incidente mapeável dentro do recorte geográfico de Foz do Iguaçu.")
     else:
@@ -1137,7 +1176,7 @@ with tab_jams:
     if not df_jams_filtered.empty:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format="iso"))
 
-        if ST_FOLIUM_AVAILABLE and m_jam:
+        if m_jam:
             st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
 
             st.markdown("""
@@ -1150,8 +1189,6 @@ with tab_jams:
             | 🔴 | 5–20 km/h | Muito lento |
             | 🟣 | <5 km/h | Parado / Travado |
             """)
-        elif not ST_FOLIUM_AVAILABLE:
-            st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado.")
         else:
             st.info("Nenhum congestionamento ativo no mapa para este recorte.")
     else:
@@ -1192,10 +1229,7 @@ with tab_calor:
                     }
                 ).add_to(m_heat)
 
-                if ST_FOLIUM_AVAILABLE:
-                    st_folium(m_heat, width="100%", height=500, key=f"mapa_heat_{len(df_heat)}")
-                else:
-                    st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado.")
+                st_folium(m_heat, width="100%", height=500, key=f"mapa_heat_{len(df_heat)}")
 
                 st.markdown("""
                 | Cor | Concentração |
@@ -1338,10 +1372,7 @@ with tab_temporal_danos:
                 if all_coords:
                     m_yearly.fit_bounds(all_coords)
                 
-                if ST_FOLIUM_AVAILABLE:
-                    st_folium(m_yearly, width="100%", height=550, key=f"mapa_geom_anual_{ano_selecionado}")
-                else:
-                    st.error("⚠️ O componente 'streamlit-folium' não pôde ser carregado.")
+                st_folium(m_yearly, width="100%", height=550, key=f"mapa_geom_anual_{ano_selecionado}")
 
 with tab_graficos:
     if not df_filtered.empty:
@@ -1473,7 +1504,7 @@ with tab_graficos:
         st.subheader("Quais dias cada rua tem mais problemas?")
         if top_ruas_lista and "day_of_week" in df_hist.columns:
             df_hm     = df_hist[df_hist["street"].isin(top_ruas_lista)].copy()
-            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT)
+            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT_CMP)
 
             bubble_dow = df_hm.groupby(["street", "Dia"]).size().reset_index(name="Qtd")
             total_dow  = bubble_dow.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
@@ -1490,7 +1521,7 @@ with tab_graficos:
             fig_b1 = px.scatter(
                 total_dow, x="Dia", y="street", size="Total",
                 color="Nível", text="Total", size_max=55,
-                category_orders={"Dia": list(DIAS_PT.values())}
+                category_orders={"Dia": list(DIAS_PT_CMP.values())}
             )
             fig_b1.update_layout(height=460)
             st.plotly_chart(fig_b1, width="stretch")
