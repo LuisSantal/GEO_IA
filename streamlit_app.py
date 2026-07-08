@@ -222,14 +222,7 @@ FOLDER_ALERTS_ID  = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
 FOLDER_JAMS_ID    = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
 FOLDER_JAMS_ID2   = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
-
-# Lista dinâmica de arquivos CSV complementares mapeados no repositório GitHub
-CSV_FILES_TO_MERGE = [
-    "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv",
-    "Waze for Cities Data _ buracos na via maio 2025 a maio 2026.csv",
-    "Waze for Cities Data _ todos os alertas maio 2025 a maio 2026.csv",
-    "Waze for Cities Data _Dashboard_Traffic Alerts_Tabela_2025-01-01-2026-07-04.csv"
-]
+LOCAL_CSV_PATH    = "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv"
 
 # =========================================================
 # BLOCO 2 — CONEXÃO, INGESTÃO E ESTIMADOR PROBABILÍSTICO
@@ -255,10 +248,7 @@ def get_latest_h5_id(folder_id: str) -> str | None:
     try:
         query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
         results = service.files().list(
-            q=query,
-            fields="files(id, name, modifiedTime)",
-            orderBy="modifiedTime desc",
-            pageSize=5
+            q=query, fields="files(id, name, modifiedTime)", orderBy="modifiedTime desc", pageSize=5
         ).execute()
         files = results.get("files", [])
         return files[0]["id"] if files else None
@@ -285,23 +275,6 @@ def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame()
-
-def parse_pt_date(date_str):
-    if not isinstance(date_str, str): return pd.NaT
-    meses = {
-        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
-        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
-        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
-    }
-    try:
-        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
-        if match:
-            dia, mes_nome, ano = match.groups()
-            mes = meses.get(mes_nome, 1)
-            return datetime(int(ano), int(mes), int(dia))
-    except Exception:
-        pass
-    return pd.to_datetime(date_str, errors='coerce')
 
 def extract_wkt_coordinates(location_str):
     if pd.isna(location_str):
@@ -352,8 +325,7 @@ def _extract_lat_lon_from_location(value):
     return None, None
 
 def extract_coordinates(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
+    if df is None or df.empty: return df
     df = df.copy()
     if "lat" in df.columns and "lon" in df.columns:
         df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
@@ -399,12 +371,11 @@ def normalize_speed(df: pd.DataFrame) -> pd.DataFrame:
     df["speed"] = float("nan")
     return df
 
-@st.cache_data(ttl=600, show_spinner="🔄 Executando Cruzamento e Fusão Multiarquivos (MHDH)...")
+@st.cache_data(ttl=600, show_spinner="🔄 Executando Cruzamento Histórico (MHDH)...")
 def load_all_data():
     df_alerts = pd.DataFrame()
     df_jams = pd.DataFrame()
 
-    # 1. Carrega dados de tempo real conhecidos do H5 via Drive
     alerts_id  = get_latest_h5_id(FOLDER_ALERTS_ID)
     jams_id    = get_latest_h5_id(FOLDER_JAMS_ID)
 
@@ -436,38 +407,32 @@ def load_all_data():
             total = row.sum()
             prob_matrix[idx] = row.values / total if total > 0 else np.ones(24)/24.0
 
-    # 2. Varredura e concatenação automatizada dos múltiplos arquivos CSV do GitHub
-    local_frames = []
-    for csv_path in CSV_FILES_TO_MERGE:
-        if os.path.exists(csv_path):
-            try:
-                df_csv = pd.read_csv(csv_path)
-                df_csv = extract_wkt_coordinates(df_csv)
-                df_csv = normalize_timestamps(df_csv)
-                df_csv = df_csv.rename(columns={'Street': 'street', 'Type': 'type', 'Subtype': 'subtype'})
-                df_csv = translate_dataframe(df_csv)
-                local_frames.append(df_csv)
-            except Exception:
-                pass
+    if os.path.exists(LOCAL_CSV_PATH):
+        try:
+            df_local_csv = pd.read_csv(LOCAL_CSV_PATH)
+            coords_wkt = df_local_csv["Location"].apply(lambda x: pd.Series(extract_wkt_coordinates(x), index=["lat", "lon"]))
+            df_local_csv["lat"] = coords_wkt["lat"]
+            df_local_csv["lon"] = coords_wkt["lon"]
+            df_local_csv = normalize_timestamps(df_local_csv)
+            df_local_csv = df_local_csv.rename(columns={'Street': 'street', 'Type': 'type', 'Subtype': 'subtype'})
+            df_local_csv = translate_dataframe(df_local_csv)
 
-    if local_frames:
-        df_merged_csv = pd.concat(local_frames, ignore_index=True)
-        
-        # Estimação temporal bayesiana para as lacunas da planilha
-        hours_estimated = []
-        for _, row in df_merged_csv.iterrows():
-            t_val = row.get("type", "HAZARD")
-            d_val = row.get("day_of_week", "Monday")
-            if (t_val, d_val) in prob_matrix:
-                hours_estimated.append(int(np.random.choice(range(24), p=prob_matrix[(t_val, d_val)])))
-            else:
-                hours_estimated.append(int(np.random.choice(range(24))))
-        
-        df_merged_csv["hour"] = hours_estimated
-        df_merged_csv["timestamp"] = df_merged_csv.apply(
-            lambda r: datetime.combine(r["date"], datetime.min.time().replace(hour=int(r["hour"]))) if pd.notna(r["date"]) else r["timestamp"], axis=1
-        )
-        df_alerts = pd.concat([df_alerts, df_merged_csv], ignore_index=True) if not df_alerts.empty else df_merged_csv
+            hours_estimated = []
+            for _, row in df_local_csv.iterrows():
+                t_val = row.get("type", "HAZARD")
+                d_val = row.get("day_of_week", "Monday")
+                if (t_val, d_val) in prob_matrix:
+                    hours_estimated.append(int(np.random.choice(range(24), p=prob_matrix[(t_val, d_val)])))
+                else:
+                    hours_estimated.append(int(np.random.choice(range(24))))
+            
+            df_local_csv["hour"] = hours_estimated
+            df_local_csv["timestamp"] = df_local_csv.apply(
+                lambda r: datetime.combine(r["date"], datetime.min.time().replace(hour=int(r["hour"]))) if pd.notna(r["date"]) else r["timestamp"], axis=1
+            )
+            df_alerts = pd.concat([df_alerts, df_local_csv], ignore_index=True) if not df_alerts.empty else df_local_csv
+        except Exception:
+            pass
 
     if not df_alerts.empty:
         dedup = ["uuid"] if "uuid" in df_alerts.columns else ["timestamp", "street"]
@@ -561,6 +526,12 @@ def generate_heatmap(df_json: str) -> folium.Map | None:
 # BLOCO EXTRA — PIPELINE CIENTÍFICO E MCDA
 # =========================================================
 
+def predict_traffic_delay_impact(length_meters: float) -> float:
+    """Modelo de regressão linear para estimativa de atraso com base na fila."""
+    coef_angular = 0.15
+    intercepto   = 12.0
+    return (length_meters * coef_angular) + intercepto
+
 def build_daily_series(df_alerts: pd.DataFrame, df_jams: pd.DataFrame, categoria: str = "TODOS") -> pd.Series:
     frames = []
     if df_alerts is not None and not df_alerts.empty:
@@ -596,6 +567,18 @@ def run_pelt_analysis(serie: pd.Series, model: str = "l2", min_size: int = 7, ju
         import ruptures as rpt
         return rpt.Pelt(model=model, min_size=min_size, jump=jump).fit(serie.values.astype(float)).predict(pen=pen)
     except Exception: return []
+
+def calculate_road_criticism(df_alerts, df_jams):
+    if df_jams.empty: return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
+    agg = {"Volume_Jams": ("street", "count")}
+    if "delay" in df_jams.columns: agg["Atraso_Medio_Seg"] = ("delay", "mean")
+    if "length" in df_jams.columns: agg["Comprimento_Medio_M"] = ("length", "mean")
+    grouped = df_jams.groupby("street").agg(**agg).reset_index()
+    if "Atraso_Medio_Seg" not in grouped.columns: grouped["Atraso_Medio_Seg"] = 0.0
+    max_vol = grouped["Volume_Jams"].max() or 1
+    max_delay = grouped["Atraso_Medio_Seg"].max() or 1
+    grouped["Criticidade_Index"] = ((grouped["Volume_Jams"] / max_vol) * 0.4 + (grouped["Atraso_Medio_Seg"] / max_delay) * 0.6) * 100
+    return grouped.sort_values("Criticidade_Index", ascending=False)
 
 def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> pd.DataFrame:
     blocos = []
@@ -1585,8 +1568,8 @@ rodape_html = f"""
     Equipe de Desenvolvimento
   </div>
   <div style="display:flex;justify-content:center;gap:2rem;flex-wrap:wrap;margin-bottom:1.2rem;">
-    <span style="font-size:0.82rem;color:#334155;">👨‍💻 Luis Enrique Santacruz Alvarez[cite: 2]</span>
-    <span style="font-size:0.82rem;color:#334155;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA[cite: 2]</span>
+    <span style="font-size:0.82rem;color:#334155;">👨‍💻 Luis Enrique Santacruz Alvarez</span>
+    <span style="font-size:0.82rem;color:#334155;">🎓 Dr. Diego Moraes Flores — ILATIT · UNILA</span>
   </div>
 
   <div style="border-top:1px solid #E2E8F0;margin-bottom:1rem;"></div>
@@ -1606,7 +1589,7 @@ rodape_html = f"""
     <span>Local: Foz do Iguaçu (UTC-3)</span>
   </div>
   <div style="margin-top:0.75rem;font-size:0.68rem;color:#94A3B8;">
-    © {now_foz().year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa
+    © {hora_foz_atual.year} GPMME / LAGGRA / LACA — UNILA · Foz do Iguaçu · Uso acadêmico e de pesquisa
   </div>
 </div>
 """
