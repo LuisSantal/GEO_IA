@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import folium
 from folium import plugins
 from folium.plugins import MarkerCluster
+from streamlit_folium import st_folium
 
 # =========================================================
 # BLOCO 1 — CONFIGURAÇÃO BASE DO APP
@@ -385,6 +386,23 @@ def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+def parse_pt_date(date_str):
+    if not isinstance(date_str, str): return pd.NaT
+    meses = {
+        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
+        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
+        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
+    }
+    try:
+        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
+        if match:
+            dia, mes_nome, ano = match.groups()
+            mes = meses.get(mes_nome, 1)
+            return datetime(int(ano), int(mes), int(dia))
+    except Exception:
+        pass
+    return pd.to_datetime(date_str, errors='coerce')
+
 def extract_wkt_coordinates(location_str):
     if pd.isna(location_str):
         return None, None
@@ -395,6 +413,33 @@ def extract_wkt_coordinates(location_str):
             return float(coords[1]), float(coords[0])
         except Exception: pass
     return None, None
+
+def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+
+    df = df.copy()
+
+    if "pubMillis" in df.columns:
+        df["timestamp"] = (
+            pd.to_datetime(df["pubMillis"], unit="ms", utc=True)
+            .dt.tz_convert("America/Sao_Paulo")
+            .dt.tz_localize(None)
+        )
+    elif "Date" in df.columns:
+        df["timestamp"] = df["Date"].apply(parse_pt_date)
+    elif "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    else:
+        df["timestamp"] = now_foz()
+
+    df["date"]        = df["timestamp"].dt.date
+    df["hour"]        = df["timestamp"].dt.hour
+    df["day_of_week"] = df["timestamp"].dt.day_name()
+    df["month"]       = df["timestamp"].dt.month
+    df["year"]        = df["timestamp"].dt.year
+
+    return df
 
 def _parse_dict_like(value):
     if isinstance(value, dict):
@@ -918,8 +963,8 @@ def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> p
         resumo = resumo.merge(pico, left_on="Tipo", right_on="type", how="left").drop(columns=["type"], errors="ignore")
         blocos.append(resumo)
 
-    if df_jams_filtered is not None and not df_jams_filtered.empty:
-        dj = df_jams_filtered.copy()
+    if df_jams is not None and not df_jams.empty:
+        dj = df_jams.copy()
         dj["timestamp"] = pd.to_datetime(dj["timestamp"], errors="coerce")
         dj = dj.dropna(subset=["timestamp"])
         dj["date"] = dj["timestamp"].dt.date
@@ -949,7 +994,6 @@ def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> p
 # BLOCO 4 — SIDEBAR, CARGA OPERACIONAL E FILTROS
 # =========================================================
 
-# DECLARAÇÃO DE FUNÇÕES DO BLOCO 4 NO INÍCIO PARA EVITAR SUTIS EXCEÇÕES DE NAMEERROR
 def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[int, int]) -> pd.DataFrame:
     if df is None or df.empty: return pd.DataFrame()
     df = df.copy()
@@ -979,7 +1023,6 @@ def classify_traffic_status(media_vel_kmh: float) -> str:
 st.sidebar.header("⚙️ Controles")
 st.sidebar.markdown("### ⏳ Status da Sessão")
 
-# Declaração cronológica imediata da hora base local de Foz do Iguaçu (Evita o NameError na linha 1031)
 hora_foz_atual = now_foz()
 
 try:
@@ -1004,7 +1047,6 @@ if all_dates:
 else:
     min_date = max_date = default_date = today_foz
 
-# Recebe as variáveis do painel de controle lateral antes de acionar os filtros internos
 selected_date = st.sidebar.date_input("📅 Data", value=default_date, min_value=min_date, max_value=max_date)
 hora_range = st.sidebar.slider("🕒 Horário", min_value=0, max_value=23, value=(0, 23))
 
@@ -1066,7 +1108,7 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard    = df_jams_filtered.copy()
-df_criticidade_vias = build_descriptive_table(base_alertas_dashboard, base_jams_dashboard)
+df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
 
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
@@ -1100,6 +1142,7 @@ with tab_inc:
     if not df_filtered.empty:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format="iso"))
 
+        # Adicionada verificação de segurança condicional 'if m_inc' para evitar quebra do app
         if m_inc:
             st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
 
@@ -1115,9 +1158,9 @@ with tab_inc:
             | 🟪 | Congestionamento / Trânsito parado |
             """)
         else:
-            st.info("Nenhum incidente dentro da área de Foz do Iguaçu.")
+            st.info("Nenhum incidente mapeável dentro do recorte geográfico de Foz do Iguaçu.")
     else:
-        st.info("Nenhum incidente com os filtros aplicados.")
+        st.info("Nenhum incidente para os filtros aplicados nesta data.")
 
 with tab_jams:
     st.caption("🚦 Escala métrica · Livre → Parado")
@@ -1125,6 +1168,7 @@ with tab_jams:
     if not df_jams_filtered.empty:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format="iso"))
 
+        # Adicionada verificação de segurança condicional 'if m_jam' para evitar quebra do app
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
 
@@ -1139,12 +1183,7 @@ with tab_jams:
             | 🟣 | <5 km/h | Parado / Travado |
             """)
         else:
-            st.warning("Nenhum congestionamento na área filtrada.")
-
-        cols_diag = [c for c in ["lat", "lon", "line", "speed", "street"] if c in df_jams_filtered.columns]
-        if cols_diag:
-            st.caption("Amostra dos dados de congestionamentos")
-            st.dataframe(df_jams_filtered[cols_diag].head(5), width="stretch")
+            st.info("Nenhum congestionamento ativo no mapa para este recorte.")
     else:
         st.info("Nenhum congestionamento para exibir.")
 
