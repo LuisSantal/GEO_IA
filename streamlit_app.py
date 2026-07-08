@@ -385,23 +385,6 @@ def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
-def parse_pt_date(date_str):
-    if not isinstance(date_str, str): return pd.NaT
-    meses = {
-        'jan.': 1, 'fev.': 2, 'mar.': 3, 'abr.': 4,
-        'maio': 5, 'mai.': 5, 'jun.': 6, 'jul.': 7, 'ago.': 8,
-        'set.': 9, 'out.': 10, 'nov.': 11, 'dez.': 12
-    }
-    try:
-        match = re.search(r'(\d+)\s+de\s+([a-z\.]+)\s+de\s+(\d+)', date_str.lower())
-        if match:
-            dia, mes_nome, ano = match.groups()
-            mes = meses.get(mes_nome, 1)
-            return datetime(int(ano), int(mes), int(dia))
-    except Exception:
-        pass
-    return pd.to_datetime(date_str, errors='coerce')
-
 def extract_wkt_coordinates(location_str):
     if pd.isna(location_str):
         return None, None
@@ -412,31 +395,6 @@ def extract_wkt_coordinates(location_str):
             return float(coords[1]), float(coords[0])
         except Exception: pass
     return None, None
-
-def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-
-    df = df.copy()
-
-    if "pubMillis" in df.columns:
-        df["timestamp"] = (
-            pd.to_datetime(df["pubMillis"], unit="ms", utc=True)
-            .dt.tz_convert("America/Sao_Paulo")
-            .dt.tz_localize(None)
-        )
-    elif "Date" in df.columns:
-        df["timestamp"] = df["Date"].apply(parse_pt_date)
-    elif "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    else:
-        df["timestamp"] = now_foz()
-
-    df["date"]        = df["timestamp"].dt.date
-    df["hour"]        = df["timestamp"].dt.hour
-    df["day_of_week"] = df["timestamp"].dt.day_name()
-
-    return df
 
 def _parse_dict_like(value):
     if isinstance(value, dict):
@@ -960,8 +918,8 @@ def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> p
         resumo = resumo.merge(pico, left_on="Tipo", right_on="type", how="left").drop(columns=["type"], errors="ignore")
         blocos.append(resumo)
 
-    if df_jams is not None and not df_jams.empty:
-        dj = df_jams.copy()
+    if df_jams_filtered is not None and not df_jams_filtered.empty:
+        dj = df_jams_filtered.copy()
         dj["timestamp"] = pd.to_datetime(dj["timestamp"], errors="coerce")
         dj = dj.dropna(subset=["timestamp"])
         dj["date"] = dj["timestamp"].dt.date
@@ -991,7 +949,7 @@ def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> p
 # BLOCO 4 — SIDEBAR, CARGA OPERACIONAL E FILTROS
 # =========================================================
 
-# DECLARAÇÃO DE FUNÇÕES DO BLOCO 4 NO INÍCIO PARA EVITAR NAMEERROR
+# DECLARAÇÃO DE FUNÇÕES DO BLOCO 4 NO INÍCIO PARA EVITAR SUTIS EXCEÇÕES DE NAMEERROR
 def apply_base_time_filter(df: pd.DataFrame, selected_date, hora_range: tuple[int, int]) -> pd.DataFrame:
     if df is None or df.empty: return pd.DataFrame()
     df = df.copy()
@@ -1021,6 +979,9 @@ def classify_traffic_status(media_vel_kmh: float) -> str:
 st.sidebar.header("⚙️ Controles")
 st.sidebar.markdown("### ⏳ Status da Sessão")
 
+# Declaração cronológica imediata da hora base local de Foz do Iguaçu (Evita o NameError na linha 1031)
+hora_foz_atual = now_foz()
+
 try:
     df_alerts_raw, df_jams_raw = load_all_data()
 except Exception as e:
@@ -1043,7 +1004,7 @@ if all_dates:
 else:
     min_date = max_date = default_date = today_foz
 
-# Recebe os seletores da barra lateral antes da chamada dos filtros
+# Recebe as variáveis do painel de controle lateral antes de acionar os filtros internos
 selected_date = st.sidebar.date_input("📅 Data", value=default_date, min_value=min_date, max_value=max_date)
 hora_range = st.sidebar.slider("🕒 Horário", min_value=0, max_value=23, value=(0, 23))
 
@@ -1105,7 +1066,7 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard    = df_jams_filtered.copy()
-df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
+df_criticidade_vias = build_descriptive_table(base_alertas_dashboard, base_jams_dashboard)
 
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
@@ -1385,6 +1346,21 @@ with tab_graficos:
         if filtro_rua and "street" in df_hist.columns:
             df_hist = df_hist[df_hist["street"] == filtro_rua]
 
+        DIAS_PT = {
+            "Monday": "Segunda", "Tuesday": "Terça",  "Wednesday": "Quarta",
+            "Thursday": "Quinta", "Friday": "Sexta",  "Saturday": "Sábado",
+            "Sunday": "Domingo",
+        }
+
+        CORES_TIPO = {
+            "ACIDENTE":         "#e74c3c",
+            "VIA FECHADA":      "#c0392b",
+            "PERIGO":           "#e67e22",
+            "PERIGO CLIMÁTICO": "#3498db",
+            "CONGESTIONAMENTO": "#f39c12",
+            "ALERTA":           "#9b59b6",
+        }
+
         col_g1, col_g2 = st.columns(2)
 
         with col_g1:
@@ -1440,10 +1416,10 @@ with tab_graficos:
         if "day_of_week" in df_hist.columns and not df_hist.empty:
             st.subheader("Incidentes por Dia da Semana")
             df_dow = df_hist.copy()
-            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT_CMP)
+            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT)
 
             dow_tipo   = df_dow.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
-            ordem_dias = list(DIAS_PT_CMP.values())
+            ordem_dias = list(DIAS_PT.values())
 
             fig_dow = px.bar(
                 dow_tipo, x="Dia", y="Quantidade", color="type",
@@ -1497,7 +1473,7 @@ with tab_graficos:
         st.subheader("Quais dias cada rua tem mais problemas?")
         if top_ruas_lista and "day_of_week" in df_hist.columns:
             df_hm     = df_hist[df_hist["street"].isin(top_ruas_lista)].copy()
-            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT_CMP)
+            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT)
 
             bubble_dow = df_hm.groupby(["street", "Dia"]).size().reset_index(name="Qtd")
             total_dow  = bubble_dow.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
@@ -1514,7 +1490,7 @@ with tab_graficos:
             fig_b1 = px.scatter(
                 total_dow, x="Dia", y="street", size="Total",
                 color="Nível", text="Total", size_max=55,
-                category_orders={"Dia": list(DIAS_PT_CMP.values())}
+                category_orders={"Dia": list(DIAS_PT.values())}
             )
             fig_b1.update_layout(height=460)
             st.plotly_chart(fig_b1, width="stretch")
