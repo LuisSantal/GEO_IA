@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 import folium
 from folium import plugins
 from folium.plugins import MarkerCluster
-from streamlit_folium import st_folium
 
 # =========================================================
 # BLOCO 1 — CONFIGURAÇÃO BASE DO APP
@@ -109,28 +108,6 @@ body { color: var(--text); }
     font-weight: 700 !important;
 }
 
-.stButton > button[kind="primary"] {
-    background: var(--primary) !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.3px !important;
-    box-shadow: var(--shadow-md) !important;
-    transition: background 160ms ease, box-shadow 160ms ease, transform 120ms ease !important;
-}
-
-.stButton > button[kind="primary"]:hover {
-    background: var(--primary-hover) !important;
-    box-shadow: var(--shadow-lg) !important;
-    transform: translateY(-1px) !important;
-}
-
-.stButton > button[kind="primary"]:active {
-    transform: translateY(0) !important;
-    box-shadow: var(--shadow-sm) !important;
-}
-
 [data-testid="metric-container"] {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
@@ -212,6 +189,10 @@ body { color: var(--text); }
     border: 1px solid var(--border) !important;
     border-radius: 10px !important;
     box-shadow: var(--shadow-sm) !important;
+}
+
+[data-testid="stExpander"]:hover {
+    border-color: #bcd0f0 !important;
 }
 
 [data-testid="stTextInput"] input,
@@ -839,7 +820,7 @@ def generate_jams_map(df_json: str) -> folium.Map | None:
             popup_html = f"""
             <div style='min-width:180px;font-family:Arial,sans-serif;'>
                 <b style='color:{color}'>🚗 {spd_str}</b><br>
-                🛣️ <i>{rua}</i><br>
+                # 🛣️ <i>{rua}</i><br>
                 🕒 {ts}
             </div>
             """
@@ -883,7 +864,7 @@ def generate_heatmap(df_json: str) -> folium.Map | None:
     return m
 
 # =========================================================
-# BLOCO EXTRA — PIPELINE CIENTÍFICO
+# BLOCO EXTRA — PIPELINE CIENTÍFICO E MCDA
 # =========================================================
 
 def build_daily_series(df_alerts: pd.DataFrame, df_jams: pd.DataFrame, categoria: str = "TODOS") -> pd.Series:
@@ -940,6 +921,35 @@ def run_pelt_analysis(serie: pd.Series, model: str = "l2", min_size: int = 7, ju
     except Exception:
         return []
 
+def calculate_road_criticism(df_alerts, df_jams):
+    """Índice de criticidade viária (MCDA) ponderando volume de retenções e atraso médio."""
+    if df_jams.empty:
+        return pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
+
+    agg = {}
+    agg["Volume_Jams"] = ("street", "count")
+    if "delay" in df_jams.columns:
+        agg["Atraso_Medio_Seg"] = ("delay", "mean")
+    if "length" in df_jams.columns:
+        agg["Comprimento_Medio_M"] = ("length", "mean")
+
+    grouped = df_jams.groupby("street").agg(**agg).reset_index()
+
+    if "Atraso_Medio_Seg" not in grouped.columns:
+        grouped["Atraso_Medio_Seg"] = 0.0
+    if "Comprimento_Medio_M" not in grouped.columns:
+        grouped["Comprimento_Medio_M"] = 0.0
+
+    max_vol   = grouped["Volume_Jams"].max() or 1
+    max_delay = grouped["Atraso_Medio_Seg"].max() or 1
+
+    grouped["Criticidade_Index"] = (
+        (grouped["Volume_Jams"]     / max_vol)   * 0.4 +
+        (grouped["Atraso_Medio_Seg"] / max_delay) * 0.6
+    ) * 100
+
+    return grouped.sort_values("Criticidade_Index", ascending=False)
+
 def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> pd.DataFrame:
     blocos = []
 
@@ -963,8 +973,8 @@ def build_descriptive_table(df_alerts: pd.DataFrame, df_jams: pd.DataFrame) -> p
         resumo = resumo.merge(pico, left_on="Tipo", right_on="type", how="left").drop(columns=["type"], errors="ignore")
         blocos.append(resumo)
 
-    if df_jams is not None and not df_jams.empty:
-        dj = df_jams.copy()
+    if df_jams_filtered is not None and not df_jams_filtered.empty:
+        dj = df_jams_filtered.copy()
         dj["timestamp"] = pd.to_datetime(dj["timestamp"], errors="coerce")
         dj = dj.dropna(subset=["timestamp"])
         dj["date"] = dj["timestamp"].dt.date
@@ -1108,7 +1118,12 @@ if not df_jams_filtered.empty and "speed" in df_jams_filtered.columns:
 
 base_alertas_dashboard = df_filtered.copy()
 base_jams_dashboard    = df_jams_filtered.copy()
-df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
+
+# Segurança adicionada: Impede erro na checagem multicritério (MCDA) caso o banco de congestionamentos venha limpo
+if not base_jams_dashboard.empty:
+    df_criticidade_vias = calculate_road_criticism(base_alertas_dashboard, base_jams_dashboard)
+else:
+    df_criticidade_vias = pd.DataFrame(columns=["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"])
 
 # =========================================================
 # BLOCO 5 — CABEÇALHO, RESUMO, KPIs E INDICADORES
@@ -1142,7 +1157,6 @@ with tab_inc:
     if not df_filtered.empty:
         m_inc = generate_incidents_map(df_filtered.to_json(date_format="iso"))
 
-        # Adicionada verificação de segurança condicional 'if m_inc' para evitar quebra do app
         if m_inc:
             st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
 
@@ -1168,7 +1182,6 @@ with tab_jams:
     if not df_jams_filtered.empty:
         m_jam = generate_jams_map(df_jams_filtered.to_json(date_format="iso"))
 
-        # Adicionada verificação de segurança condicional 'if m_jam' para evitar quebra do app
         if m_jam:
             st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
 
@@ -1385,21 +1398,6 @@ with tab_graficos:
         if filtro_rua and "street" in df_hist.columns:
             df_hist = df_hist[df_hist["street"] == filtro_rua]
 
-        DIAS_PT = {
-            "Monday": "Segunda", "Tuesday": "Terça",  "Wednesday": "Quarta",
-            "Thursday": "Quinta", "Friday": "Sexta",  "Saturday": "Sábado",
-            "Sunday": "Domingo",
-        }
-
-        CORES_TIPO = {
-            "ACIDENTE":         "#e74c3c",
-            "VIA FECHADA":      "#c0392b",
-            "PERIGO":           "#e67e22",
-            "PERIGO CLIMÁTICO": "#3498db",
-            "CONGESTIONAMENTO": "#f39c12",
-            "ALERTA":           "#9b59b6",
-        }
-
         col_g1, col_g2 = st.columns(2)
 
         with col_g1:
@@ -1455,10 +1453,10 @@ with tab_graficos:
         if "day_of_week" in df_hist.columns and not df_hist.empty:
             st.subheader("Incidentes por Dia da Semana")
             df_dow = df_hist.copy()
-            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT)
+            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT_CMP)
 
             dow_tipo   = df_dow.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
-            ordem_dias = list(DIAS_PT.values())
+            ordem_dias = list(DIAS_PT_CMP.values())
 
             fig_dow = px.bar(
                 dow_tipo, x="Dia", y="Quantidade", color="type",
@@ -1512,7 +1510,7 @@ with tab_graficos:
         st.subheader("Quais dias cada rua tem mais problemas?")
         if top_ruas_lista and "day_of_week" in df_hist.columns:
             df_hm     = df_hist[df_hist["street"].isin(top_ruas_lista)].copy()
-            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT)
+            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT_CMP)
 
             bubble_dow = df_hm.groupby(["street", "Dia"]).size().reset_index(name="Qtd")
             total_dow  = bubble_dow.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
@@ -1529,7 +1527,7 @@ with tab_graficos:
             fig_b1 = px.scatter(
                 total_dow, x="Dia", y="street", size="Total",
                 color="Nível", text="Total", size_max=55,
-                category_orders={"Dia": list(DIAS_PT.values())}
+                category_orders={"Dia": list(DIAS_PT_CMP.values())}
             )
             fig_b1.update_layout(height=460)
             st.plotly_chart(fig_b1, width="stretch")
