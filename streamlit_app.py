@@ -1671,7 +1671,365 @@ st.caption(
 )
 
 st.markdown("---")
+# =========================================================
+# BLOCO EXTRA — ANÁLISE TEMPORAL ANUAL DE BURACOS (PLANILHA)
+# =========================================================
 
+ANNUAL_YEARS_DEFAULT = [2024, 2025, 2026]
+TOP_STREETS_PER_YEAR = 5
+MAX_MARKERS_PER_STREET = 200
+NOMINATIM_SLEEP_SECONDS = 1.2
+LOCAL_ALERT_CSV_PATH = "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv"
+
+POTHOLE_SUBTYPE_VALUES = {
+    "BURACO NA VIA",
+    "HAZARD_ON_ROAD_POT_HOLE"
+}
+
+
+def standardize_alert_spreadsheet_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame()
+
+    standardized_dataframe = dataframe.copy()
+    standardized_dataframe.columns = [str(column).strip() for column in standardized_dataframe.columns]
+
+    rename_map = {}
+    for column_name in standardized_dataframe.columns:
+        lower_name = column_name.lower().strip()
+
+        if lower_name == "street":
+            rename_map[column_name] = "street"
+        elif lower_name == "city":
+            rename_map[column_name] = "city"
+        elif lower_name == "location":
+            rename_map[column_name] = "location"
+        elif lower_name == "subtype":
+            rename_map[column_name] = "subtype"
+        elif lower_name == "type":
+            rename_map[column_name] = "type"
+        elif lower_name == "date":
+            rename_map[column_name] = "Date"
+        elif lower_name == "pubmillis":
+            rename_map[column_name] = "pubMillis"
+
+    standardized_dataframe = standardized_dataframe.rename(columns=rename_map)
+    return standardized_dataframe
+
+
+def parse_portuguese_date(date_value):
+    if pd.isna(date_value):
+        return pd.NaT
+
+    date_text = str(date_value).strip()
+
+    month_map = {
+        'jan.': 'Jan', 'fev.': 'Feb', 'mar.': 'Mar', 'abr.': 'Apr',
+        'maio': 'May', 'mai.': 'May', 'jun.': 'Jun', 'jul.': 'Jul', 'ago.': 'Aug',
+        'set.': 'Sep', 'out.': 'Oct', 'nov.': 'Nov', 'dez.': 'Dec'
+    }
+
+    for pt_abbreviation, en_month in month_map.items():
+        date_text = date_text.replace(pt_abbreviation, en_month)
+
+    return pd.to_datetime(date_text, format='%d de %b de %Y', errors='coerce')
+
+
+def normalize_spreadsheet_timestamps(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame()
+
+    normalized_dataframe = dataframe.copy()
+
+    if "pubMillis" in normalized_dataframe.columns:
+        normalized_dataframe["timestamp"] = pd.to_datetime(
+            normalized_dataframe["pubMillis"],
+            unit="ms",
+            errors="coerce",
+            utc=True
+        ).dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+
+    elif "Date" in normalized_dataframe.columns:
+        normalized_dataframe["timestamp"] = normalized_dataframe["Date"].apply(parse_portuguese_date)
+
+    elif "timestamp" in normalized_dataframe.columns:
+        normalized_dataframe["timestamp"] = pd.to_datetime(normalized_dataframe["timestamp"], errors="coerce")
+
+    else:
+        normalized_dataframe["timestamp"] = pd.NaT
+
+    normalized_dataframe = normalized_dataframe.dropna(subset=["timestamp"]).copy()
+
+    if normalized_dataframe.empty:
+        return normalized_dataframe
+
+    normalized_dataframe["date"] = normalized_dataframe["timestamp"].dt.date
+    normalized_dataframe["hour"] = normalized_dataframe["timestamp"].dt.hour
+    normalized_dataframe["day_of_week"] = normalized_dataframe["timestamp"].dt.day_name()
+    normalized_dataframe["year"] = normalized_dataframe["timestamp"].dt.year
+
+    return normalized_dataframe
+
+
+def extract_wkt_point_coordinates(location_value):
+    if pd.isna(location_value):
+        return None, None
+
+    location_text = str(location_value)
+    point_match = re.search(r'Point\(([-+]?\d+\.?\d*)\s+([-+]?\d+\.?\d*)\)', location_text)
+
+    if point_match:
+        longitude = float(point_match.group(1))
+        latitude = float(point_match.group(2))
+        return latitude, longitude
+
+    return None, None
+
+
+def extract_spreadsheet_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame()
+
+    coordinates_dataframe = dataframe.copy()
+
+    if "location" in coordinates_dataframe.columns:
+        extracted_coordinates = coordinates_dataframe["location"].apply(
+            lambda location_value: pd.Series(
+                extract_wkt_point_coordinates(location_value),
+                index=["latitude", "longitude"]
+            )
+        )
+        coordinates_dataframe["latitude"] = extracted_coordinates["latitude"]
+        coordinates_dataframe["longitude"] = extracted_coordinates["longitude"]
+
+    return coordinates_dataframe
+
+
+def normalize_pothole_subtype_labels(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame()
+
+    normalized_dataframe = dataframe.copy()
+
+    if "subtype" in normalized_dataframe.columns:
+        normalized_dataframe["subtype"] = normalized_dataframe["subtype"].replace({
+            "HAZARD_ON_ROAD_POT_HOLE": "BURACO NA VIA"
+        })
+
+    return normalized_dataframe
+
+
+def sample_street_points(dataframe: pd.DataFrame, max_points: int) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame()
+    if len(dataframe) <= max_points:
+        return dataframe.copy()
+    return dataframe.sample(n=max_points, random_state=42).copy()
+
+
+@st.cache_data(ttl=3600, show_spinner="📄 Carregando planilha histórica de alertas...")
+def load_alert_spreadsheet_for_annual_analysis(csv_path: str = LOCAL_ALERT_CSV_PATH) -> pd.DataFrame:
+    spreadsheet_dataframe = pd.read_csv(csv_path)
+    spreadsheet_dataframe = standardize_alert_spreadsheet_columns(spreadsheet_dataframe)
+    spreadsheet_dataframe = normalize_spreadsheet_timestamps(spreadsheet_dataframe)
+    spreadsheet_dataframe = normalize_pothole_subtype_labels(spreadsheet_dataframe)
+    spreadsheet_dataframe = extract_spreadsheet_coordinates(spreadsheet_dataframe)
+
+    if "street" not in spreadsheet_dataframe.columns:
+        spreadsheet_dataframe["street"] = pd.NA
+    if "city" not in spreadsheet_dataframe.columns:
+        spreadsheet_dataframe["city"] = "Foz do Iguaçu"
+
+    return spreadsheet_dataframe
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_street_geometry_from_nominatim(street_name: str, city_name: str, country_name: str = "Brazil"):
+    search_query = f"{street_name}, {city_name}, {country_name}"
+    request_url = "https://nominatim.openstreetmap.org/search"
+    request_params = {
+        "q": search_query,
+        "format": "json",
+        "limit": 1,
+        "polygon_geojson": 1
+    }
+    request_headers = {
+        "User-Agent": "WazeFozAnnualStreetAnalysis/1.0"
+    }
+
+    try:
+        response = requests.get(request_url, params=request_params, headers=request_headers, timeout=20)
+        response.raise_for_status()
+        response_data = response.json()
+
+        if not response_data:
+            return None
+
+        geojson_data = response_data[0].get("geojson")
+        if not geojson_data:
+            return None
+
+        geometry_type = geojson_data.get("type")
+
+        if geometry_type == "LineString":
+            return [[coordinate[1], coordinate[0]] for coordinate in geojson_data["coordinates"]]
+
+        if geometry_type == "MultiLineString":
+            merged_coordinates = []
+            for segment in geojson_data["coordinates"]:
+                merged_coordinates.extend([[coordinate[1], coordinate[0]] for coordinate in segment])
+            return merged_coordinates if merged_coordinates else None
+
+        return None
+
+    except Exception:
+        return None
+
+
+def build_top_streets_by_year(dataframe: pd.DataFrame, year_value: int, top_n: int = 5) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame(columns=["street", "city", "pothole_count"])
+
+    year_dataframe = dataframe[dataframe["year"] == year_value].copy()
+    if year_dataframe.empty:
+        return pd.DataFrame(columns=["street", "city", "pothole_count"])
+
+    if "subtype" not in year_dataframe.columns:
+        return pd.DataFrame(columns=["street", "city", "pothole_count"])
+
+    potholes_dataframe = year_dataframe[
+        year_dataframe["subtype"].astype(str).str.upper().isin(POTHOLE_SUBTYPE_VALUES)
+    ].copy()
+
+    if potholes_dataframe.empty:
+        return pd.DataFrame(columns=["street", "city", "pothole_count"])
+
+    potholes_dataframe = potholes_dataframe.dropna(subset=["street"]).copy()
+    potholes_dataframe["street"] = potholes_dataframe["street"].astype(str).str.strip()
+    potholes_dataframe["city"] = potholes_dataframe["city"].fillna("Foz do Iguaçu").astype(str).str.strip()
+
+    potholes_dataframe = potholes_dataframe[
+        potholes_dataframe["street"].notna() &
+        (~potholes_dataframe["street"].isin(["", "nan", "N/A", "NA"]))
+    ]
+
+    if potholes_dataframe.empty:
+        return pd.DataFrame(columns=["street", "city", "pothole_count"])
+
+    top_streets_dataframe = (
+        potholes_dataframe
+        .groupby(["street", "city"])
+        .size()
+        .reset_index(name="pothole_count")
+        .sort_values("pothole_count", ascending=False)
+        .head(top_n)
+        .reset_index(drop=True)
+    )
+
+    return top_streets_dataframe
+
+
+def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: int = 5):
+    top_streets_dataframe = build_top_streets_by_year(dataframe, year_value, top_n=top_n)
+
+    if top_streets_dataframe.empty:
+        return None, top_streets_dataframe
+
+    annual_dataframe = dataframe[
+        (dataframe["year"] == year_value) &
+        (dataframe["subtype"].astype(str).str.upper().isin(POTHOLE_SUBTYPE_VALUES))
+    ].copy()
+
+    annual_dataframe = annual_dataframe.dropna(subset=["latitude", "longitude"], errors="ignore")
+
+    street_geometry_registry = {}
+    map_bounds = []
+
+    for _, street_row in top_streets_dataframe.iterrows():
+        street_name = street_row["street"]
+        city_name = street_row["city"]
+        pothole_count = int(street_row["pothole_count"])
+
+        street_geometry = get_street_geometry_from_nominatim(street_name, city_name)
+        if street_geometry and len(street_geometry) >= 2:
+            street_geometry_registry[(street_name, city_name)] = {
+                "geometry": street_geometry,
+                "pothole_count": pothole_count
+            }
+            map_bounds.extend(street_geometry)
+
+    if street_geometry_registry:
+        initial_key = list(street_geometry_registry.keys())[0]
+        initial_point = street_geometry_registry[initial_key]["geometry"][0]
+        annual_map = folium.Map(location=[initial_point[0], initial_point[1]], zoom_start=13, tiles="OpenStreetMap")
+    else:
+        fallback_dataframe = annual_dataframe.dropna(subset=["latitude", "longitude"])
+        if fallback_dataframe.empty:
+            return None, top_streets_dataframe
+        annual_map = folium.Map(
+            location=[fallback_dataframe["latitude"].mean(), fallback_dataframe["longitude"].mean()],
+            zoom_start=13,
+            tiles="OpenStreetMap"
+        )
+
+    for (street_name, city_name), geometry_data in street_geometry_registry.items():
+        street_group = folium.FeatureGroup(
+            name=f"Rua: {street_name} ({city_name})",
+            show=True
+        )
+
+        folium.PolyLine(
+            locations=geometry_data["geometry"],
+            color="blue",
+            weight=5,
+            opacity=0.75,
+            tooltip=(
+                f"<b>Rua:</b> {street_name}<br>"
+                f"<b>Cidade:</b> {city_name}<br>"
+                f"<b>Buracos:</b> {geometry_data['pothole_count']}"
+            )
+        ).add_to(street_group)
+
+        street_points_dataframe = annual_dataframe[
+            (annual_dataframe["street"] == street_name) &
+            (annual_dataframe["city"] == city_name)
+        ].dropna(subset=["latitude", "longitude"]).copy()
+
+        sampled_street_points = sample_street_points(street_points_dataframe, MAX_MARKERS_PER_STREET)
+
+        marker_cluster = MarkerCluster(
+            name=f"Buracos em {street_name}",
+            disableClusteringAtZoom=17
+        ).add_to(street_group)
+
+        for _, point_row in sampled_street_points.iterrows():
+            popup_text = (
+                f"Rua: {point_row.get('street', 'N/D')}<br>"
+                f"Data: {point_row.get('Date', point_row.get('date', 'N/D'))}<br>"
+                f"Tipo: {point_row.get('subtype', 'N/D')}"
+            )
+
+            folium.CircleMarker(
+                location=[point_row["latitude"], point_row["longitude"]],
+                radius=4,
+                color="darkred",
+                fill=True,
+                fill_color="red",
+                fill_opacity=0.75,
+                popup=popup_text
+            ).add_to(marker_cluster)
+
+        street_group.add_to(annual_map)
+
+    if map_bounds:
+        annual_map.fit_bounds(map_bounds)
+    else:
+        valid_points = annual_dataframe.dropna(subset=["latitude", "longitude"])
+        if not valid_points.empty:
+            annual_map.fit_bounds(valid_points[["latitude", "longitude"]].values.tolist())
+
+    folium.LayerControl(collapsed=False).add_to(annual_map)
+    return annual_map, top_streets_dataframe
 
 # =========================================================
 # BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS
@@ -1680,21 +2038,23 @@ st.markdown("---")
 st.subheader("🗺️ Visualizações")
 
 (
-    incidents_tab,
-    jams_tab,
-    heatmap_tab,
-    temporal_analysis_tab,
-    charts_tab,
-    scientific_pipeline_tab,
-    criticality_tab,
-    predictive_model_tab,
-    data_tab
+    tab_inc,
+    tab_jams,
+    tab_calor,
+    tab_temporal_danos,
+    tab_temporal_anual,
+    tab_graficos,
+    tab_pipeline,
+    tab_criticidade,
+    tab_predicao,
+    tab_dados
 ) = st.tabs(
     [
         "Incidentes",
         "Congestionamentos",
         "Mapa de Calor",
         "📅 Análise Temporal",
+        "🗺️ Análisis Temporal Anual",
         "Gráficos",
         "🧪 Pipeline Científico",
         "📊 Criticidade (MCDA)",
@@ -1703,14 +2063,14 @@ st.subheader("🗺️ Visualizações")
     ]
 )
 
-with incidents_tab:
+with tab_inc:
     st.caption("📍 Centro: -25.54, -54.58 · Norte ↑ · Clique nos pontos para detalhes")
 
-    if not filtered_alerts_dataframe.empty:
-        incidents_map = generate_incidents_map(filtered_alerts_dataframe.to_json(date_format="iso"))
+    if not df_filtered.empty:
+        m_inc = generate_incidents_map(df_filtered.to_json(date_format="iso"))
 
-        if incidents_map:
-            st_folium(incidents_map, width="100%", height=500, key=f"mapa_inc_{len(filtered_alerts_dataframe)}")
+        if m_inc:
+            st_folium(m_inc, width="100%", height=500, key=f"mapa_inc_{len(df_filtered)}")
 
             st.markdown("""
             | Cor | Tipo / Natureza |
@@ -1728,14 +2088,14 @@ with incidents_tab:
     else:
         st.info("Nenhum incidente com os filtros aplicados.")
 
-with jams_tab:
+with tab_jams:
     st.caption("🚦 Escala métrica · Livre → Parado")
 
-    if not filtered_jams_dataframe.empty:
-        jams_map = generate_jams_map(filtered_jams_dataframe.to_json(date_format="iso"))
+    if not df_jams_filtered.empty:
+        m_jam = generate_jams_map(df_jams_filtered.to_json(date_format="iso"))
 
-        if jams_map:
-            st_folium(jams_map, width="100%", height=500, key=f"mapa_jam_{len(filtered_jams_dataframe)}")
+        if m_jam:
+            st_folium(m_jam, width="100%", height=500, key=f"mapa_jam_{len(df_jams_filtered)}")
 
             st.markdown("""
             | Cor | Velocidade | Status |
@@ -1750,36 +2110,36 @@ with jams_tab:
         else:
             st.warning("Nenhum congestionamento na área filtrada.")
 
-        jam_diagnostic_columns = [column for column in ["lat", "lon", "line", "speed", "street"] if column in filtered_jams_dataframe.columns]
-        if jam_diagnostic_columns:
+        cols_diag = [c for c in ["lat", "lon", "line", "speed", "street"] if c in df_jams_filtered.columns]
+        if cols_diag:
             st.caption("Amostra dos dados de congestionamentos")
-            st.dataframe(filtered_jams_dataframe[jam_diagnostic_columns].head(5), width="stretch")
+            st.dataframe(df_jams_filtered[cols_diag].head(5), width="stretch")
     else:
         st.info("Nenhum congestionamento para exibir.")
 
-with heatmap_tab:
+with tab_calor:
     st.subheader("🔥 Zonas de Concentração de Incidentes")
 
-    if not filtered_alerts_dataframe.empty:
-        heatmap_source_dataframe = filtered_alerts_dataframe.copy()
+    if not df_filtered.empty:
+        df_heat = df_filtered.copy()
 
-        if {"lat", "lon"}.issubset(heatmap_source_dataframe.columns):
-            heatmap_source_dataframe = heatmap_source_dataframe.dropna(subset=["lat", "lon"])
-            heatmap_source_dataframe = heatmap_source_dataframe[
-                heatmap_source_dataframe["lat"].between(FOZ_LATITUDE_MIN, FOZ_LATITUDE_MAX) &
-                heatmap_source_dataframe["lon"].between(FOZ_LONGITUDE_MIN, FOZ_LONGITUDE_MAX)
+        if {"lat", "lon"}.issubset(df_heat.columns):
+            df_heat = df_heat.dropna(subset=["lat", "lon"])
+            df_heat = df_heat[
+                df_heat["lat"].between(LAT_MIN, LAT_MAX) &
+                df_heat["lon"].between(LON_MIN, LON_MAX)
             ]
 
-            if not heatmap_source_dataframe.empty:
-                incidents_heatmap = folium.Map(
-                    location=[heatmap_source_dataframe["lat"].mean(), heatmap_source_dataframe["lon"].mean()],
+            if not df_heat.empty:
+                m_heat = folium.Map(
+                    location=[df_heat["lat"].mean(), df_heat["lon"].mean()],
                     zoom_start=13,
                     tiles="OpenStreetMap"
                 )
 
-                heat_points = [[row["lat"], row["lon"]] for _, row in heatmap_source_dataframe.iterrows()]
+                heat_data = [[row["lat"], row["lon"]] for _, row in df_heat.iterrows()]
                 plugins.HeatMap(
-                    heat_points,
+                    heat_data,
                     radius=20,
                     blur=15,
                     min_opacity=0.35,
@@ -1790,9 +2150,9 @@ with heatmap_tab:
                         0.8: "#f03b20",
                         1.0: "#bd0026",
                     }
-                ).add_to(incidents_heatmap)
+                ).add_to(m_heat)
 
-                st_folium(incidents_heatmap, width="100%", height=500, key=f"mapa_heat_{len(heatmap_source_dataframe)}")
+                st_folium(m_heat, width="100%", height=500, key=f"mapa_heat_{len(df_heat)}")
 
                 st.markdown("""
                 | Cor | Concentração |
@@ -1803,9 +2163,9 @@ with heatmap_tab:
                 | 🟫 | Crítica — intervenção prioritária |
                 """)
 
-                heatmap_type_counts = heatmap_source_dataframe["type"].value_counts().reset_index()
-                heatmap_type_counts.columns = ["Tipo", "Qtd"]
-                st.dataframe(heatmap_type_counts, hide_index=True, width="stretch")
+                tipos_no_mapa = df_heat["type"].value_counts().reset_index()
+                tipos_no_mapa.columns = ["Tipo", "Qtd"]
+                st.dataframe(tipos_no_mapa, hide_index=True, width="stretch")
             else:
                 st.info("Nenhum ponto dentro da área de Foz do Iguaçu.")
         else:
@@ -1813,50 +2173,181 @@ with heatmap_tab:
     else:
         st.info("Sem dados suficientes para mapa de calor.")
 
-with temporal_analysis_tab:
+with tab_temporal_danos:
     st.subheader("📅 Análise Temporal de Patologias Viárias")
     st.markdown("""
     Esta seção exibe o perfil de distribuição e reincidência de anomalias viárias nos arquivos ativos carregados atualmente.
     """)
-    if not raw_alerts_dataframe.empty:
-        available_damage_subtypes = get_clean_unique_values(raw_alerts_dataframe["subtype"], invalid_values=["nan", ""])
-        selected_damage_subtype = st.selectbox("Selecione a natureza do dano:", available_damage_subtypes, key="sel_dano_temporal")
+    if not df_alerts_raw.empty:
+        subtipos = clean_unique_values(df_alerts_raw["subtype"], invalid_values=["nan", ""])
+        subtipo_sel = st.selectbox("Selecione a natureza do dano:", subtipos, key="sel_dano_temporal")
 
-        selected_damage_dataframe = raw_alerts_dataframe[raw_alerts_dataframe["subtype"] == selected_damage_subtype]
-        if not selected_damage_dataframe.empty:
-            hourly_damage_histogram = px.histogram(
-                selected_damage_dataframe,
+        df_sub = df_alerts_raw[df_alerts_raw["subtype"] == subtipo_sel]
+        if not df_sub.empty:
+            fig_temp = px.histogram(
+                df_sub,
                 x="hour",
                 nbins=24,
                 color_discrete_sequence=['#dc2626'],
-                title=f"Distribuição Horária Total de: {selected_damage_subtype}",
+                title=f"Distribuição Horária Total de: {subtipo_sel}",
                 labels={"hour": "Hora do Dia (Recorte Atual)", "count": "Volume de Alertas"}
             )
-            st.plotly_chart(hourly_damage_histogram, use_container_width=True)
+            st.plotly_chart(fig_temp, use_container_width=True)
         else:
             st.info("Sem registros para a patologia selecionada na data ativa.")
     else:
         st.warning("Base de dados de alertas vazia ou indisponível.")
 
-with charts_tab:
-    if not filtered_alerts_dataframe.empty:
+with tab_temporal_anual:
+    st.subheader("🗺️ Análisis Temporal Anual — Top ruas com mais buracos")
+    st.caption(
+        "Esta aba usa somente a planilha histórica de alertas para identificar, por ano, "
+        "as ruas com maior número de reportes de BURACO NA VIA e exibi-las em mapa com geometrias."
+    )
+
+    col_anual_1, col_anual_2 = st.columns([1, 1])
+
+    with col_anual_1:
+        anos_selecionados = st.multiselect(
+            "Selecione os anos para análise",
+            options=ANNUAL_YEARS_DEFAULT,
+            default=ANNUAL_YEARS_DEFAULT,
+            key="annual_pothole_years"
+        )
+
+    with col_anual_2:
+        top_n_ruas = st.slider(
+            "Número de ruas por ano",
+            min_value=3,
+            max_value=10,
+            value=5,
+            step=1,
+            key="annual_top_streets_slider"
+        )
+
+    try:
+        df_alertas_planilha_anual = load_alert_spreadsheet_for_annual_analysis(LOCAL_ALERT_CSV_PATH)
+    except FileNotFoundError:
+        st.error(
+            f"Não foi possível localizar a planilha local em: `{LOCAL_ALERT_CSV_PATH}`. "
+            "Ajuste o caminho do arquivo CSV no código."
+        )
+        st.stop()
+    except Exception as erro_planilha:
+        st.error(f"Erro ao carregar a planilha histórica: {erro_planilha}")
+        st.stop()
+
+    if df_alertas_planilha_anual.empty:
+        st.warning("A planilha foi carregada, mas não há dados válidos para análise anual.")
+    else:
+        df_buracos_historico = df_alertas_planilha_anual.copy()
+
+        if "subtype" not in df_buracos_historico.columns:
+            st.warning("A planilha não possui a coluna `subtype/Subtype`, necessária para identificar buracos.")
+        else:
+            df_buracos_historico = df_buracos_historico[
+                df_buracos_historico["subtype"].astype(str).str.upper().isin(POTHOLE_SUBTYPE_VALUES)
+            ].copy()
+
+            if df_buracos_historico.empty:
+                st.info("Não foram encontrados registros de 'BURACO NA VIA' na planilha histórica.")
+            else:
+                anos_disponiveis_historico = sorted(
+                    df_buracos_historico["year"].dropna().astype(int).unique().tolist()
+                )
+
+                if not anos_disponiveis_historico:
+                    st.info("Não há anos válidos na planilha para análise.")
+                else:
+                    anos_para_renderizar = [
+                        ano for ano in anos_selecionados
+                        if ano in anos_disponiveis_historico
+                    ]
+
+                    if not anos_para_renderizar:
+                        st.info("Nenhum dos anos selecionados possui dados de buracos na planilha.")
+                    else:
+                        for ano_analise in anos_para_renderizar:
+                            st.markdown("---")
+                            st.markdown(f"### Ano {ano_analise}")
+
+                            mapa_anual, top_ruas_ano = build_annual_pothole_map(
+                                df_buracos_historico,
+                                ano_analise,
+                                top_n=top_n_ruas
+                            )
+
+                            col_resumo_1, col_resumo_2 = st.columns([2, 1])
+
+                            with col_resumo_1:
+                                if top_ruas_ano.empty:
+                                    st.info(f"Sem ruas classificadas para {ano_analise}.")
+                                else:
+                                    top_ruas_ano_exibir = top_ruas_ano.copy()
+                                    top_ruas_ano_exibir.columns = ["Rua", "Cidade", "Contagem de Buracos"]
+
+                                    st.dataframe(
+                                        top_ruas_ano_exibir,
+                                        hide_index=True,
+                                        use_container_width=True
+                                    )
+
+                                    fig_top_ruas_ano = px.bar(
+                                        top_ruas_ano_exibir.sort_values("Contagem de Buracos", ascending=True),
+                                        x="Contagem de Buracos",
+                                        y="Rua",
+                                        orientation="h",
+                                        color="Contagem de Buracos",
+                                        color_continuous_scale="magma",
+                                        title=f"Top {top_n_ruas} ruas com mais reportes de buracos — {ano_analise}"
+                                    )
+                                    fig_top_ruas_ano.update_layout(height=360, coloraxis_showscale=False)
+                                    st.plotly_chart(fig_top_ruas_ano, use_container_width=True)
+
+                            with col_resumo_2:
+                                total_buracos_ano = int(
+                                    df_buracos_historico[df_buracos_historico["year"] == ano_analise].shape[0]
+                                )
+                                total_representado_top = int(
+                                    top_ruas_ano["pothole_count"].sum()
+                                ) if not top_ruas_ano.empty else 0
+
+                                st.metric("Ano analisado", ano_analise)
+                                st.metric("Buracos no ano", total_buracos_ano)
+                                st.metric("Top ruas somadas", total_representado_top)
+
+                            if mapa_anual is not None:
+                                st_folium(
+                                    mapa_anual,
+                                    width="100%",
+                                    height=560,
+                                    key=f"annual_pothole_map_{ano_analise}"
+                                )
+                            else:
+                                st.warning(
+                                    f"Não foi possível montar o mapa de {ano_analise}. "
+                                    "Talvez faltem geometrias do Nominatim ou coordenadas válidas na planilha."
+                                )
+
+with tab_graficos:
+    if not df_filtered.empty:
         st.markdown(
-            f"**{len(filtered_alerts_dataframe)} registros analisados** para "
+            f"**{len(df_filtered)} registros analisados** para "
             f"**{selected_date.strftime('%d/%m/%Y')}** no intervalo "
-            f"**{selected_hour_range[0]:02d}:00–{selected_hour_range[1]:02d}:59**"
+            f"**{hora_range[0]:02d}:00–{hora_range[1]:02d}:59**"
         )
         st.markdown("---")
 
-        historical_alerts_dataframe = raw_alerts_dataframe.copy()
+        df_hist = df_alerts_raw.copy()
 
-        if selected_incident_types and "type" in historical_alerts_dataframe.columns:
-            historical_alerts_dataframe = historical_alerts_dataframe[historical_alerts_dataframe["type"].isin(selected_incident_types)]
-        if selected_incident_subtypes and "subtype" in historical_alerts_dataframe.columns:
-            historical_alerts_dataframe = historical_alerts_dataframe[historical_alerts_dataframe["subtype"].isin(selected_incident_subtypes)]
-        if selected_street and "street" in historical_alerts_dataframe.columns:
-            historical_alerts_dataframe = historical_alerts_dataframe[historical_alerts_dataframe["street"] == selected_street]
+        if filtro_tipo and "type" in df_hist.columns:
+            df_hist = df_hist[df_hist["type"].isin(filtro_tipo)]
+        if filtro_natureza and "subtype" in df_hist.columns:
+            df_hist = df_hist[df_hist["subtype"].isin(filtro_natureza)]
+        if filtro_rua and "street" in df_hist.columns:
+            df_hist = df_hist[df_hist["street"] == filtro_rua]
 
-        weekdays_translation_pt = {
+        DIAS_PT = {
             "Monday": "Segunda",
             "Tuesday": "Terça",
             "Wednesday": "Quarta",
@@ -1866,7 +2357,7 @@ with charts_tab:
             "Sunday": "Domingo",
         }
 
-        incident_type_colors = {
+        CORES_TIPO = {
             "ACIDENTE": "#e74c3c",
             "VIA FECHADA": "#c0392b",
             "PERIGO": "#e67e22",
@@ -1875,21 +2366,21 @@ with charts_tab:
             "ALERTA": "#9b59b6",
         }
 
-        chart_col_1, chart_col_2 = st.columns(2)
+        col_g1, col_g2 = st.columns(2)
 
-        with chart_col_1:
+        with col_g1:
             st.subheader("Incidentes por Hora do Dia")
-            incidents_by_hour = (
-                filtered_alerts_dataframe["hour"]
+            hora_counts = (
+                df_filtered["hour"]
                 .value_counts()
                 .reindex(range(24), fill_value=0)
                 .reset_index()
             )
-            incidents_by_hour.columns = ["Hora", "Quantidade"]
-            peak_hour = int(incidents_by_hour.loc[incidents_by_hour["Quantidade"].idxmax(), "Hora"])
+            hora_counts.columns = ["Hora", "Quantidade"]
+            hora_pico = int(hora_counts.loc[hora_counts["Quantidade"].idxmax(), "Hora"])
 
-            incidents_by_hour_chart = px.bar(
-                incidents_by_hour,
+            fig_hora = px.bar(
+                hora_counts,
                 x="Hora",
                 y="Quantidade",
                 color="Quantidade",
@@ -1897,81 +2388,76 @@ with charts_tab:
                 text="Quantidade",
                 labels={"Hora": "Hora (UTC-3 / Foz)", "Quantidade": "Nº Incidentes"}
             )
-            incidents_by_hour_chart.update_traces(textposition="outside")
-            incidents_by_hour_chart.add_vline(
-                x=peak_hour,
+            fig_hora.update_traces(textposition="outside")
+            fig_hora.add_vline(
+                x=hora_pico,
                 line_dash="dash",
                 line_color="darkred",
-                annotation_text=f"Pico {peak_hour:02d}h"
+                annotation_text=f"Pico {hora_pico:02d}h"
             )
-            incidents_by_hour_chart.update_layout(coloraxis_showscale=False, height=360)
-            st.plotly_chart(incidents_by_hour_chart, width="stretch")
+            fig_hora.update_layout(coloraxis_showscale=False, height=360)
+            st.plotly_chart(fig_hora, width="stretch")
 
-        with chart_col_2:
+        with col_g2:
             st.subheader("Natureza das Ocorrências")
 
-            has_valid_subtype = (
-                "subtype" in filtered_alerts_dataframe.columns and
-                filtered_alerts_dataframe["subtype"].notna().any() and
-                (~filtered_alerts_dataframe["subtype"].isin(["nan", ""])).any()
+            tem_subtipo = (
+                "subtype" in df_filtered.columns and
+                df_filtered["subtype"].notna().any() and
+                (~df_filtered["subtype"].isin(["nan", ""])).any()
             )
 
-            if has_valid_subtype:
-                valid_subtype_dataframe = filtered_alerts_dataframe[
-                    filtered_alerts_dataframe["subtype"].notna() &
-                    (~filtered_alerts_dataframe["subtype"].isin(["nan", ""]))
+            if tem_subtipo:
+                df_sub = df_filtered[
+                    df_filtered["subtype"].notna() &
+                    (~df_filtered["subtype"].isin(["nan", ""]))
                 ].copy()
-                valid_subtype_dataframe["label"] = valid_subtype_dataframe.apply(
-                    lambda row: row["subtype"] if row["subtype"] != "" else row["type"],
+                df_sub["label"] = df_sub.apply(
+                    lambda r: r["subtype"] if r["subtype"] != "" else r["type"],
                     axis=1
                 )
-                incident_nature_counts = valid_subtype_dataframe["label"].value_counts().reset_index()
+                sub_counts = df_sub["label"].value_counts().reset_index()
             else:
-                incident_nature_counts = filtered_alerts_dataframe["type"].value_counts().reset_index()
+                sub_counts = df_filtered["type"].value_counts().reset_index()
 
-            incident_nature_counts.columns = ["Natureza", "Quantidade"]
+            sub_counts.columns = ["Natureza", "Quantidade"]
 
-            incident_nature_pie_chart = px.pie(
-                incident_nature_counts,
-                names="Natureza",
-                values="Quantidade",
-                hole=0.38
-            )
-            incident_nature_pie_chart.update_layout(height=380)
-            st.plotly_chart(incident_nature_pie_chart, width="stretch")
+            fig_pie = px.pie(sub_counts, names="Natureza", values="Quantidade", hole=0.38)
+            fig_pie.update_layout(height=380)
+            st.plotly_chart(fig_pie, width="stretch")
 
         st.markdown("---")
 
-        if "day_of_week" in historical_alerts_dataframe.columns and not historical_alerts_dataframe.empty:
+        if "day_of_week" in df_hist.columns and not df_hist.empty:
             st.subheader("Incidentes por Dia da Semana")
-            weekday_dataframe = historical_alerts_dataframe.copy()
-            weekday_dataframe["Dia"] = weekday_dataframe["day_of_week"].map(weekdays_translation_pt)
+            df_dow = df_hist.copy()
+            df_dow["Dia"] = df_dow["day_of_week"].map(DIAS_PT)
 
-            incidents_by_weekday_and_type = weekday_dataframe.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
-            weekday_order = list(weekdays_translation_pt.values())
+            dow_tipo = df_dow.groupby(["Dia", "type"]).size().reset_index(name="Quantidade")
+            ordem_dias = list(DIAS_PT.values())
 
-            incidents_by_weekday_chart = px.bar(
-                incidents_by_weekday_and_type,
+            fig_dow = px.bar(
+                dow_tipo,
                 x="Dia",
                 y="Quantidade",
                 color="type",
-                color_discrete_map=incident_type_colors,
-                category_orders={"Dia": weekday_order},
+                color_discrete_map=CORES_TIPO,
+                category_orders={"Dia": ordem_dias},
                 barmode="stack",
                 text_auto=True
             )
-            incidents_by_weekday_chart.update_layout(height=420)
-            st.plotly_chart(incidents_by_weekday_chart, width="stretch")
+            fig_dow.update_layout(height=420)
+            st.plotly_chart(fig_dow, width="stretch")
 
         st.markdown("---")
         st.subheader("Vias Críticas — Incidentes por Natureza")
+        top_ruas_lista = []
 
-        top_streets = []
-        if "street" in historical_alerts_dataframe.columns:
-            top_streets = (
-                historical_alerts_dataframe[
-                    historical_alerts_dataframe["street"].notna() &
-                    (~historical_alerts_dataframe["street"].isin(["NA", "nan", ""]))
+        if "street" in df_hist.columns:
+            top_ruas_lista = (
+                df_hist[
+                    df_hist["street"].notna() &
+                    (~df_hist["street"].isin(["NA", "nan", ""]))
                 ]["street"]
                 .value_counts()
                 .head(10)
@@ -1979,189 +2465,177 @@ with charts_tab:
                 .tolist()
             )
 
-        if top_streets and "subtype" in historical_alerts_dataframe.columns:
-            street_subtype_dataframe = historical_alerts_dataframe[
-                historical_alerts_dataframe["street"].isin(top_streets) &
-                historical_alerts_dataframe["subtype"].notna() &
-                (~historical_alerts_dataframe["subtype"].isin(["nan", ""]))
+        if top_ruas_lista and "subtype" in df_hist.columns:
+            df_rua = df_hist[
+                df_hist["street"].isin(top_ruas_lista) &
+                df_hist["subtype"].notna() &
+                (~df_hist["subtype"].isin(["nan", ""]))
             ].copy()
 
-            incidents_by_street_and_subtype = street_subtype_dataframe.groupby(
-                ["street", "subtype"]
-            ).size().reset_index(name="Quantidade")
-
-            street_order = (
-                incidents_by_street_and_subtype.groupby("street")["Quantidade"]
+            rua_sub = df_rua.groupby(["street", "subtype"]).size().reset_index(name="Quantidade")
+            ordem_ruas = (
+                rua_sub.groupby("street")["Quantidade"]
                 .sum()
                 .sort_values(ascending=True)
                 .index
                 .tolist()
             )
 
-            critical_streets_chart = px.bar(
-                incidents_by_street_and_subtype,
+            fig_rua = px.bar(
+                rua_sub,
                 x="Quantidade",
                 y="street",
                 color="subtype",
                 orientation="h",
                 barmode="stack",
-                category_orders={"street": street_order}
+                category_orders={"street": ordem_ruas}
             )
-            critical_streets_chart.update_layout(height=460)
-            st.plotly_chart(critical_streets_chart, width="stretch")
+            fig_rua.update_layout(height=460)
+            st.plotly_chart(fig_rua, width="stretch")
 
         st.markdown("---")
         st.subheader("Quais dias cada rua tem mais problemas?")
 
-        if top_streets and "day_of_week" in historical_alerts_dataframe.columns:
-            street_weekday_dataframe = historical_alerts_dataframe[
-                historical_alerts_dataframe["street"].isin(top_streets)
-            ].copy()
-            street_weekday_dataframe["Dia"] = street_weekday_dataframe["day_of_week"].map(weekdays_translation_pt)
+        if top_ruas_lista and "day_of_week" in df_hist.columns:
+            df_hm = df_hist[df_hist["street"].isin(top_ruas_lista)].copy()
+            df_hm["Dia"] = df_hm["day_of_week"].map(DIAS_PT)
 
-            street_weekday_counts = street_weekday_dataframe.groupby(["street", "Dia"]).size().reset_index(name="Qtd")
-            total_counts_by_street_weekday = street_weekday_counts.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
-            maximum_weekday_volume = total_counts_by_street_weekday["Total"].max() if not total_counts_by_street_weekday.empty else 1
+            bubble_dow = df_hm.groupby(["street", "Dia"]).size().reset_index(name="Qtd")
+            total_dow = bubble_dow.groupby(["street", "Dia"])["Qtd"].sum().reset_index(name="Total")
+            vmax_dow = total_dow["Total"].max() if not total_dow.empty else 1
 
-            def classify_weekday_intensity(total_value, maximum_value):
-                if total_value == 0:
+            def nivel_label(v, vmax):
+                if v == 0:
                     return "Nenhum"
-                elif total_value <= maximum_value * 0.25:
+                elif v <= vmax * 0.25:
                     return "Baixo"
-                elif total_value <= maximum_value * 0.60:
+                elif v <= vmax * 0.60:
                     return "Médio"
                 return "Alto"
 
-            total_counts_by_street_weekday["Nível"] = total_counts_by_street_weekday["Total"].apply(
-                lambda total_value: classify_weekday_intensity(total_value, maximum_weekday_volume)
-            )
+            total_dow["Nível"] = total_dow["Total"].apply(lambda v: nivel_label(v, vmax_dow))
 
-            street_weekday_bubble_chart = px.scatter(
-                total_counts_by_street_weekday,
+            fig_b1 = px.scatter(
+                total_dow,
                 x="Dia",
                 y="street",
                 size="Total",
                 color="Nível",
                 text="Total",
                 size_max=55,
-                category_orders={"Dia": list(weekdays_translation_pt.values())}
+                category_orders={"Dia": list(DIAS_PT.values())}
             )
-            street_weekday_bubble_chart.update_layout(height=460)
-            st.plotly_chart(street_weekday_bubble_chart, width="stretch")
+            fig_b1.update_layout(height=460)
+            st.plotly_chart(fig_b1, width="stretch")
     else:
         st.info("Sem incidentes para gerar gráficos no recorte atual.")
 
-with scientific_pipeline_tab:
+with tab_pipeline:
     st.subheader("🧪 Pipeline Científico para o Artigo")
     st.caption("Geração de séries, decomposição STL, detecção de rupturas (PELT) e tabelas descritivas para apoio à redação acadêmica.")
 
-    pipeline_col_1, pipeline_col_2, pipeline_col_3 = st.columns(3)
-    available_pipeline_categories = ["TODOS"]
+    col_p1, col_p2, col_p3 = st.columns(3)
+    categorias_disp = ["TODOS"]
+    if not df_alerts_raw.empty and "type" in df_alerts_raw.columns:
+        categorias_disp += sorted(df_alerts_raw["type"].dropna().astype(str).unique().tolist())
+    categorias_disp = list(dict.fromkeys(categorias_disp + ["CONGESTIONAMENTO"]))
 
-    if not raw_alerts_dataframe.empty and "type" in raw_alerts_dataframe.columns:
-        available_pipeline_categories += sorted(raw_alerts_dataframe["type"].dropna().astype(str).unique().tolist())
+    with col_p1:
+        categoria_artigo = st.selectbox("Categoria analisada", categorias_disp, index=0, key="pipe_categoria")
+    with col_p2:
+        periodo_stl = st.selectbox("Periodicidade STL", [7, 30], index=0, key="pipe_stl_period")
+    with col_p3:
+        penalidade_pelt = st.slider("Penalidade PELT", min_value=1.0, max_value=20.0, value=5.0, step=0.5, key="pipe_pelt_pen")
 
-    available_pipeline_categories = list(dict.fromkeys(available_pipeline_categories + ["CONGESTIONAMENTO"]))
+    serie = build_daily_series(df_alerts_raw, df_jams_raw, categoria=categoria_artigo)
 
-    with pipeline_col_1:
-        selected_pipeline_category = st.selectbox("Categoria analisada", available_pipeline_categories, index=0, key="pipe_categoria")
-    with pipeline_col_2:
-        selected_stl_period = st.selectbox("Periodicidade STL", [7, 30], index=0, key="pipe_stl_period")
-    with pipeline_col_3:
-        selected_pelt_penalty = st.slider("Penalidade PELT", min_value=1.0, max_value=20.0, value=5.0, step=0.5, key="pipe_pelt_pen")
-
-    daily_series = build_daily_series(raw_alerts_dataframe, raw_jams_dataframe, selected_category=selected_pipeline_category)
-
-    if daily_series.empty:
+    if serie.empty:
         st.info("Sem dados suficientes para montar a série temporal.")
     else:
         st.markdown("### Série diária")
-        daily_series_dataframe = daily_series.reset_index()
-        daily_series_dataframe.columns = ["Data", "Ocorrências"]
+        df_serie = serie.reset_index()
+        df_serie.columns = ["Data", "Ocorrências"]
 
-        daily_series_chart = px.line(
-            daily_series_dataframe,
+        fig_ts = px.line(
+            df_serie,
             x="Data",
             y="Ocorrências",
-            title=f"Série diária de ocorrências — {selected_pipeline_category}",
+            title=f"Série diária de ocorrências — {categoria_artigo}",
             markers=False
         )
-        daily_series_chart.update_layout(height=360)
-        st.plotly_chart(daily_series_chart, use_container_width=True)
+        fig_ts.update_layout(height=360)
+        st.plotly_chart(fig_ts, use_container_width=True)
 
         st.markdown("### Decomposição STL")
-        stl_result = run_stl_analysis(daily_series, period=selected_stl_period)
+        res_stl = run_stl_analysis(serie, period=periodo_stl)
 
-        if stl_result is not None:
+        if res_stl is not None:
             from plotly.subplots import make_subplots
             import plotly.graph_objects as go
 
-            stl_chart = make_subplots(
+            fig_stl = make_subplots(
                 rows=4, cols=1, shared_xaxes=True,
                 subplot_titles=["Observed", "Trend", "Seasonal", "Residual"],
                 vertical_spacing=0.04
             )
-            series_dates = daily_series.index
+            x_vals = serie.index
 
-            stl_chart.add_trace(go.Scatter(x=series_dates, y=stl_result.observed, name="Observed", line=dict(color="#2563EB")), row=1, col=1)
-            stl_chart.add_trace(go.Scatter(x=series_dates, y=stl_result.trend, name="Trend", line=dict(color="#DC2626")), row=2, col=1)
-            stl_chart.add_trace(go.Scatter(x=series_dates, y=stl_result.seasonal, name="Seasonal", line=dict(color="#16A34A")), row=3, col=1)
-            stl_chart.add_trace(go.Scatter(x=series_dates, y=stl_result.resid, name="Residual", mode="lines", line=dict(color="#7C3AED")), row=4, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.observed, name="Observed", line=dict(color="#2563EB")), row=1, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.trend, name="Trend", line=dict(color="#DC2626")), row=2, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.seasonal, name="Seasonal", line=dict(color="#16A34A")), row=3, col=1)
+            fig_stl.add_trace(go.Scatter(x=x_vals, y=res_stl.resid, name="Residual", mode="lines", line=dict(color="#7C3AED")), row=4, col=1)
 
-            stl_chart.update_layout(height=900, showlegend=False, title=f"STL — {selected_pipeline_category} (period={selected_stl_period})")
-            st.plotly_chart(stl_chart, use_container_width=True)
+            fig_stl.update_layout(height=900, showlegend=False, title=f"STL — {categoria_artigo} (period={periodo_stl})")
+            st.plotly_chart(fig_stl, use_container_width=True)
         else:
             st.warning("Não foi possível executar a STL. Verifique se `statsmodels` está instalado.")
 
         st.markdown("### Rupturas estruturais — PELT")
-        pelt_breakpoints = run_pelt_analysis(daily_series, model="l2", min_size=7, jump=1, pen=selected_pelt_penalty)
+        bkps = run_pelt_analysis(serie, model="l2", min_size=7, jump=1, pen=penalidade_pelt)
 
-        pelt_chart = px.line(daily_series_dataframe, x="Data", y="Ocorrências", title="Mudanças estruturais detectadas por PELT")
-        for breakpoint_index in pelt_breakpoints[:-1]:
-            if 0 <= breakpoint_index - 1 < len(daily_series_dataframe):
-                breakpoint_date = daily_series_dataframe.iloc[breakpoint_index - 1]["Data"]
-                pelt_chart.add_vline(x=breakpoint_date, line_dash="dash", line_color="red")
-        pelt_chart.update_layout(height=360)
-        st.plotly_chart(pelt_chart, use_container_width=True)
+        fig_pelt = px.line(df_serie, x="Data", y="Ocorrências", title="Mudanças estruturais detectadas por PELT")
+        for b in bkps[:-1]:
+            if 0 <= b - 1 < len(df_serie):
+                data_bkp = df_serie.iloc[b - 1]["Data"]
+                fig_pelt.add_vline(x=data_bkp, line_dash="dash", line_color="red")
+        fig_pelt.update_layout(height=360)
+        st.plotly_chart(fig_pelt, use_container_width=True)
 
-        if pelt_breakpoints:
-            estimated_break_dates = []
-            for breakpoint_index in pelt_breakpoints[:-1]:
-                if 0 <= breakpoint_index - 1 < len(daily_series_dataframe):
-                    estimated_break_dates.append(
-                        pd.to_datetime(daily_series_dataframe.iloc[breakpoint_index - 1]["Data"]).strftime("%Y-%m-%d")
-                    )
-            st.write("Datas estimadas de ruptura:", estimated_break_dates if estimated_break_dates else "Nenhuma ruptura relevante.")
+        if bkps:
+            datas_ruptura = []
+            for b in bkps[:-1]:
+                if 0 <= b - 1 < len(df_serie):
+                    datas_ruptura.append(pd.to_datetime(df_serie.iloc[b - 1]["Data"]).strftime("%Y-%m-%d"))
+            st.write("Datas estimadas de ruptura:", datas_ruptura if datas_ruptura else "Nenhuma ruptura relevante.")
 
     st.markdown("---")
     st.markdown("### Tabela 1 — Estatísticas descritivas")
-    descriptive_statistics_table = build_descriptive_table(raw_alerts_dataframe, raw_jams_dataframe)
-
-    if not descriptive_statistics_table.empty:
-        st.dataframe(descriptive_statistics_table, hide_index=True, use_container_width=True)
-        descriptive_statistics_csv = descriptive_statistics_table.to_csv(index=False).encode("utf-8")
+    tabela_desc = build_descriptive_table(df_alerts_raw, df_jams_raw)
+    if not tabela_desc.empty:
+        st.dataframe(tabela_desc, hide_index=True, use_container_width=True)
+        csv_desc = tabela_desc.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Baixar CSV — Tabela 1",
-            data=descriptive_statistics_csv,
+            data=csv_desc,
             file_name="tabela_1_estatisticas_descritivas.csv",
             mime="text/csv"
         )
     else:
         st.info("Sem dados suficientes para a tabela descritiva.")
 
-with criticality_tab:
+with tab_criticidade:
     st.subheader("📊 Classificação Hierárquica de Infraestrutura Viária Crítica")
     st.markdown("""
     Análise multicritério ponderando **volume de congestionamentos** e **atraso médio (s)**.
     Permite à **Foztrans** priorizar envio de agentes ou investimentos nas vias de maior peso operacional.
     """)
 
-    if not road_criticality_dataframe.empty:
-        criticality_col_1, criticality_col_2 = st.columns([3, 2])
+    if not df_criticidade_vias.empty:
+        col_t1, col_t2 = st.columns([3, 2])
 
-        with criticality_col_1:
-            road_criticality_chart = px.bar(
-                road_criticality_dataframe.head(10),
+        with col_t1:
+            fig_crit = px.bar(
+                df_criticidade_vias.head(10),
                 x="Criticidade_Index",
                 y="street",
                 orientation="h",
@@ -2170,13 +2644,13 @@ with criticality_tab:
                 color="Criticidade_Index",
                 color_continuous_scale="Oranges"
             )
-            road_criticality_chart.update_layout(height=400)
-            st.plotly_chart(road_criticality_chart, use_container_width=True)
+            fig_crit.update_layout(height=400)
+            st.plotly_chart(fig_crit, use_container_width=True)
 
-        with criticality_col_2:
+        with col_t2:
             st.markdown("#### Ranking de Prioridade Viária")
             st.dataframe(
-                road_criticality_dataframe[["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"]].head(10),
+                df_criticidade_vias[["street", "Volume_Jams", "Atraso_Medio_Seg", "Criticidade_Index"]].head(10),
                 hide_index=True,
                 column_config={
                     "street": "Logradouro",
@@ -2188,7 +2662,7 @@ with criticality_tab:
     else:
         st.info("Dados insuficientes para o ranking multicritério.")
 
-with predictive_model_tab:
+with tab_predicao:
     st.subheader("🔮 Simulador Preditivo de Impacto e Propensão ao Congestionamento")
     st.markdown("""
     Combinação de **regressão inferencial** (impacto temporal por extensão de fila) com análise histórica de
@@ -2196,45 +2670,42 @@ with predictive_model_tab:
     """)
 
     st.markdown("### 🧮 Simulador de Atraso por Extensão de Fila")
-    prediction_col_1, prediction_col_2 = st.columns(2)
+    col_p1, col_p2 = st.columns(2)
 
-    with prediction_col_1:
-        selected_queue_length_meters = st.slider("Extensão da fila (metros):", 50, 5000, 500, 50, key="slider_pred_ext")
-        estimated_delay_seconds = predict_traffic_delay_impact(selected_queue_length_meters)
-        estimated_delay_minutes = estimated_delay_seconds / 60
-        st.metric("Atraso Estimado", f"{estimated_delay_minutes:.2f} min")
+    with col_p1:
+        extensao_sim = st.slider("Extensão da fila (metros):", 50, 5000, 500, 50, key="slider_pred_ext")
+        atraso_est = predict_traffic_delay_impact(extensao_sim)
+        minutos_est = atraso_est / 60
+        st.metric("Atraso Estimado", f"{minutos_est:.2f} min")
         st.caption("Fórmula: *Atraso (s) = Comprimento × 0,15 + 12*")
 
-    with prediction_col_2:
-        simulation_lengths = np.linspace(50, 5000, 100)
-        simulation_delay_minutes = [predict_traffic_delay_impact(queue_length) / 60 for queue_length in simulation_lengths]
-        simulation_dataframe = pd.DataFrame({
-            "Comprimento (m)": simulation_lengths,
-            "Atraso Estimado (min)": simulation_delay_minutes
-        })
+    with col_p2:
+        sim_x = np.linspace(50, 5000, 100)
+        sim_y = [predict_traffic_delay_impact(l) / 60 for l in sim_x]
+        df_sim = pd.DataFrame({"Comprimento (m)": sim_x, "Atraso Estimado (min)": sim_y})
 
-        delay_prediction_chart = px.line(
-            simulation_dataframe,
+        fig_pred = px.line(
+            df_sim,
             x="Comprimento (m)",
             y="Atraso Estimado (min)",
             title="Curva de Impacto: Extensão de Fila vs Atraso"
         )
-        delay_prediction_chart.add_scatter(
-            x=[selected_queue_length_meters],
-            y=[estimated_delay_minutes],
+        fig_pred.add_scatter(
+            x=[extensao_sim],
+            y=[minutos_est],
             mode="markers+text",
             name="Cenário atual",
             text=["◀ Selecionado"],
             textposition="top right",
             marker=dict(size=12, color="red")
         )
-        st.plotly_chart(delay_prediction_chart, use_container_width=True)
+        st.plotly_chart(fig_pred, use_container_width=True)
 
     st.markdown("---")
     st.markdown("### 📅 Vias com Maior Propensão ao Congestionamento por Dia da Semana")
     st.caption("Baseado no histórico completo de congestionamentos carregados — independente do filtro de data.")
 
-    weekdays_translation_prediction = {
+    DIAS_PT_PRED = {
         "Monday": "Segunda",
         "Tuesday": "Terça",
         "Wednesday": "Quarta",
@@ -2243,80 +2714,79 @@ with predictive_model_tab:
         "Saturday": "Sábado",
         "Sunday": "Domingo"
     }
-    weekday_order_prediction = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+    ORDEM_DIAS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
 
-    historical_jams_dataframe = raw_jams_dataframe.copy() if not raw_jams_dataframe.empty else pd.DataFrame()
+    df_jams_hist = df_jams_raw.copy() if not df_jams_raw.empty else pd.DataFrame()
 
-    if not historical_jams_dataframe.empty and "street" in historical_jams_dataframe.columns and "day_of_week" in historical_jams_dataframe.columns:
-        historical_jams_dataframe = historical_jams_dataframe[
-            historical_jams_dataframe["street"].notna() &
-            (~historical_jams_dataframe["street"].isin(["NA", "nan", "Via", ""]))
+    if not df_jams_hist.empty and "street" in df_jams_hist.columns and "day_of_week" in df_jams_hist.columns:
+        df_jams_hist = df_jams_hist[
+            df_jams_hist["street"].notna() &
+            (~df_jams_hist["street"].isin(["NA", "nan", "Via", ""]))
         ].copy()
-        historical_jams_dataframe["Dia"] = historical_jams_dataframe["day_of_week"].map(weekdays_translation_prediction)
+        df_jams_hist["Dia"] = df_jams_hist["day_of_week"].map(DIAS_PT_PRED)
 
-        top_prediction_streets = historical_jams_dataframe["street"].value_counts().head(15).index.tolist()
-        street_propensity_dataframe = historical_jams_dataframe[historical_jams_dataframe["street"].isin(top_prediction_streets)]
+        top_vias_pred = df_jams_hist["street"].value_counts().head(15).index.tolist()
+        df_prop = df_jams_hist[df_jams_hist["street"].isin(top_vias_pred)]
 
-        street_weekday_propensity = (
-            street_propensity_dataframe.groupby(["street", "Dia"]).size()
+        heatmap_data = (
+            df_prop.groupby(["street", "Dia"]).size()
             .reset_index(name="Ocorrências")
         )
 
-        total_occurrences_by_street = street_weekday_propensity.groupby("street")["Ocorrências"].transform("sum")
-        street_weekday_propensity["Propensão (%)"] = (
-            street_weekday_propensity["Ocorrências"] / total_occurrences_by_street * 100
-        ).round(1)
+        total_por_via = heatmap_data.groupby("street")["Ocorrências"].transform("sum")
+        heatmap_data["Propensão (%)"] = (heatmap_data["Ocorrências"] / total_por_via * 100).round(1)
 
-        propensity_col_1, propensity_col_2 = st.columns([3, 2])
+        col_h1, col_h2 = st.columns([3, 2])
 
-        with propensity_col_1:
-            propensity_pivot = street_weekday_propensity.pivot_table(
+        with col_h1:
+            pivot = heatmap_data.pivot_table(
                 index="street",
                 columns="Dia",
                 values="Propensão (%)",
                 aggfunc="sum"
-            ).reindex(
-                columns=[weekday for weekday in weekday_order_prediction if weekday in street_weekday_propensity["Dia"].unique()],
-                fill_value=0
-            )
+            ).reindex(columns=[d for d in ORDEM_DIAS if d in heatmap_data["Dia"].unique()], fill_value=0)
 
-            propensity_heatmap_chart = px.imshow(
-                propensity_pivot,
+            fig_heat = px.imshow(
+                pivot,
                 color_continuous_scale="YlOrRd",
                 aspect="auto",
                 title="Mapa de Propensão: Via × Dia da Semana (% de ocorrências históricas)",
                 labels={"color": "Propensão (%)", "x": "Dia", "y": "Via"}
             )
-            propensity_heatmap_chart.update_layout(height=480)
-            st.plotly_chart(propensity_heatmap_chart, use_container_width=True)
+            fig_heat.update_layout(height=480)
+            st.plotly_chart(fig_heat, use_container_width=True)
 
-        with propensity_col_2:
+        with col_h2:
             st.markdown("#### 🔎 Filtro por Dia da Semana")
-            selected_prediction_weekday = st.selectbox("Ver vias mais propensas em:", weekday_order_prediction, key="pred_dia")
+            dia_selecionado = st.selectbox(
+                "Ver vias mais propensas em:",
+                ORDEM_DIAS,
+                key="pred_dia"
+            )
 
-            selected_weekday_propensity = street_weekday_propensity[
-                street_weekday_propensity["Dia"] == selected_prediction_weekday
-            ].sort_values("Propensão (%)", ascending=False).head(10)
+            df_dia = heatmap_data[heatmap_data["Dia"] == dia_selecionado].sort_values(
+                "Propensão (%)", ascending=False
+            ).head(10)
 
-            if not selected_weekday_propensity.empty:
-                selected_weekday_chart = px.bar(
-                    selected_weekday_propensity,
+            if not df_dia.empty:
+                fig_dia = px.bar(
+                    df_dia,
                     x="Propensão (%)",
                     y="street",
                     orientation="h",
                     color="Propensão (%)",
                     color_continuous_scale="Reds",
-                    title=f"Top 10 — {selected_prediction_weekday}",
+                    title=f"Top 10 — {dia_selecionado}",
                     labels={"street": "Via", "Propensão (%)": "% do tráfego semanal"}
                 )
-                selected_weekday_chart.update_layout(height=380, coloraxis_showscale=False)
-                st.plotly_chart(selected_weekday_chart, use_container_width=True)
+                fig_dia.update_layout(height=380, coloraxis_showscale=False)
+                st.plotly_chart(fig_dia, use_container_width=True)
             else:
-                st.info(f"Sem dados históricos para {selected_prediction_weekday}.")
+                st.info(f"Sem dados históricos para {dia_selecionado}.")
 
         st.markdown("#### 📋 Pior Dia da Semana por Via")
-        worst_weekday_by_street = (
-            street_weekday_propensity.loc[street_weekday_propensity.groupby("street")["Propensão (%)"].idxmax()]
+        pior_dia = (
+            heatmap_data.loc[heatmap_data.groupby("street")["Propensão (%)"].idxmax()]
             [["street", "Dia", "Propensão (%)", "Ocorrências"]]
             .sort_values("Ocorrências", ascending=False)
             .head(15)
@@ -2324,7 +2794,7 @@ with predictive_model_tab:
         )
 
         st.dataframe(
-            worst_weekday_by_street,
+            pior_dia,
             hide_index=True,
             column_config={
                 "street": "Via / Avenida",
@@ -2340,121 +2810,106 @@ with predictive_model_tab:
     st.markdown("### 📆 Comparador Mensal: 2025 vs 2026")
     st.caption("Selecione um dia da semana e uma categoria para comparar a evolução mês a mês entre os dois anos.")
 
-    months_translation_pt = {
+    MESES_PT = {
         1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
         5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
-    weekdays_translation_comparison = {
-        "Monday": "Segunda", "Tuesday": "Terça", "Wednesday": "Quarta",
-        "Thursday": "Quinta", "Friday": "Sexta", "Saturday": "Sábado", "Sunday": "Domingo"
+    DIAS_PT_CMP = {
+        "Monday": "Segunda",
+        "Tuesday": "Terça",
+        "Wednesday": "Quarta",
+        "Thursday": "Quinta",
+        "Friday": "Sexta",
+        "Saturday": "Sábado",
+        "Sunday": "Domingo"
     }
 
-    comparison_source_frames = []
+    frames_cmp = []
 
-    if not raw_alerts_dataframe.empty:
-        alerts_comparison_dataframe = raw_alerts_dataframe.copy()
-        alerts_comparison_dataframe["categoria"] = alerts_comparison_dataframe.get(
-            "type",
-            pd.Series("ALERTA", index=alerts_comparison_dataframe.index)
-        )
-        alerts_comparison_dataframe["origem"] = "alerta"
-        comparison_source_frames.append(
-            alerts_comparison_dataframe[
-                [column for column in ["timestamp", "categoria", "origem", "street", "day_of_week"] if column in alerts_comparison_dataframe.columns]
-            ]
-        )
+    if not df_alerts_raw.empty:
+        df_a_cmp = df_alerts_raw.copy()
+        df_a_cmp["categoria"] = df_a_cmp.get("type", pd.Series("ALERTA", index=df_a_cmp.index))
+        df_a_cmp["origem"] = "alerta"
+        frames_cmp.append(df_a_cmp[[c for c in ["timestamp", "categoria", "origem", "street", "day_of_week"] if c in df_a_cmp.columns]])
 
-    if not raw_jams_dataframe.empty:
-        jams_comparison_dataframe = raw_jams_dataframe.copy()
-        jams_comparison_dataframe["categoria"] = "CONGESTIONAMENTO"
-        jams_comparison_dataframe["origem"] = "jams"
-        comparison_source_frames.append(
-            jams_comparison_dataframe[
-                [column for column in ["timestamp", "categoria", "origem", "street", "day_of_week"] if column in jams_comparison_dataframe.columns]
-            ]
-        )
+    if not df_jams_raw.empty:
+        df_j_cmp = df_jams_raw.copy()
+        df_j_cmp["categoria"] = "CONGESTIONAMENTO"
+        df_j_cmp["origem"] = "jams"
+        frames_cmp.append(df_j_cmp[[c for c in ["timestamp", "categoria", "origem", "street", "day_of_week"] if c in df_j_cmp.columns]])
 
-    if comparison_source_frames:
-        monthly_comparison_dataframe = pd.concat(comparison_source_frames, ignore_index=True)
-        monthly_comparison_dataframe["timestamp"] = pd.to_datetime(monthly_comparison_dataframe["timestamp"], errors="coerce")
-        monthly_comparison_dataframe = monthly_comparison_dataframe.dropna(subset=["timestamp"])
-        monthly_comparison_dataframe["ano"] = monthly_comparison_dataframe["timestamp"].dt.year
-        monthly_comparison_dataframe["mes"] = monthly_comparison_dataframe["timestamp"].dt.month
-        monthly_comparison_dataframe["Dia"] = (
-            monthly_comparison_dataframe["day_of_week"].map(weekdays_translation_comparison)
-            if "day_of_week" in monthly_comparison_dataframe.columns else "Todos"
-        )
-        monthly_comparison_dataframe["mes_nome"] = monthly_comparison_dataframe["mes"].map(months_translation_pt)
+    if frames_cmp:
+        df_cmp_all = pd.concat(frames_cmp, ignore_index=True)
+        df_cmp_all["timestamp"] = pd.to_datetime(df_cmp_all["timestamp"], errors="coerce")
+        df_cmp_all = df_cmp_all.dropna(subset=["timestamp"])
+        df_cmp_all["ano"] = df_cmp_all["timestamp"].dt.year
+        df_cmp_all["mes"] = df_cmp_all["timestamp"].dt.month
+        df_cmp_all["Dia"] = df_cmp_all["day_of_week"].map(DIAS_PT_CMP) if "day_of_week" in df_cmp_all.columns else "Todos"
+        df_cmp_all["mes_nome"] = df_cmp_all["mes"].map(MESES_PT)
 
-        available_years = sorted(monthly_comparison_dataframe["ano"].dropna().unique().astype(int).tolist())
-        available_categories = sorted(monthly_comparison_dataframe["categoria"].dropna().unique().tolist())
-        available_weekdays = ["Todos"] + ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+        anos_disp = sorted(df_cmp_all["ano"].dropna().unique().astype(int).tolist())
+        cats_disp = sorted(df_cmp_all["categoria"].dropna().unique().tolist())
+        dias_disp = ["Todos"] + ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
 
-        comparison_col_1, comparison_col_2, comparison_col_3, comparison_col_4 = st.columns(4)
+        col_c1, col_c2, col_c3, col_c4 = st.columns(4)
 
-        with comparison_col_1:
-            selected_year_a = st.selectbox("Ano A:", available_years, index=0, key="cmp_ano_a")
-        with comparison_col_2:
-            available_year_b_options = [year for year in available_years if year != selected_year_a]
-            selected_year_b = st.selectbox("Ano B:", available_year_b_options if available_year_b_options else available_years, key="cmp_ano_b")
-        with comparison_col_3:
-            selected_comparison_weekday = st.selectbox("Dia da Semana:", available_weekdays, key="cmp_dia")
-        with comparison_col_4:
-            selected_comparison_categories = st.multiselect(
+        with col_c1:
+            ano_a = st.selectbox("Ano A:", anos_disp, index=0, key="cmp_ano_a")
+        with col_c2:
+            ano_b_opts = [a for a in anos_disp if a != ano_a]
+            ano_b = st.selectbox("Ano B:", ano_b_opts if ano_b_opts else anos_disp, key="cmp_ano_b")
+        with col_c3:
+            dia_cmp = st.selectbox("Dia da Semana:", dias_disp, key="cmp_dia")
+        with col_c4:
+            cat_cmp = st.multiselect(
                 "Categorias:",
-                available_categories,
-                default=available_categories[:3] if len(available_categories) >= 3 else available_categories,
+                cats_disp,
+                default=cats_disp[:3] if len(cats_disp) >= 3 else cats_disp,
                 key="cmp_cat"
             )
 
-        comparison_filtered_dataframe = (
-            monthly_comparison_dataframe[monthly_comparison_dataframe["categoria"].isin(selected_comparison_categories)]
-            if selected_comparison_categories else monthly_comparison_dataframe.copy()
-        )
+        df_f = df_cmp_all[df_cmp_all["categoria"].isin(cat_cmp)] if cat_cmp else df_cmp_all.copy()
+        if dia_cmp != "Todos":
+            df_f = df_f[df_f["Dia"] == dia_cmp]
 
-        if selected_comparison_weekday != "Todos":
-            comparison_filtered_dataframe = comparison_filtered_dataframe[
-                comparison_filtered_dataframe["Dia"] == selected_comparison_weekday
-            ]
+        df_ano_a = df_f[df_f["ano"] == ano_a]
+        df_ano_b = df_f[df_f["ano"] == ano_b]
 
-        year_a_dataframe = comparison_filtered_dataframe[comparison_filtered_dataframe["ano"] == selected_year_a]
-        year_b_dataframe = comparison_filtered_dataframe[comparison_filtered_dataframe["ano"] == selected_year_b]
-
-        def aggregate_monthly_occurrences(input_dataframe, year_label):
-            if input_dataframe.empty:
+        def agg_mensal(df_in, ano_label):
+            if df_in.empty:
                 return pd.DataFrame(columns=["mes", "mes_nome", "Total", "Ano"])
-            grouped_dataframe = input_dataframe.groupby(["mes", "mes_nome", "categoria"]).size().reset_index(name="Total")
-            grouped_dataframe["Ano"] = str(year_label)
-            return grouped_dataframe
+            grp = df_in.groupby(["mes", "mes_nome", "categoria"]).size().reset_index(name="Total")
+            grp["Ano"] = str(ano_label)
+            return grp
 
-        year_a_summary = aggregate_monthly_occurrences(year_a_dataframe, selected_year_a)
-        year_b_summary = aggregate_monthly_occurrences(year_b_dataframe, selected_year_b)
-        monthly_comparison_summary = pd.concat([year_a_summary, year_b_summary], ignore_index=True)
+        res_a = agg_mensal(df_ano_a, ano_a)
+        res_b = agg_mensal(df_ano_b, ano_b)
+        df_comp = pd.concat([res_a, res_b], ignore_index=True)
 
-        if not monthly_comparison_summary.empty:
-            monthly_comparison_summary = monthly_comparison_summary.sort_values("mes")
-            ordered_month_names = [months_translation_pt[month] for month in sorted(monthly_comparison_summary["mes"].unique())]
+        if not df_comp.empty:
+            df_comp = df_comp.sort_values("mes")
+            ordem_meses = [MESES_PT[m] for m in sorted(df_comp["mes"].unique())]
 
-            monthly_totals = monthly_comparison_summary.groupby(["mes", "mes_nome", "Ano"])["Total"].sum().reset_index()
-            monthly_totals = monthly_totals.sort_values("mes")
+            total_mes = df_comp.groupby(["mes", "mes_nome", "Ano"])["Total"].sum().reset_index()
+            total_mes = total_mes.sort_values("mes")
 
-            monthly_evolution_chart = px.line(
-                monthly_totals,
+            fig_linha = px.line(
+                total_mes,
                 x="mes_nome",
                 y="Total",
                 color="Ano",
                 markers=True,
-                title=f"Evolução Mensal Total — {selected_year_a} vs {selected_year_b}" + (f" · {selected_comparison_weekday}" if selected_comparison_weekday != "Todos" else ""),
+                title=f"Evolução Mensal Total — {ano_a} vs {ano_b}" + (f" · {dia_cmp}" if dia_cmp != "Todos" else ""),
                 labels={"mes_nome": "Mês", "Total": "Nº Ocorrências", "Ano": "Ano"},
-                color_discrete_map={str(selected_year_a): "#2563EB", str(selected_year_b): "#DC2626"},
-                category_orders={"mes_nome": ordered_month_names}
+                color_discrete_map={str(ano_a): "#2563EB", str(ano_b): "#DC2626"},
+                category_orders={"mes_nome": ordem_meses}
             )
-            monthly_evolution_chart.update_layout(height=380)
-            st.plotly_chart(monthly_evolution_chart, use_container_width=True)
+            fig_linha.update_layout(height=380)
+            st.plotly_chart(fig_linha, use_container_width=True)
 
-            monthly_category_comparison_chart = px.bar(
-                monthly_comparison_summary,
+            fig_bar = px.bar(
+                df_comp,
                 x="mes_nome",
                 y="Total",
                 color="Ano",
@@ -2463,81 +2918,69 @@ with predictive_model_tab:
                 barmode="group",
                 title="Comparativo por Categoria e Mês",
                 labels={"mes_nome": "Mês", "Total": "Ocorrências"},
-                color_discrete_map={str(selected_year_a): "#2563EB", str(selected_year_b): "#DC2626"},
-                category_orders={"mes_nome": ordered_month_names}
+                color_discrete_map={str(ano_a): "#2563EB", str(ano_b): "#DC2626"},
+                category_orders={"mes_nome": ordem_meses}
             )
-            monthly_category_comparison_chart.update_layout(height=420)
-            monthly_category_comparison_chart.for_each_annotation(lambda annotation: annotation.update(text=annotation.text.split("=")[-1]))
-            st.plotly_chart(monthly_category_comparison_chart, use_container_width=True)
+            fig_bar.update_layout(height=420)
+            fig_bar.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+            st.plotly_chart(fig_bar, use_container_width=True)
 
             st.markdown("#### 📈 Variação Percentual Mês a Mês (Crescimento / Decrescimento)")
-            monthly_variation_pivot = monthly_totals.pivot_table(index="mes_nome", columns="Ano", values="Total").reindex(ordered_month_names)
-            monthly_variation_pivot.columns = [str(column_name) for column_name in monthly_variation_pivot.columns]
+            pivot_var = total_mes.pivot_table(index="mes_nome", columns="Ano", values="Total").reindex(ordem_meses)
+            pivot_var.columns = [str(c) for c in pivot_var.columns]
+            col_a_str, col_b_str = str(ano_a), str(ano_b)
 
-            year_a_column = str(selected_year_a)
-            year_b_column = str(selected_year_b)
-
-            if year_a_column in monthly_variation_pivot.columns and year_b_column in monthly_variation_pivot.columns:
-                monthly_variation_pivot["Variação (%)"] = (
-                    (monthly_variation_pivot[year_b_column] - monthly_variation_pivot[year_a_column]) /
-                    monthly_variation_pivot[year_a_column].replace(0, np.nan) * 100
+            if col_a_str in pivot_var.columns and col_b_str in pivot_var.columns:
+                pivot_var["Variação (%)"] = (
+                    (pivot_var[col_b_str] - pivot_var[col_a_str]) / pivot_var[col_a_str].replace(0, np.nan) * 100
                 ).round(1)
+                pivot_var = pivot_var.reset_index()
+                pivot_var["Cor"] = pivot_var["Variação (%)"].apply(lambda v: "Aumento 📈" if v >= 0 else "Redução 📉")
 
-                monthly_variation_pivot = monthly_variation_pivot.reset_index()
-                monthly_variation_pivot["Cor"] = monthly_variation_pivot["Variação (%)"].apply(
-                    lambda value: "Aumento 📈" if value >= 0 else "Redução 📉"
-                )
-
-                monthly_variation_chart = px.bar(
-                    monthly_variation_pivot.dropna(subset=["Variação (%)"]),
+                fig_var = px.bar(
+                    pivot_var.dropna(subset=["Variação (%)"]),
                     x="mes_nome",
                     y="Variação (%)",
                     color="Cor",
                     color_discrete_map={"Aumento 📈": "#DC2626", "Redução 📉": "#16A34A"},
-                    title=f"Variação % de {selected_year_a} → {selected_year_b} por Mês",
+                    title=f"Variação % de {ano_a} → {ano_b} por Mês",
                     labels={"mes_nome": "Mês", "Variação (%)": "Variação (%)"},
                     text="Variação (%)",
-                    category_orders={"mes_nome": ordered_month_names}
+                    category_orders={"mes_nome": ordem_meses}
                 )
-                monthly_variation_chart.update_traces(texttemplate="%{text}%", textposition="outside")
-                monthly_variation_chart.add_hline(y=0, line_dash="dash", line_color="gray")
-                monthly_variation_chart.update_layout(height=360, showlegend=True)
-                st.plotly_chart(monthly_variation_chart, use_container_width=True)
+                fig_var.update_traces(texttemplate="%{text}%", textposition="outside")
+                fig_var.add_hline(y=0, line_dash="dash", line_color="gray")
+                fig_var.update_layout(height=360, showlegend=True)
+                st.plotly_chart(fig_var, use_container_width=True)
 
             st.markdown("#### 📋 Tabela Resumo Comparativa")
-            comparison_summary_table = (
-                monthly_variation_pivot[[ "mes_nome", year_a_column, year_b_column, "Variação (%)"]].copy()
-                if "Variação (%)" in monthly_variation_pivot.columns
-                else monthly_variation_pivot
-            )
-
-            if "Variação (%)" in comparison_summary_table.columns:
-                comparison_summary_table.columns = ["Mês", str(selected_year_a), str(selected_year_b), "Δ (%)"]
-
-            st.dataframe(comparison_summary_table, hide_index=True, use_container_width=True)
+            tbl = pivot_var[["mes_nome", col_a_str, col_b_str, "Variação (%)"]].copy() if "Variação (%)" in pivot_var.columns else pivot_var
+            if "Variação (%)" in tbl.columns:
+                tbl.columns = ["Mês", str(ano_a), str(ano_b), "Δ (%)"]
+            st.dataframe(tbl, hide_index=True, use_container_width=True)
         else:
             st.info("Sem dados suficientes para o comparativo mensal com os filtros selecionados.")
     else:
         st.info("Nenhum dado histórico disponível para comparação.")
 
-with data_tab:
+with tab_dados:
     st.subheader("Tabela de Incidentes")
 
-    if not filtered_alerts_dataframe.empty:
-        visible_incident_columns = [
-            column for column in [
+    if not df_filtered.empty:
+        colunas_exibir = [
+            c for c in [
                 "timestamp", "type", "subtype", "street", "lat", "lon",
                 "confidence", "reportRating"
-            ] if column in filtered_alerts_dataframe.columns
+            ] if c in df_filtered.columns
         ]
         st.dataframe(
-            filtered_alerts_dataframe[visible_incident_columns].sort_values("timestamp", ascending=False),
+            df_filtered[colunas_exibir].sort_values("timestamp", ascending=False),
             width="stretch"
         )
-        incidents_csv = filtered_alerts_dataframe[visible_incident_columns].to_csv(index=False).encode("utf-8")
+        csv = df_filtered[colunas_exibir].to_csv(index=False).encode("utf-8")
         st.download_button(
             "Baixar CSV — Incidentes",
-            data=incidents_csv,
+            data=csv,
             file_name=f"incidentes_{selected_date}.csv",
             mime="text/csv"
         )
@@ -2546,26 +2989,26 @@ with data_tab:
 
     st.subheader("Tabela de Congestionamentos")
 
-    if not filtered_jams_dataframe.empty:
-        visible_jam_columns = [
-            column for column in [
+    if not df_jams_filtered.empty:
+        colunas_jams = [
+            c for c in [
                 "timestamp", "street", "speed", "length", "delay",
                 "type", "subtype", "lat", "lon"
-            ] if column in filtered_jams_dataframe.columns
+            ] if c in df_jams_filtered.columns
         ]
 
-        visible_jams_dataframe = filtered_jams_dataframe[visible_jam_columns].copy()
-        if "speed" in visible_jams_dataframe.columns:
-            visible_jams_dataframe["speed_kmh"] = (visible_jams_dataframe["speed"] * 3.6).round(1)
+        df_jams_show = df_jams_filtered[colunas_jams].copy()
+        if "speed" in df_jams_show.columns:
+            df_jams_show["speed_kmh"] = (df_jams_show["speed"] * 3.6).round(1)
 
         st.dataframe(
-            visible_jams_dataframe.sort_values("timestamp", ascending=False),
+            df_jams_show.sort_values("timestamp", ascending=False),
             width="stretch"
         )
-        jams_csv = visible_jams_dataframe.to_csv(index=False).encode("utf-8")
+        csv_jams = df_jams_show.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Baixar CSV — Congestionamentos",
-            data=jams_csv,
+            data=csv_jams,
             file_name=f"jams_{selected_date}.csv",
             mime="text/csv"
         )
