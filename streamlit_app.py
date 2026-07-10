@@ -2206,9 +2206,9 @@ with tab_calor:
         if {"lat", "lon"}.issubset(df_heat.columns):
             df_heat = df_heat.dropna(subset=["lat", "lon"])
             df_heat = df_heat[
-                df_heat["lat"].between(LAT_MIN, LAT_MAX) &
-                df_heat["lon"].between(LON_MIN, LON_MAX)
-            ]
+    df_heat["lat"].between(FOZ_LATITUDE_MIN, FOZ_LATITUDE_MAX) &
+    df_heat["lon"].between(FOZ_LONGITUDE_MIN, FOZ_LONGITUDE_MAX)
+]
 
             if not df_heat.empty:
                 m_heat = folium.Map(
