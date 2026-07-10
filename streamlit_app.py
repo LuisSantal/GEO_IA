@@ -807,40 +807,138 @@ def load_all_data():
     jams_id_1 = get_latest_h5_id(FOLDER_JAMS_ID)
     jams_id_2 = get_latest_h5_id(FOLDER_JAMS_ID2)
 
-    alert_frames = []
-    if alerts_id_1:
-        alert_frames.append(load_hdf_from_drive(alerts_id_1))
-    if alerts_id_2:
-        alert_frames.append(load_hdf_from_drive(alerts_id_2))
+    # =====================================================
+    # 1) ALERTAS HDF5 (FONTE PRINCIPAL)
+    # =====================================================
+    alert_hdf_frames = []
 
-    if alert_frames:
-        alerts_dataframe = pd.concat(alert_frames, ignore_index=True)
-        dedup_columns = ["uuid"] if "uuid" in alerts_dataframe.columns else ["pubMillis", "street"]
-        alerts_dataframe = alerts_dataframe.drop_duplicates(subset=dedup_columns)
+    if alerts_id_1:
+        alert_hdf_frames.append(load_hdf_from_drive(alerts_id_1))
+    if alerts_id_2:
+        alert_hdf_frames.append(load_hdf_from_drive(alerts_id_2))
+
+    if alert_hdf_frames:
+        alerts_hdf_dataframe = pd.concat(alert_hdf_frames, ignore_index=True)
+
+        dedup_columns = ["uuid"] if "uuid" in alerts_hdf_dataframe.columns else [
+            column_name
+            for column_name in ["pubMillis", "street", "type", "subtype"]
+            if column_name in alerts_hdf_dataframe.columns
+        ]
+
+        if dedup_columns:
+            alerts_hdf_dataframe = alerts_hdf_dataframe.drop_duplicates(subset=dedup_columns)
     else:
+        alerts_hdf_dataframe = pd.DataFrame()
+
+    if not alerts_hdf_dataframe.empty:
+        alerts_hdf_dataframe = normalize_timestamps(alerts_hdf_dataframe)
+        alerts_hdf_dataframe = extract_coordinates(alerts_hdf_dataframe)
+        alerts_hdf_dataframe = translate_dataframe(alerts_hdf_dataframe)
+        alerts_hdf_dataframe = filter_bbox_foz(alerts_hdf_dataframe)
+
+        if "street" not in alerts_hdf_dataframe.columns:
+            alerts_hdf_dataframe["street"] = "N/A"
+
+        alerts_hdf_dataframe["data_source"] = "hdf5"
+
+    # =====================================================
+    # 2) CSV HISTÓRICO (SOMENTE COMPLEMENTO DOS ALERTAS)
+    # =====================================================
+    try:
+        alerts_csv_dataframe = load_and_merge_local_alert_csvs()
+    except Exception:
+        alerts_csv_dataframe = pd.DataFrame()
+
+    if not alerts_csv_dataframe.empty:
+        if "street" not in alerts_csv_dataframe.columns:
+            alerts_csv_dataframe["street"] = "N/A"
+
+        alerts_csv_dataframe["data_source"] = "csv"
+
+    # =====================================================
+    # 3) ALERTAS FINAIS:
+    #    HDF5 TEM PRIORIDADE, CSV COMPLEMENTA
+    # =====================================================
+    if alerts_hdf_dataframe.empty and alerts_csv_dataframe.empty:
         alerts_dataframe = pd.DataFrame()
 
-    jam_frames = []
-    if jams_id_1:
-        jam_frames.append(load_hdf_from_drive(jams_id_1))
-    if jams_id_2:
-        jam_frames.append(load_hdf_from_drive(jams_id_2))
+    elif alerts_hdf_dataframe.empty:
+        alerts_dataframe = alerts_csv_dataframe.copy()
 
-    if jam_frames:
-        jams_dataframe = pd.concat(jam_frames, ignore_index=True)
-        dedup_columns = ["uuid"] if "uuid" in jams_dataframe.columns else ["pubMillis", "street"]
-        jams_dataframe = jams_dataframe.drop_duplicates(subset=dedup_columns)
+    elif alerts_csv_dataframe.empty:
+        alerts_dataframe = alerts_hdf_dataframe.copy()
+
     else:
-        jams_dataframe = pd.DataFrame()
+        common_columns = sorted(
+            set(alerts_hdf_dataframe.columns).union(set(alerts_csv_dataframe.columns))
+        )
+
+        alerts_hdf_aligned = alerts_hdf_dataframe.reindex(columns=common_columns)
+        alerts_csv_aligned = alerts_csv_dataframe.reindex(columns=common_columns)
+
+        alerts_dataframe = pd.concat(
+            [alerts_hdf_aligned, alerts_csv_aligned],
+            ignore_index=True
+        )
+
+        # remove duplicados mantendo prioridade do HDF5
+        alerts_dataframe["source_priority"] = alerts_dataframe["data_source"].map({
+            "hdf5": 0,
+            "csv": 1
+        }).fillna(9)
+
+        dedup_columns = [
+            column_name
+            for column_name in ["uuid", "pubMillis", "timestamp", "street", "type", "subtype", "lat", "lon"]
+            if column_name in alerts_dataframe.columns
+        ]
+
+        if dedup_columns:
+            alerts_dataframe = (
+                alerts_dataframe
+                .sort_values(by=["source_priority"])
+                .drop_duplicates(subset=dedup_columns, keep="first")
+                .copy()
+            )
+
+        alerts_dataframe = alerts_dataframe.drop(columns=["source_priority"], errors="ignore")
 
     if not alerts_dataframe.empty:
-        alerts_dataframe = normalize_timestamps(alerts_dataframe)
-        alerts_dataframe = extract_coordinates(alerts_dataframe)
-        alerts_dataframe = translate_dataframe(alerts_dataframe)
-        alerts_dataframe = filter_bbox_foz(alerts_dataframe)
+        if "timestamp" in alerts_dataframe.columns:
+            alerts_dataframe["timestamp"] = pd.to_datetime(alerts_dataframe["timestamp"], errors="coerce")
+            alerts_dataframe["date"] = alerts_dataframe["timestamp"].dt.date
+            alerts_dataframe["hour"] = alerts_dataframe["timestamp"].dt.hour
+            alerts_dataframe["day_of_week"] = alerts_dataframe["timestamp"].dt.day_name()
 
         if "street" not in alerts_dataframe.columns:
             alerts_dataframe["street"] = "N/A"
+
+        alerts_dataframe = filter_bbox_foz(alerts_dataframe)
+
+    # =====================================================
+    # 4) JAMS HDF5 (CONTINUAM COM PRIORIDADE TOTAL)
+    # =====================================================
+    jam_hdf_frames = []
+
+    if jams_id_1:
+        jam_hdf_frames.append(load_hdf_from_drive(jams_id_1))
+    if jams_id_2:
+        jam_hdf_frames.append(load_hdf_from_drive(jams_id_2))
+
+    if jam_hdf_frames:
+        jams_dataframe = pd.concat(jam_hdf_frames, ignore_index=True)
+
+        dedup_columns = ["uuid"] if "uuid" in jams_dataframe.columns else [
+            column_name
+            for column_name in ["pubMillis", "street"]
+            if column_name in jams_dataframe.columns
+        ]
+
+        if dedup_columns:
+            jams_dataframe = jams_dataframe.drop_duplicates(subset=dedup_columns)
+    else:
+        jams_dataframe = pd.DataFrame()
 
     if not jams_dataframe.empty:
         jams_dataframe = normalize_timestamps(jams_dataframe)
@@ -850,6 +948,8 @@ def load_all_data():
 
         if "street" not in jams_dataframe.columns:
             jams_dataframe["street"] = "Via"
+
+        jams_dataframe["data_source"] = "hdf5"
 
     return alerts_dataframe, jams_dataframe
 
