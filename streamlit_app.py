@@ -2408,7 +2408,7 @@ with tab_temporal_danos:
     Esta seção exibe o perfil de distribuição e reincidência de anomalias viárias nos arquivos ativos carregados atualmente.
     """)
     if not df_alerts_raw.empty:
-        subtipos = clean_unique_values(df_alerts_raw["subtype"], invalid_values=["nan", ""])
+        subtipos = get_clean_unique_values(df_alerts_raw["subtype"], invalid_values=["nan", ""])
         subtipo_sel = st.selectbox("Selecione a natureza do dano:", subtipos, key="sel_dano_temporal")
 
         df_sub = df_alerts_raw[df_alerts_raw["subtype"] == subtipo_sel]
