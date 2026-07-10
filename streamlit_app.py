@@ -2102,19 +2102,19 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
 # =========================================================
 # COMPATIBILIZAÇÃO DE NOMES PARA O BLOCO 6
 # =========================================================
-df_filtered = dffiltered.copy() if "dffiltered" in locals() else pd.DataFrame()
-df_jams_filtered = dfjamsfiltered.copy() if "dfjamsfiltered" in locals() else pd.DataFrame()
+df_filtered = filtered_alerts_dataframe.copy() if "filtered_alerts_dataframe" in locals() else pd.DataFrame()
+df_jams_filtered = filtered_jams_dataframe.copy() if "filtered_jams_dataframe" in locals() else pd.DataFrame()
 
-df_alerts_raw = dfalertsraw.copy() if "dfalertsraw" in locals() else pd.DataFrame()
-df_jams_raw = dfjamsraw.copy() if "dfjamsraw" in locals() else pd.DataFrame()
+df_alerts_raw = raw_alerts_dataframe.copy() if "raw_alerts_dataframe" in locals() else pd.DataFrame()
+df_jams_raw = raw_jams_dataframe.copy() if "raw_jams_dataframe" in locals() else pd.DataFrame()
 
-hora_range = horarange if "horarange" in locals() else (0, 23)
-filtro_tipo = filtrotipo if "filtrotipo" in locals() else []
-filtro_natureza = filtronatureza if "filtronatureza" in locals() else []
-filtro_rua = filtrorua if "filtrorua" in locals() and filtrorua != "Todas" else None
+hora_range = selected_hour_range if "selected_hour_range" in locals() else (0, 23)
+filtro_tipo = selected_incident_types if "selected_incident_types" in locals() else []
+filtro_natureza = selected_incident_subtypes if "selected_incident_subtypes" in locals() else []
+filtro_rua = selected_street if "selected_street" in locals() and selected_street else None
 
-df_criticidade_vias = dfcriticidadevias.copy() if "dfcriticidadevias" in locals() else pd.DataFrame()
-selected_date = selecteddate if "selecteddate" in locals() else datetime.now().date()
+df_criticidade_vias = road_criticality_dataframe.copy() if "road_criticality_dataframe" in locals() else pd.DataFrame()
+selected_date = selected_date if "selected_date" in locals() else datetime.now().date()
 st.subheader("🗺️ Visualizações")
 
 (
