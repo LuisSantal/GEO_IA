@@ -2034,7 +2034,22 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
 # =========================================================
 # BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS
 # =========================================================
+# =========================================================
+# COMPATIBILIZAÇÃO DE NOMES PARA O BLOCO 6
+# =========================================================
+df_filtered = dffiltered.copy() if "dffiltered" in locals() else pd.DataFrame()
+df_jams_filtered = dfjamsfiltered.copy() if "dfjamsfiltered" in locals() else pd.DataFrame()
 
+df_alerts_raw = dfalertsraw.copy() if "dfalertsraw" in locals() else pd.DataFrame()
+df_jams_raw = dfjamsraw.copy() if "dfjamsraw" in locals() else pd.DataFrame()
+
+hora_range = horarange if "horarange" in locals() else (0, 23)
+filtro_tipo = filtrotipo if "filtrotipo" in locals() else []
+filtro_natureza = filtronatureza if "filtronatureza" in locals() else []
+filtro_rua = filtrorua if "filtrorua" in locals() and filtrorua != "Todas" else None
+
+df_criticidade_vias = dfcriticidadevias.copy() if "dfcriticidadevias" in locals() else pd.DataFrame()
+selected_date = selecteddate if "selecteddate" in locals() else datetime.now().date()
 st.subheader("🗺️ Visualizações")
 
 (
