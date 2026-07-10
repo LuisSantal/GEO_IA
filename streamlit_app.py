@@ -2430,7 +2430,7 @@ def build_annual_pothole_map(
 
         annual_map = folium.Map(
             location=[initial_point[0], initial_point[1]],
-            zoom_start=13,
+            zoom_start=100,
             tiles="OpenStreetMap"
         )
     else:
