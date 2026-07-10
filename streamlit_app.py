@@ -288,10 +288,11 @@ minutes_until_next_refresh = int(seconds_until_next_refresh // 60)
 remaining_seconds = int(seconds_until_next_refresh % 60)
 session_elapsed_total_seconds = int(session_elapsed_seconds)
 
-GOOGLE_DRIVE_ALERTS_FOLDER_ID_1 = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
-GOOGLE_DRIVE_JAMS_FOLDER_ID_1 = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
-GOOGLE_DRIVE_ALERTS_FOLDER_ID_2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
-GOOGLE_DRIVE_JAMS_FOLDER_ID_2 = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
+FOLDER_ALERTS_ID = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
+FOLDER_JAMS_ID = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
+FOLDER_ALERTS_ID2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
+FOLDER_JAMS_ID2 = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
+
 CSV_FILES_TO_MERGE = [
     "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv",
     "Waze for Cities Data _ buracos na via maio 2025 a maio 2026.csv",
