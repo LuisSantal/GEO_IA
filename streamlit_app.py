@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 import folium
 from folium import plugins
 from streamlit_folium import st_folium
-
+from folium.plugins import MarkerCluster
 
 # =========================================================
 # BLOCO 1 — CONFIGURAÇÃO BASE DO APP
