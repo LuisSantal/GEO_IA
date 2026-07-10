@@ -1952,6 +1952,7 @@ st.caption(
 
 st.markdown("---")
 # =========================================================
+# =========================================================
 # BLOCO EXTRA — ANÁLISE TEMPORAL ANUAL DE BURACOS (PLANILHA)
 # =========================================================
 
@@ -1972,38 +1973,48 @@ def standardize_alert_spreadsheet_columns(dataframe: pd.DataFrame) -> pd.DataFra
         return pd.DataFrame()
 
     standardized_dataframe = dataframe.copy()
-    standardized_dataframe.columns = [str(column).strip() for column in standardized_dataframe.columns]
+    standardized_dataframe.columns = [str(column_name).strip() for column_name in standardized_dataframe.columns]
 
     rename_map = {}
-    for column_name in standardized_dataframe.columns:
-        lower_name = column_name.lower().strip()
 
-        if lower_name == "street":
-            rename_map[column_name] = "street"
-        elif lower_name == "city":
-            rename_map[column_name] = "city"
-        elif lower_name == "location":
-            rename_map[column_name] = "location"
-        elif lower_name == "subtype":
-            rename_map[column_name] = "subtype"
-        elif lower_name == "type":
-            rename_map[column_name] = "type"
-        elif lower_name == "date":
-            rename_map[column_name] = "Date"
-        elif lower_name == "pubmillis":
-            rename_map[column_name] = "pubMillis"
-        elif lower_name == "latitude":
-            rename_map[column_name] = "latitude"
-        elif lower_name == "longitude":
-            rename_map[column_name] = "longitude"
-        elif lower_name == "lat":
-            rename_map[column_name] = "lat"
-        elif lower_name in ["lon", "lng", "long"]:
-            rename_map[column_name] = "lon"
-        elif lower_name == "x":
-            rename_map[column_name] = "x"
-        elif lower_name == "y":
-            rename_map[column_name] = "y"
+    for original_column_name in standardized_dataframe.columns:
+        normalized_column_name = (
+            str(original_column_name)
+            .strip()
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+            .replace("/", "_")
+        )
+
+        if normalized_column_name == "street":
+            rename_map[original_column_name] = "street"
+        elif normalized_column_name == "city":
+            rename_map[original_column_name] = "city"
+        elif normalized_column_name == "location":
+            rename_map[original_column_name] = "location"
+        elif normalized_column_name == "subtype":
+            rename_map[original_column_name] = "subtype"
+        elif normalized_column_name == "type":
+            rename_map[original_column_name] = "type"
+        elif normalized_column_name in ["date", "data"]:
+            rename_map[original_column_name] = "date_text"
+        elif normalized_column_name == "pubmillis":
+            rename_map[original_column_name] = "pubMillis"
+        elif normalized_column_name == "timestamp":
+            rename_map[original_column_name] = "timestamp"
+        elif normalized_column_name == "latitude":
+            rename_map[original_column_name] = "latitude"
+        elif normalized_column_name == "longitude":
+            rename_map[original_column_name] = "longitude"
+        elif normalized_column_name == "lat":
+            rename_map[original_column_name] = "lat"
+        elif normalized_column_name in ["lon", "lng", "long"]:
+            rename_map[original_column_name] = "lon"
+        elif normalized_column_name == "x":
+            rename_map[original_column_name] = "x"
+        elif normalized_column_name == "y":
+            rename_map[original_column_name] = "y"
 
     standardized_dataframe = standardized_dataframe.rename(columns=rename_map)
     return standardized_dataframe
@@ -2016,13 +2027,23 @@ def parse_portuguese_date(date_value):
     date_text = str(date_value).strip()
 
     month_map = {
-        "jan.": "Jan", "fev.": "Feb", "mar.": "Mar", "abr.": "Apr",
-        "maio": "May", "mai.": "May", "jun.": "Jun", "jul.": "Jul", "ago.": "Aug",
-        "set.": "Sep", "out.": "Oct", "nov.": "Nov", "dez.": "Dec"
+        "jan.": "Jan",
+        "fev.": "Feb",
+        "mar.": "Mar",
+        "abr.": "Apr",
+        "maio": "May",
+        "mai.": "May",
+        "jun.": "Jun",
+        "jul.": "Jul",
+        "ago.": "Aug",
+        "set.": "Sep",
+        "out.": "Oct",
+        "nov.": "Nov",
+        "dez.": "Dec"
     }
 
-    for pt_abbreviation, en_month in month_map.items():
-        date_text = date_text.replace(pt_abbreviation, en_month)
+    for month_pt, month_en in month_map.items():
+        date_text = date_text.replace(month_pt, month_en)
 
     return pd.to_datetime(date_text, format="%d de %b de %Y", errors="coerce")
 
@@ -2041,11 +2062,14 @@ def normalize_spreadsheet_timestamps(dataframe: pd.DataFrame) -> pd.DataFrame:
             utc=True
         ).dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
 
-    elif "Date" in normalized_dataframe.columns:
-        normalized_dataframe["timestamp"] = normalized_dataframe["Date"].apply(parse_portuguese_date)
-
     elif "timestamp" in normalized_dataframe.columns:
-        normalized_dataframe["timestamp"] = pd.to_datetime(normalized_dataframe["timestamp"], errors="coerce")
+        normalized_dataframe["timestamp"] = pd.to_datetime(
+            normalized_dataframe["timestamp"],
+            errors="coerce"
+        )
+
+    elif "date_text" in normalized_dataframe.columns:
+        normalized_dataframe["timestamp"] = normalized_dataframe["date_text"].apply(parse_portuguese_date)
 
     else:
         normalized_dataframe["timestamp"] = pd.NaT
@@ -2119,27 +2143,43 @@ def normalize_annual_analysis_coordinates(dataframe: pd.DataFrame) -> pd.DataFra
 
     if "latitude" in normalized_dataframe.columns:
         normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["latitude"], errors="coerce")
+
     if "longitude" in normalized_dataframe.columns:
         normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["longitude"], errors="coerce")
 
-    if "lat" in normalized_dataframe.columns and "latitude" not in normalized_dataframe.columns:
-        normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["lat"], errors="coerce")
+    if "lat" in normalized_dataframe.columns:
+        if "latitude" not in normalized_dataframe.columns:
+            normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["lat"], errors="coerce")
+        else:
+            normalized_dataframe["latitude"] = normalized_dataframe["latitude"].fillna(
+                pd.to_numeric(normalized_dataframe["lat"], errors="coerce")
+            )
 
-    if "lon" in normalized_dataframe.columns and "longitude" not in normalized_dataframe.columns:
-        normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["lon"], errors="coerce")
+    if "lon" in normalized_dataframe.columns:
+        if "longitude" not in normalized_dataframe.columns:
+            normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["lon"], errors="coerce")
+        else:
+            normalized_dataframe["longitude"] = normalized_dataframe["longitude"].fillna(
+                pd.to_numeric(normalized_dataframe["lon"], errors="coerce")
+            )
 
-    if "latitude" not in normalized_dataframe.columns and "y" in normalized_dataframe.columns:
-        normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["y"], errors="coerce")
+    if "y" in normalized_dataframe.columns:
+        if "latitude" not in normalized_dataframe.columns:
+            normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["y"], errors="coerce")
+        else:
+            normalized_dataframe["latitude"] = normalized_dataframe["latitude"].fillna(
+                pd.to_numeric(normalized_dataframe["y"], errors="coerce")
+            )
 
-    if "longitude" not in normalized_dataframe.columns and "x" in normalized_dataframe.columns:
-        normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["x"], errors="coerce")
+    if "x" in normalized_dataframe.columns:
+        if "longitude" not in normalized_dataframe.columns:
+            normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["x"], errors="coerce")
+        else:
+            normalized_dataframe["longitude"] = normalized_dataframe["longitude"].fillna(
+                pd.to_numeric(normalized_dataframe["x"], errors="coerce")
+            )
 
-    need_location_extraction = (
-        ("latitude" not in normalized_dataframe.columns or normalized_dataframe["latitude"].isna().all()) or
-        ("longitude" not in normalized_dataframe.columns or normalized_dataframe["longitude"].isna().all())
-    )
-
-    if need_location_extraction and "location" in normalized_dataframe.columns:
+    if "location" in normalized_dataframe.columns:
         extracted_coordinates = normalized_dataframe["location"].apply(
             lambda location_value: pd.Series(
                 extract_hybrid_location_coordinates(location_value),
@@ -2194,8 +2234,10 @@ def normalize_pothole_subtype_labels(dataframe: pd.DataFrame) -> pd.DataFrame:
 def sample_street_points(dataframe: pd.DataFrame, max_points: int) -> pd.DataFrame:
     if dataframe is None or dataframe.empty:
         return pd.DataFrame()
+
     if len(dataframe) <= max_points:
         return dataframe.copy()
+
     return dataframe.sample(n=max_points, random_state=42).copy()
 
 
@@ -2209,17 +2251,22 @@ def load_alert_spreadsheet_for_annual_analysis(csv_path: str = LOCAL_ALERT_CSV_P
 
     if "street" not in spreadsheet_dataframe.columns:
         spreadsheet_dataframe["street"] = pd.NA
+
     if "city" not in spreadsheet_dataframe.columns:
         spreadsheet_dataframe["city"] = "Foz do Iguaçu"
 
-    spreadsheet_dataframe["street"] = spreadsheet_dataframe["street"].fillna("N/A")
-    spreadsheet_dataframe["city"] = spreadsheet_dataframe["city"].fillna("Foz do Iguaçu")
+    spreadsheet_dataframe["street"] = spreadsheet_dataframe["street"].fillna("N/A").astype(str).str.strip()
+    spreadsheet_dataframe["city"] = spreadsheet_dataframe["city"].fillna("Foz do Iguaçu").astype(str).str.strip()
 
     return spreadsheet_dataframe
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def get_street_geometry_from_nominatim(street_name: str, city_name: str, country_name: str = "Brazil"):
+def get_street_geometry_from_nominatim(
+    street_name: str,
+    city_name: str,
+    country_name: str = "Brazil"
+):
     search_query = f"{street_name}, {city_name}, {country_name}"
     request_url = "https://nominatim.openstreetmap.org/search"
     request_params = {
@@ -2233,7 +2280,12 @@ def get_street_geometry_from_nominatim(street_name: str, city_name: str, country
     }
 
     try:
-        response = requests.get(request_url, params=request_params, headers=request_headers, timeout=20)
+        response = requests.get(
+            request_url,
+            params=request_params,
+            headers=request_headers,
+            timeout=20
+        )
         response.raise_for_status()
         response_data = response.json()
 
@@ -2261,15 +2313,19 @@ def get_street_geometry_from_nominatim(street_name: str, city_name: str, country
         return None
 
 
-def build_top_streets_by_year(dataframe: pd.DataFrame, year_value: int, top_n: int = 5) -> pd.DataFrame:
+def build_top_streets_by_year(
+    dataframe: pd.DataFrame,
+    year_value: int,
+    top_n: int = 5
+) -> pd.DataFrame:
     if dataframe is None or dataframe.empty:
+        return pd.DataFrame(columns=["street", "city", "pothole_count"])
+
+    if "year" not in dataframe.columns or "subtype" not in dataframe.columns:
         return pd.DataFrame(columns=["street", "city", "pothole_count"])
 
     year_dataframe = dataframe[dataframe["year"] == year_value].copy()
     if year_dataframe.empty:
-        return pd.DataFrame(columns=["street", "city", "pothole_count"])
-
-    if "subtype" not in year_dataframe.columns:
         return pd.DataFrame(columns=["street", "city", "pothole_count"])
 
     potholes_dataframe = year_dataframe[
@@ -2279,14 +2335,18 @@ def build_top_streets_by_year(dataframe: pd.DataFrame, year_value: int, top_n: i
     if potholes_dataframe.empty:
         return pd.DataFrame(columns=["street", "city", "pothole_count"])
 
-    potholes_dataframe = potholes_dataframe.dropna(subset=["street"]).copy()
-    potholes_dataframe["street"] = potholes_dataframe["street"].astype(str).str.strip()
+    if "street" not in potholes_dataframe.columns:
+        potholes_dataframe["street"] = "N/A"
+
+    if "city" not in potholes_dataframe.columns:
+        potholes_dataframe["city"] = "Foz do Iguaçu"
+
+    potholes_dataframe["street"] = potholes_dataframe["street"].fillna("N/A").astype(str).str.strip()
     potholes_dataframe["city"] = potholes_dataframe["city"].fillna("Foz do Iguaçu").astype(str).str.strip()
 
     potholes_dataframe = potholes_dataframe[
-        potholes_dataframe["street"].notna() &
-        (~potholes_dataframe["street"].isin(["", "nan", "N/A", "NA"]))
-    ]
+        ~potholes_dataframe["street"].isin(["", "nan", "N/A", "NA"])
+    ].copy()
 
     if potholes_dataframe.empty:
         return pd.DataFrame(columns=["street", "city", "pothole_count"])
@@ -2304,17 +2364,19 @@ def build_top_streets_by_year(dataframe: pd.DataFrame, year_value: int, top_n: i
     return top_streets_dataframe
 
 
-def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: int = 5):
-    top_streets_dataframe = build_top_streets_by_year(dataframe, year_value, top_n=top_n)
+def build_annual_pothole_map(
+    dataframe: pd.DataFrame,
+    year_value: int,
+    top_n: int = 5
+):
+    if dataframe is None or dataframe.empty:
+        return None, pd.DataFrame(columns=["street", "city", "pothole_count"])
 
+    top_streets_dataframe = build_top_streets_by_year(dataframe, year_value, top_n=top_n)
     if top_streets_dataframe.empty:
         return None, top_streets_dataframe
 
-    if dataframe is None or dataframe.empty:
-        return None, top_streets_dataframe
-
-    required_columns = {"year", "subtype"}
-    if not required_columns.issubset(dataframe.columns):
+    if "year" not in dataframe.columns or "subtype" not in dataframe.columns:
         return None, top_streets_dataframe
 
     annual_dataframe = dataframe[
@@ -2325,16 +2387,16 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if annual_dataframe.empty:
         return None, top_streets_dataframe
 
+    if "street" not in annual_dataframe.columns:
+        annual_dataframe["street"] = "N/A"
+
     if "city" not in annual_dataframe.columns:
         annual_dataframe["city"] = "Foz do Iguaçu"
 
+    annual_dataframe["street"] = annual_dataframe["street"].fillna("N/A").astype(str).str.strip()
+    annual_dataframe["city"] = annual_dataframe["city"].fillna("Foz do Iguaçu").astype(str).str.strip()
+
     annual_dataframe = normalize_annual_analysis_coordinates(annual_dataframe)
-
-    if "street" in annual_dataframe.columns:
-        annual_dataframe["street"] = annual_dataframe["street"].astype(str).str.strip()
-
-    if "city" in annual_dataframe.columns:
-        annual_dataframe["city"] = annual_dataframe["city"].fillna("Foz do Iguaçu").astype(str).str.strip()
 
     has_valid_coordinate_columns = (
         "latitude" in annual_dataframe.columns and
@@ -2349,11 +2411,12 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     map_bounds = []
 
     for _, street_row in top_streets_dataframe.iterrows():
-        street_name = street_row["street"]
-        city_name = street_row["city"]
+        street_name = str(street_row["street"]).strip()
+        city_name = str(street_row["city"]).strip()
         pothole_count = int(street_row["pothole_count"])
 
         street_geometry = get_street_geometry_from_nominatim(street_name, city_name)
+
         if street_geometry and len(street_geometry) >= 2:
             street_geometry_registry[(street_name, city_name)] = {
                 "geometry": street_geometry,
@@ -2364,6 +2427,7 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if street_geometry_registry:
         initial_key = list(street_geometry_registry.keys())[0]
         initial_point = street_geometry_registry[initial_key]["geometry"][0]
+
         annual_map = folium.Map(
             location=[initial_point[0], initial_point[1]],
             zoom_start=13,
@@ -2383,23 +2447,30 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
             tiles="OpenStreetMap"
         )
 
-    for (street_name, city_name), geometry_data in street_geometry_registry.items():
+    for _, street_row in top_streets_dataframe.iterrows():
+        street_name = str(street_row["street"]).strip()
+        city_name = str(street_row["city"]).strip()
+        pothole_count = int(street_row["pothole_count"])
+
         street_group = folium.FeatureGroup(
             name=f"Rua: {street_name} ({city_name})",
             show=True
         )
 
-        folium.PolyLine(
-            locations=geometry_data["geometry"],
-            color="blue",
-            weight=5,
-            opacity=0.75,
-            tooltip=(
-                f"<b>Rua:</b> {street_name}<br>"
-                f"<b>Cidade:</b> {city_name}<br>"
-                f"<b>Buracos:</b> {geometry_data['pothole_count']}"
-            )
-        ).add_to(street_group)
+        if (street_name, city_name) in street_geometry_registry:
+            geometry_data = street_geometry_registry[(street_name, city_name)]
+
+            folium.PolyLine(
+                locations=geometry_data["geometry"],
+                color="blue",
+                weight=5,
+                opacity=0.75,
+                tooltip=(
+                    f"<b>Rua:</b> {street_name}<br>"
+                    f"<b>Cidade:</b> {city_name}<br>"
+                    f"<b>Buracos:</b> {geometry_data['pothole_count']}"
+                )
+            ).add_to(street_group)
 
         if has_valid_coordinate_columns:
             street_points_dataframe = annual_dataframe[
@@ -2409,7 +2480,10 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
         else:
             street_points_dataframe = pd.DataFrame()
 
-        sampled_street_points = sample_street_points(street_points_dataframe, MAX_MARKERS_PER_STREET)
+        sampled_street_points = sample_street_points(
+            street_points_dataframe,
+            MAX_MARKERS_PER_STREET
+        )
 
         marker_cluster = MarkerCluster(
             name=f"Buracos em {street_name}",
@@ -2417,9 +2491,17 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
         ).add_to(street_group)
 
         for _, point_row in sampled_street_points.iterrows():
+            popup_date_value = point_row.get("timestamp", pd.NaT)
+            popup_date_text = (
+                pd.to_datetime(popup_date_value).strftime("%d/%m/%Y")
+                if pd.notna(popup_date_value)
+                else "N/D"
+            )
+
             popup_text = (
                 f"Rua: {point_row.get('street', 'N/D')}<br>"
-                f"Data: {point_row.get('Date', point_row.get('date', 'N/D'))}<br>"
+                f"Cidade: {point_row.get('city', 'N/D')}<br>"
+                f"Data: {popup_date_text}<br>"
                 f"Tipo: {point_row.get('subtype', 'N/D')}"
             )
 
@@ -2433,15 +2515,12 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
                 popup=popup_text
             ).add_to(marker_cluster)
 
+            map_bounds.append([point_row["latitude"], point_row["longitude"]])
+
         street_group.add_to(annual_map)
 
     if map_bounds:
         annual_map.fit_bounds(map_bounds)
-    else:
-        if has_valid_coordinate_columns and not annual_dataframe.empty:
-            valid_points = annual_dataframe.dropna(subset=["latitude", "longitude"]).copy()
-            if not valid_points.empty:
-                annual_map.fit_bounds(valid_points[["latitude", "longitude"]].values.tolist())
 
     folium.LayerControl(collapsed=False).add_to(annual_map)
     return annual_map, top_streets_dataframe
