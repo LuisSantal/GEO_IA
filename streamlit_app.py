@@ -292,7 +292,15 @@ GOOGLE_DRIVE_ALERTS_FOLDER_ID_1 = "1xKkqLEusWuNoGzy5-UYuevUbMHAvc-bL"
 GOOGLE_DRIVE_JAMS_FOLDER_ID_1 = "192MCefe9vQwYhQcu-uZXekMbgdslTcgC"
 GOOGLE_DRIVE_ALERTS_FOLDER_ID_2 = "1kQfYRJz0-EwY4gcsjTTVBCgK9zO5BAR0"
 GOOGLE_DRIVE_JAMS_FOLDER_ID_2 = "16bblUG7NQmLMZM7BQUGAa3-GZIFYMka0"
+CSV_FILES_TO_MERGE = [
+    "Waze for Cities Data _ tabelas alertas_20240101_20260306.csv",
+    "Waze for Cities Data _ buracos na via maio 2025 a maio 2026.csv",
+    "Waze for Cities Data _ todos os alertas maio 2025 a maio 2026.csv",
+    "Waze for Cities Data _Dashboard_Traffic Alerts_Tabela_2025-01-01-2026-07-04.csv",
+]
 
+LAT_MIN, LAT_MAX = -25.70, -25.40
+LON_MIN, LON_MAX = -54.75, -54.45
 
 def get_congestion_color(speed_kmh: float) -> str:
     if speed_kmh >= 80:
@@ -356,83 +364,87 @@ def get_incident_severity_color(incident_type: str, incident_subtype: str | None
 # BLOCO 2 — CONEXÃO, INGESTÃO E NORMALIZAÇÃO DOS DADOS
 # =========================================================
 
+import os
+from pathlib import Path
+
+
 @st.cache_resource(show_spinner=False)
-def get_google_drive_service():
+def get_drive_service():
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
 
-    service_account_info = st.secrets["gcp_service_account"]
-    credentials = service_account.Credentials.from_service_account_info(
-        service_account_info,
+    creds_info = st.secrets["gcp_service_account"]
+    creds = service_account.Credentials.from_service_account_info(
+        creds_info,
         scopes=["https://www.googleapis.com/auth/drive.readonly"]
     )
-    return build("drive", "v3", credentials=credentials)
+    return build("drive", "v3", credentials=creds)
 
 
-def get_latest_hdf_file_id(folder_id: str) -> str | None:
-    google_drive_service = get_google_drive_service()
+def get_latest_h5_id(folder_id: str) -> str | None:
+    service = get_drive_service()
     query = f"'{folder_id}' in parents and name contains '.h5' and trashed=false"
 
-    response = google_drive_service.files().list(
+    results = service.files().list(
         q=query,
         fields="files(id, name, modifiedTime)",
         orderBy="modifiedTime desc",
         pageSize=20
     ).execute()
 
-    available_files = response.get("files", [])
-    if not available_files:
+    files = results.get("files", [])
+    if not files:
         return None
 
-    latest_file_id = None
-    latest_numeric_timestamp = -1
+    latest_id = None
+    latest_ts = -1
 
-    for file_metadata in available_files:
-        timestamp_match = re.search(r"(\d{8,})", file_metadata["name"])
-        if timestamp_match:
-            numeric_timestamp = int(timestamp_match.group(1))
-            if numeric_timestamp > latest_numeric_timestamp:
-                latest_numeric_timestamp = numeric_timestamp
-                latest_file_id = file_metadata["id"]
+    for file_meta in files:
+        match = re.search(r"(\d{8,})", file_meta["name"])
+        if match:
+            ts = int(match.group(1))
+            if ts > latest_ts:
+                latest_ts = ts
+                latest_id = file_meta["id"]
 
-    return latest_file_id if latest_file_id else available_files[0]["id"]
+    return latest_id if latest_id else files[0]["id"]
 
 
 @st.cache_data(ttl=600, show_spinner="📥 Baixando dados do Drive...")
-def load_hdf_dataframe_from_drive(file_id: str) -> pd.DataFrame:
+def load_hdf_from_drive(file_id: str) -> pd.DataFrame:
     from googleapiclient.http import MediaIoBaseDownload
 
-    google_drive_service = get_google_drive_service()
-    file_request = google_drive_service.files().get_media(fileId=file_id)
+    service = get_drive_service()
+    request = service.files().get_media(fileId=file_id)
 
-    binary_buffer = io.BytesIO()
-    downloader = MediaIoBaseDownload(binary_buffer, file_request)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
 
-    download_finished = False
-    while not download_finished:
-        _, download_finished = downloader.next_chunk()
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
 
-    binary_buffer.seek(0)
-    temporary_file_path = None
+    buffer.seek(0)
+    tmp_path = None
 
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".h5") as temporary_file:
-            temporary_file.write(binary_buffer.getvalue())
-            temporary_file_path = temporary_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".h5") as tmp:
+            tmp.write(buffer.getvalue())
+            tmp_path = tmp.name
 
-        loaded_dataframe = pd.read_hdf(temporary_file_path, key="s")
-        return loaded_dataframe
-
-    finally:
-        if temporary_file_path and os.path.exists(temporary_file_path):
-            os.remove(temporary_file_path)
-
-
-def normalize_timestamps(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe is None or dataframe.empty:
+        dataframe = pd.read_hdf(tmp_path, key="s")
         return dataframe
 
-    normalized_dataframe = dataframe.copy()
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def normalize_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+
+    normalized_dataframe = df.copy()
 
     if "pubMillis" in normalized_dataframe.columns:
         normalized_dataframe["timestamp"] = (
@@ -441,9 +453,29 @@ def normalize_timestamps(dataframe: pd.DataFrame) -> pd.DataFrame:
             .dt.tz_localize(None)
         )
     elif "timestamp" in normalized_dataframe.columns:
-        normalized_dataframe["timestamp"] = pd.to_datetime(normalized_dataframe["timestamp"], errors="coerce")
+        normalized_dataframe["timestamp"] = pd.to_datetime(
+            normalized_dataframe["timestamp"],
+            errors="coerce"
+        )
     else:
-        normalized_dataframe["timestamp"] = get_current_foz_time()
+        for alternative_timestamp_column in [
+            "pub_utc_date",
+            "pubDate",
+            "date",
+            "data",
+            "datetime",
+            "datahora",
+            "data_hora",
+        ]:
+            if alternative_timestamp_column in normalized_dataframe.columns:
+                normalized_dataframe["timestamp"] = pd.to_datetime(
+                    normalized_dataframe[alternative_timestamp_column],
+                    errors="coerce",
+                    dayfirst=True
+                )
+                break
+        else:
+            normalized_dataframe["timestamp"] = now_foz()
 
     normalized_dataframe["date"] = normalized_dataframe["timestamp"].dt.date
     normalized_dataframe["hour"] = normalized_dataframe["timestamp"].dt.hour
@@ -452,32 +484,32 @@ def normalize_timestamps(dataframe: pd.DataFrame) -> pd.DataFrame:
     return normalized_dataframe
 
 
-def parse_dictionary_like_value(raw_value):
-    if isinstance(raw_value, dict):
-        return raw_value
-    if isinstance(raw_value, str):
+def _parse_dict_like(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
         try:
-            return ast.literal_eval(raw_value)
+            return ast.literal_eval(value)
         except Exception:
             return None
     return None
 
 
-def extract_lat_lon_from_location_field(location_value):
-    parsed_value = parse_dictionary_like_value(location_value)
-    if isinstance(parsed_value, dict):
+def _extract_lat_lon_from_location(value):
+    parsed = _parse_dict_like(value)
+    if isinstance(parsed, dict):
         try:
-            return float(parsed_value.get("y")), float(parsed_value.get("x"))
+            return float(parsed.get("y")), float(parsed.get("x"))
         except Exception:
             return None, None
     return None, None
 
 
-def extract_alert_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe is None or dataframe.empty:
-        return dataframe
+def extract_coordinates(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
 
-    coordinates_dataframe = dataframe.copy()
+    coordinates_dataframe = df.copy()
 
     if "lat" in coordinates_dataframe.columns and "lon" in coordinates_dataframe.columns:
         coordinates_dataframe["lat"] = pd.to_numeric(coordinates_dataframe["lat"], errors="coerce")
@@ -485,14 +517,11 @@ def extract_alert_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
         return coordinates_dataframe
 
     if "location" in coordinates_dataframe.columns:
-        extracted_coordinates = coordinates_dataframe["location"].apply(
-            lambda location_value: pd.Series(
-                extract_lat_lon_from_location_field(location_value),
-                index=["lat", "lon"]
-            )
+        coords = coordinates_dataframe["location"].apply(
+            lambda value: pd.Series(_extract_lat_lon_from_location(value), index=["lat", "lon"])
         )
-        coordinates_dataframe["lat"] = extracted_coordinates["lat"]
-        coordinates_dataframe["lon"] = extracted_coordinates["lon"]
+        coordinates_dataframe["lat"] = coords["lat"]
+        coordinates_dataframe["lon"] = coords["lon"]
 
     if "lat" not in coordinates_dataframe.columns and "y" in coordinates_dataframe.columns:
         coordinates_dataframe["lat"] = pd.to_numeric(coordinates_dataframe["y"], errors="coerce")
@@ -503,83 +532,77 @@ def extract_alert_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
     return coordinates_dataframe
 
 
-def extract_midpoint_from_line_geometry(line_value):
+def _extract_midpoint_from_line(value):
     try:
-        line_points = line_value if isinstance(line_value, list) else ast.literal_eval(str(line_value))
-        if not line_points:
+        points = value if isinstance(value, list) else ast.literal_eval(str(value))
+        if not points:
             return None, None
-        midpoint = line_points[len(line_points) // 2]
+        midpoint = points[len(points) // 2]
         return float(midpoint.get("y")), float(midpoint.get("x"))
     except Exception:
         return None, None
 
 
-def extract_jam_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe is None or dataframe.empty:
-        return dataframe
+def extract_jams_coordinates(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
 
-    jam_coordinates_dataframe = dataframe.copy()
+    jams_dataframe = df.copy()
 
-    if "lat" in jam_coordinates_dataframe.columns and "lon" in jam_coordinates_dataframe.columns:
-        jam_coordinates_dataframe["lat"] = pd.to_numeric(jam_coordinates_dataframe["lat"], errors="coerce")
-        jam_coordinates_dataframe["lon"] = pd.to_numeric(jam_coordinates_dataframe["lon"], errors="coerce")
-        if jam_coordinates_dataframe["lat"].notna().any():
-            return jam_coordinates_dataframe
+    if "lat" in jams_dataframe.columns and "lon" in jams_dataframe.columns:
+        jams_dataframe["lat"] = pd.to_numeric(jams_dataframe["lat"], errors="coerce")
+        jams_dataframe["lon"] = pd.to_numeric(jams_dataframe["lon"], errors="coerce")
+        if jams_dataframe["lat"].notna().any():
+            return jams_dataframe
 
-    if "line" in jam_coordinates_dataframe.columns:
-        extracted_coordinates = jam_coordinates_dataframe["line"].apply(
-            lambda line_value: pd.Series(
-                extract_midpoint_from_line_geometry(line_value),
-                index=["lat", "lon"]
-            )
+    if "line" in jams_dataframe.columns:
+        coords = jams_dataframe["line"].apply(
+            lambda value: pd.Series(_extract_midpoint_from_line(value), index=["lat", "lon"])
         )
-        jam_coordinates_dataframe["lat"] = extracted_coordinates["lat"]
-        jam_coordinates_dataframe["lon"] = extracted_coordinates["lon"]
-        if jam_coordinates_dataframe["lat"].notna().any():
-            return jam_coordinates_dataframe
+        jams_dataframe["lat"] = coords["lat"]
+        jams_dataframe["lon"] = coords["lon"]
+        if jams_dataframe["lat"].notna().any():
+            return jams_dataframe
 
-    if "location" in jam_coordinates_dataframe.columns:
-        extracted_coordinates = jam_coordinates_dataframe["location"].apply(
-            lambda location_value: pd.Series(
-                extract_lat_lon_from_location_field(location_value),
-                index=["lat", "lon"]
-            )
+    if "location" in jams_dataframe.columns:
+        coords = jams_dataframe["location"].apply(
+            lambda value: pd.Series(_extract_lat_lon_from_location(value), index=["lat", "lon"])
         )
-        jam_coordinates_dataframe["lat"] = extracted_coordinates["lat"]
-        jam_coordinates_dataframe["lon"] = extracted_coordinates["lon"]
+        jams_dataframe["lat"] = coords["lat"]
+        jams_dataframe["lon"] = coords["lon"]
 
-    if "lat" not in jam_coordinates_dataframe.columns and "y" in jam_coordinates_dataframe.columns:
-        jam_coordinates_dataframe["lat"] = pd.to_numeric(jam_coordinates_dataframe["y"], errors="coerce")
+    if "lat" not in jams_dataframe.columns and "y" in jams_dataframe.columns:
+        jams_dataframe["lat"] = pd.to_numeric(jams_dataframe["y"], errors="coerce")
 
-    if "lon" not in jam_coordinates_dataframe.columns and "x" in jam_coordinates_dataframe.columns:
-        jam_coordinates_dataframe["lon"] = pd.to_numeric(jam_coordinates_dataframe["x"], errors="coerce")
+    if "lon" not in jams_dataframe.columns and "x" in jams_dataframe.columns:
+        jams_dataframe["lon"] = pd.to_numeric(jams_dataframe["x"], errors="coerce")
 
-    return jam_coordinates_dataframe
+    return jams_dataframe
 
 
-def normalize_speed_column(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe is None or dataframe.empty:
-        return dataframe
+def normalize_speed(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
 
-    normalized_speed_dataframe = dataframe.copy()
+    normalized_dataframe = df.copy()
 
-    if "speed" in normalized_speed_dataframe.columns:
-        normalized_speed_dataframe["speed"] = pd.to_numeric(normalized_speed_dataframe["speed"], errors="coerce")
-        return normalized_speed_dataframe
+    if "speed" in normalized_dataframe.columns:
+        normalized_dataframe["speed"] = pd.to_numeric(normalized_dataframe["speed"], errors="coerce")
+        return normalized_dataframe
 
-    for alternative_speed_column in ["speedKMH", "speedkmh", "speed_kmh", "velocity"]:
-        if alternative_speed_column in normalized_speed_dataframe.columns:
-            normalized_speed_dataframe["speed"] = pd.to_numeric(
-                normalized_speed_dataframe[alternative_speed_column],
+    for alternative_speed_column in ["speedKMH", "speedkmh", "speed_kmh", "velocity", "velocidade"]:
+        if alternative_speed_column in normalized_dataframe.columns:
+            normalized_dataframe["speed"] = pd.to_numeric(
+                normalized_dataframe[alternative_speed_column],
                 errors="coerce"
             ) / 3.6
-            return normalized_speed_dataframe
+            return normalized_dataframe
 
-    normalized_speed_dataframe["speed"] = float("nan")
-    return normalized_speed_dataframe
+    normalized_dataframe["speed"] = float("nan")
+    return normalized_dataframe
 
 
-INCIDENT_TYPE_TRANSLATION = {
+TYPE_MAP = {
     "ROAD_CLOSED": "VIA FECHADA",
     "ROAD_CLOSED_CONSTRUCTION": "VIA FECHADA",
     "ROAD_CLOSED_EVENT": "VIA FECHADA",
@@ -589,7 +612,7 @@ INCIDENT_TYPE_TRANSLATION = {
     "WEATHERHAZARD": "PERIGO CLIMÁTICO",
 }
 
-INCIDENT_SUBTYPE_TRANSLATION = {
+SUBTYPE_MAP = {
     "ROAD_CLOSED_CONSTRUCTION": "OBRAS",
     "ROAD_CLOSED_EVENT": "EVENTO",
     "HAZARD_ON_ROAD": "PERIGO NA VIA",
@@ -624,23 +647,23 @@ INCIDENT_SUBTYPE_TRANSLATION = {
 }
 
 
-def translate_incident_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
-    if dataframe is None or dataframe.empty:
-        return dataframe
+def translate_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
 
-    translated_dataframe = dataframe.copy()
+    translated_dataframe = df.copy()
 
     if "type" in translated_dataframe.columns:
-        translated_dataframe["type"] = translated_dataframe["type"].replace(INCIDENT_TYPE_TRANSLATION)
+        translated_dataframe["type"] = translated_dataframe["type"].replace(TYPE_MAP)
 
     if "subtype" in translated_dataframe.columns:
-        translated_dataframe["subtype"] = translated_dataframe["subtype"].replace(INCIDENT_SUBTYPE_TRANSLATION)
+        translated_dataframe["subtype"] = translated_dataframe["subtype"].replace(SUBTYPE_MAP)
 
-        known_translated_values = set(INCIDENT_SUBTYPE_TRANSLATION.values())
-        unknown_subtype_mask = translated_dataframe["subtype"].notna() & ~translated_dataframe["subtype"].isin(known_translated_values)
+        known_values = set(SUBTYPE_MAP.values())
+        unknown_mask = translated_dataframe["subtype"].notna() & ~translated_dataframe["subtype"].isin(known_values)
 
-        translated_dataframe.loc[unknown_subtype_mask, "subtype"] = (
-            translated_dataframe.loc[unknown_subtype_mask, "subtype"]
+        translated_dataframe.loc[unknown_mask, "subtype"] = (
+            translated_dataframe.loc[unknown_mask, "subtype"]
             .astype(str)
             .str.replace(
                 r"^(HAZARD_ON_ROAD_|HAZARD_ON_SHOULDER_|HAZARD_WEATHER_|HAZARD_|ACCIDENT_|JAM_|ROAD_CLOSED_)",
@@ -654,55 +677,180 @@ def translate_incident_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
     return translated_dataframe
 
 
+def standardize_csv_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    standardized_dataframe = df.copy()
+
+    standardized_dataframe.columns = [
+        str(column_name).strip().replace(" ", "_").replace("-", "_").replace("/", "_").lower()
+        for column_name in standardized_dataframe.columns
+    ]
+
+    alias_map = {
+        "latitude": "lat",
+        "longitude": "lon",
+        "lng": "lon",
+        "long": "lon",
+        "rua": "street",
+        "logradouro": "street",
+        "tipo": "type",
+        "subtipo": "subtype",
+        "natureza": "subtype",
+        "velocidade": "speed",
+        "velocidade_kmh": "speedkmh",
+        "velocidade_km_h": "speedkmh",
+        "data_hora": "timestamp",
+        "datahora": "timestamp",
+        "datetime": "timestamp",
+        "data": "date",
+    }
+
+    standardized_dataframe = standardized_dataframe.rename(
+        columns={column_name: alias_map.get(column_name, column_name) for column_name in standardized_dataframe.columns}
+    )
+
+    return standardized_dataframe
+
+
+def read_local_csv(csv_path: str | Path) -> pd.DataFrame:
+    csv_path = Path(csv_path)
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {csv_path}")
+
+    candidate_encodings = ["utf-8", "utf-8-sig", "latin1", "cp1252"]
+    candidate_separators = [",", ";", "\t"]
+
+    for encoding_name in candidate_encodings:
+        for separator in candidate_separators:
+            try:
+                dataframe = pd.read_csv(
+                    csv_path,
+                    sep=separator,
+                    encoding=encoding_name,
+                    engine="python"
+                )
+
+                if dataframe is not None and not dataframe.empty and dataframe.shape[1] > 1:
+                    dataframe.columns = [str(column_name).strip() for column_name in dataframe.columns]
+                    return dataframe
+
+            except Exception:
+                continue
+
+    return pd.read_csv(csv_path, sep=None, engine="python")
+
+
+def filter_bbox_foz(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+
+    bounded_dataframe = df.copy()
+
+    if "lat" not in bounded_dataframe.columns or "lon" not in bounded_dataframe.columns:
+        return pd.DataFrame()
+
+    bounded_dataframe["lat"] = pd.to_numeric(bounded_dataframe["lat"], errors="coerce")
+    bounded_dataframe["lon"] = pd.to_numeric(bounded_dataframe["lon"], errors="coerce")
+
+    return bounded_dataframe[
+        bounded_dataframe["lat"].between(LAT_MIN, LAT_MAX) &
+        bounded_dataframe["lon"].between(LON_MIN, LON_MAX)
+    ].copy()
+
+
+@st.cache_data(show_spinner="📚 Carregando base histórica local...")
+def load_and_merge_local_alert_csvs() -> pd.DataFrame:
+    merged_frames = []
+
+    for csv_file_name in CSV_FILES_TO_MERGE:
+        try:
+            local_dataframe = read_local_csv(csv_file_name)
+            local_dataframe = standardize_csv_columns(local_dataframe)
+            local_dataframe = normalize_timestamps(local_dataframe)
+            local_dataframe = extract_coordinates(local_dataframe)
+            local_dataframe = translate_dataframe(local_dataframe)
+
+            if "street" not in local_dataframe.columns:
+                local_dataframe["street"] = "N/A"
+
+            local_dataframe["source_file"] = csv_file_name
+            merged_frames.append(local_dataframe)
+
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+
+    if not merged_frames:
+        return pd.DataFrame()
+
+    merged_dataframe = pd.concat(merged_frames, ignore_index=True)
+
+    dedup_columns = [column_name for column_name in ["uuid", "pubMillis", "street", "timestamp", "type", "subtype"] if column_name in merged_dataframe.columns]
+    if dedup_columns:
+        merged_dataframe = merged_dataframe.drop_duplicates(subset=dedup_columns)
+
+    merged_dataframe = filter_bbox_foz(merged_dataframe)
+    merged_dataframe["year"] = pd.to_datetime(merged_dataframe["timestamp"], errors="coerce").dt.year
+
+    return merged_dataframe
+
+
 @st.cache_data(ttl=600, show_spinner="🔄 Carregando dados do Google Drive...")
 def load_all_data():
-    latest_alerts_file_id_1 = get_latest_hdf_file_id(GOOGLE_DRIVE_ALERTS_FOLDER_ID_1)
-    latest_alerts_file_id_2 = get_latest_hdf_file_id(GOOGLE_DRIVE_ALERTS_FOLDER_ID_2)
-    latest_jams_file_id_1 = get_latest_hdf_file_id(GOOGLE_DRIVE_JAMS_FOLDER_ID_1)
-    latest_jams_file_id_2 = get_latest_hdf_file_id(GOOGLE_DRIVE_JAMS_FOLDER_ID_2)
+    alerts_id_1 = get_latest_h5_id(FOLDER_ALERTS_ID)
+    alerts_id_2 = get_latest_h5_id(FOLDER_ALERTS_ID2)
+    jams_id_1 = get_latest_h5_id(FOLDER_JAMS_ID)
+    jams_id_2 = get_latest_h5_id(FOLDER_JAMS_ID2)
 
-    alert_dataframes = []
-    if latest_alerts_file_id_1:
-        alert_dataframes.append(load_hdf_dataframe_from_drive(latest_alerts_file_id_1))
-    if latest_alerts_file_id_2:
-        alert_dataframes.append(load_hdf_dataframe_from_drive(latest_alerts_file_id_2))
+    alert_frames = []
+    if alerts_id_1:
+        alert_frames.append(load_hdf_from_drive(alerts_id_1))
+    if alerts_id_2:
+        alert_frames.append(load_hdf_from_drive(alerts_id_2))
 
-    if alert_dataframes:
-        alerts_dataframe = pd.concat(alert_dataframes, ignore_index=True)
-        alert_deduplication_columns = ["uuid"] if "uuid" in alerts_dataframe.columns else ["pubMillis", "street"]
-        alerts_dataframe = alerts_dataframe.drop_duplicates(subset=alert_deduplication_columns)
+    if alert_frames:
+        alerts_dataframe = pd.concat(alert_frames, ignore_index=True)
+        dedup_columns = ["uuid"] if "uuid" in alerts_dataframe.columns else ["pubMillis", "street"]
+        alerts_dataframe = alerts_dataframe.drop_duplicates(subset=dedup_columns)
     else:
         alerts_dataframe = pd.DataFrame()
 
-    jam_dataframes = []
-    if latest_jams_file_id_1:
-        jam_dataframes.append(load_hdf_dataframe_from_drive(latest_jams_file_id_1))
-    if latest_jams_file_id_2:
-        jam_dataframes.append(load_hdf_dataframe_from_drive(latest_jams_file_id_2))
+    jam_frames = []
+    if jams_id_1:
+        jam_frames.append(load_hdf_from_drive(jams_id_1))
+    if jams_id_2:
+        jam_frames.append(load_hdf_from_drive(jams_id_2))
 
-    if jam_dataframes:
-        jams_dataframe = pd.concat(jam_dataframes, ignore_index=True)
-        jam_deduplication_columns = ["uuid"] if "uuid" in jams_dataframe.columns else ["pubMillis", "street"]
-        jams_dataframe = jams_dataframe.drop_duplicates(subset=jam_deduplication_columns)
+    if jam_frames:
+        jams_dataframe = pd.concat(jam_frames, ignore_index=True)
+        dedup_columns = ["uuid"] if "uuid" in jams_dataframe.columns else ["pubMillis", "street"]
+        jams_dataframe = jams_dataframe.drop_duplicates(subset=dedup_columns)
     else:
         jams_dataframe = pd.DataFrame()
 
     if not alerts_dataframe.empty:
         alerts_dataframe = normalize_timestamps(alerts_dataframe)
-        alerts_dataframe = extract_alert_coordinates(alerts_dataframe)
-        alerts_dataframe = translate_incident_columns(alerts_dataframe)
+        alerts_dataframe = extract_coordinates(alerts_dataframe)
+        alerts_dataframe = translate_dataframe(alerts_dataframe)
+        alerts_dataframe = filter_bbox_foz(alerts_dataframe)
+
         if "street" not in alerts_dataframe.columns:
             alerts_dataframe["street"] = "N/A"
 
     if not jams_dataframe.empty:
         jams_dataframe = normalize_timestamps(jams_dataframe)
-        jams_dataframe = extract_jam_coordinates(jams_dataframe)
-        jams_dataframe = normalize_speed_column(jams_dataframe)
+        jams_dataframe = extract_jams_coordinates(jams_dataframe)
+        jams_dataframe = normalize_speed(jams_dataframe)
+        jams_dataframe = filter_bbox_foz(jams_dataframe)
+
         if "street" not in jams_dataframe.columns:
             jams_dataframe["street"] = "Via"
 
     return alerts_dataframe, jams_dataframe
-
 
 # =========================================================
 # BLOCO 3 — MAPAS E VISUALIZAÇÕES GEOESPACIAIS
