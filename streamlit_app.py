@@ -1892,6 +1892,18 @@ def standardize_alert_spreadsheet_columns(dataframe: pd.DataFrame) -> pd.DataFra
             rename_map[column_name] = "Date"
         elif lower_name == "pubmillis":
             rename_map[column_name] = "pubMillis"
+        elif lower_name == "latitude":
+            rename_map[column_name] = "latitude"
+        elif lower_name == "longitude":
+            rename_map[column_name] = "longitude"
+        elif lower_name == "lat":
+            rename_map[column_name] = "lat"
+        elif lower_name in ["lon", "lng", "long"]:
+            rename_map[column_name] = "lon"
+        elif lower_name == "x":
+            rename_map[column_name] = "x"
+        elif lower_name == "y":
+            rename_map[column_name] = "y"
 
     standardized_dataframe = standardized_dataframe.rename(columns=rename_map)
     return standardized_dataframe
@@ -1904,15 +1916,15 @@ def parse_portuguese_date(date_value):
     date_text = str(date_value).strip()
 
     month_map = {
-        'jan.': 'Jan', 'fev.': 'Feb', 'mar.': 'Mar', 'abr.': 'Apr',
-        'maio': 'May', 'mai.': 'May', 'jun.': 'Jun', 'jul.': 'Jul', 'ago.': 'Aug',
-        'set.': 'Sep', 'out.': 'Oct', 'nov.': 'Nov', 'dez.': 'Dec'
+        "jan.": "Jan", "fev.": "Feb", "mar.": "Mar", "abr.": "Apr",
+        "maio": "May", "mai.": "May", "jun.": "Jun", "jul.": "Jul", "ago.": "Aug",
+        "set.": "Sep", "out.": "Oct", "nov.": "Nov", "dez.": "Dec"
     }
 
     for pt_abbreviation, en_month in month_map.items():
         date_text = date_text.replace(pt_abbreviation, en_month)
 
-    return pd.to_datetime(date_text, format='%d de %b de %Y', errors='coerce')
+    return pd.to_datetime(date_text, format="%d de %b de %Y", errors="coerce")
 
 
 def normalize_spreadsheet_timestamps(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -1955,8 +1967,8 @@ def extract_wkt_point_coordinates(location_value):
     if pd.isna(location_value):
         return None, None
 
-    location_text = str(location_value)
-    point_match = re.search(r'Point\(([-+]?\d+\.?\d*)\s+([-+]?\d+\.?\d*)\)', location_text)
+    location_text = str(location_value).strip()
+    point_match = re.search(r"Point\(([-+]?\d+\.?\d*)\s+([-+]?\d+\.?\d*)\)", location_text)
 
     if point_match:
         longitude = float(point_match.group(1))
@@ -1966,23 +1978,103 @@ def extract_wkt_point_coordinates(location_value):
     return None, None
 
 
+def extract_dict_point_coordinates(location_value):
+    if pd.isna(location_value):
+        return None, None
+
+    if isinstance(location_value, dict):
+        try:
+            return float(location_value.get("y")), float(location_value.get("x"))
+        except Exception:
+            return None, None
+
+    if isinstance(location_value, str):
+        try:
+            parsed_value = ast.literal_eval(location_value)
+            if isinstance(parsed_value, dict):
+                return float(parsed_value.get("y")), float(parsed_value.get("x"))
+        except Exception:
+            return None, None
+
+    return None, None
+
+
+def extract_hybrid_location_coordinates(location_value):
+    latitude, longitude = extract_wkt_point_coordinates(location_value)
+    if latitude is not None and longitude is not None:
+        return latitude, longitude
+
+    latitude, longitude = extract_dict_point_coordinates(location_value)
+    if latitude is not None and longitude is not None:
+        return latitude, longitude
+
+    return None, None
+
+
+def normalize_annual_analysis_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
+    if dataframe is None or dataframe.empty:
+        return pd.DataFrame()
+
+    normalized_dataframe = dataframe.copy()
+
+    if "latitude" in normalized_dataframe.columns:
+        normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["latitude"], errors="coerce")
+    if "longitude" in normalized_dataframe.columns:
+        normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["longitude"], errors="coerce")
+
+    if "lat" in normalized_dataframe.columns and "latitude" not in normalized_dataframe.columns:
+        normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["lat"], errors="coerce")
+
+    if "lon" in normalized_dataframe.columns and "longitude" not in normalized_dataframe.columns:
+        normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["lon"], errors="coerce")
+
+    if "latitude" not in normalized_dataframe.columns and "y" in normalized_dataframe.columns:
+        normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["y"], errors="coerce")
+
+    if "longitude" not in normalized_dataframe.columns and "x" in normalized_dataframe.columns:
+        normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["x"], errors="coerce")
+
+    need_location_extraction = (
+        ("latitude" not in normalized_dataframe.columns or normalized_dataframe["latitude"].isna().all()) or
+        ("longitude" not in normalized_dataframe.columns or normalized_dataframe["longitude"].isna().all())
+    )
+
+    if need_location_extraction and "location" in normalized_dataframe.columns:
+        extracted_coordinates = normalized_dataframe["location"].apply(
+            lambda location_value: pd.Series(
+                extract_hybrid_location_coordinates(location_value),
+                index=["latitude_from_location", "longitude_from_location"]
+            )
+        )
+
+        if "latitude" not in normalized_dataframe.columns:
+            normalized_dataframe["latitude"] = extracted_coordinates["latitude_from_location"]
+        else:
+            normalized_dataframe["latitude"] = normalized_dataframe["latitude"].fillna(
+                extracted_coordinates["latitude_from_location"]
+            )
+
+        if "longitude" not in normalized_dataframe.columns:
+            normalized_dataframe["longitude"] = extracted_coordinates["longitude_from_location"]
+        else:
+            normalized_dataframe["longitude"] = normalized_dataframe["longitude"].fillna(
+                extracted_coordinates["longitude_from_location"]
+            )
+
+    if "latitude" in normalized_dataframe.columns:
+        normalized_dataframe["latitude"] = pd.to_numeric(normalized_dataframe["latitude"], errors="coerce")
+
+    if "longitude" in normalized_dataframe.columns:
+        normalized_dataframe["longitude"] = pd.to_numeric(normalized_dataframe["longitude"], errors="coerce")
+
+    return normalized_dataframe
+
+
 def extract_spreadsheet_coordinates(dataframe: pd.DataFrame) -> pd.DataFrame:
     if dataframe is None or dataframe.empty:
         return pd.DataFrame()
 
-    coordinates_dataframe = dataframe.copy()
-
-    if "location" in coordinates_dataframe.columns:
-        extracted_coordinates = coordinates_dataframe["location"].apply(
-            lambda location_value: pd.Series(
-                extract_wkt_point_coordinates(location_value),
-                index=["latitude", "longitude"]
-            )
-        )
-        coordinates_dataframe["latitude"] = extracted_coordinates["latitude"]
-        coordinates_dataframe["longitude"] = extracted_coordinates["longitude"]
-
-    return coordinates_dataframe
+    return normalize_annual_analysis_coordinates(dataframe)
 
 
 def normalize_pothole_subtype_labels(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -2009,7 +2101,7 @@ def sample_street_points(dataframe: pd.DataFrame, max_points: int) -> pd.DataFra
 
 @st.cache_data(ttl=3600, show_spinner="📄 Carregando planilha histórica de alertas...")
 def load_alert_spreadsheet_for_annual_analysis(csv_path: str = LOCAL_ALERT_CSV_PATH) -> pd.DataFrame:
-    spreadsheet_dataframe = pd.read_csv(csv_path)
+    spreadsheet_dataframe = read_local_csv(csv_path)
     spreadsheet_dataframe = standardize_alert_spreadsheet_columns(spreadsheet_dataframe)
     spreadsheet_dataframe = normalize_spreadsheet_timestamps(spreadsheet_dataframe)
     spreadsheet_dataframe = normalize_pothole_subtype_labels(spreadsheet_dataframe)
@@ -2019,6 +2111,9 @@ def load_alert_spreadsheet_for_annual_analysis(csv_path: str = LOCAL_ALERT_CSV_P
         spreadsheet_dataframe["street"] = pd.NA
     if "city" not in spreadsheet_dataframe.columns:
         spreadsheet_dataframe["city"] = "Foz do Iguaçu"
+
+    spreadsheet_dataframe["street"] = spreadsheet_dataframe["street"].fillna("N/A")
+    spreadsheet_dataframe["city"] = spreadsheet_dataframe["city"].fillna("Foz do Iguaçu")
 
     return spreadsheet_dataframe
 
@@ -2133,16 +2228,22 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if "city" not in annual_dataframe.columns:
         annual_dataframe["city"] = "Foz do Iguaçu"
 
-    coordinate_columns = [
-        column_name
-        for column_name in ["latitude", "longitude"]
-        if column_name in annual_dataframe.columns
-    ]
+    annual_dataframe = normalize_annual_analysis_coordinates(annual_dataframe)
 
-    if len(coordinate_columns) == 2:
+    if "street" in annual_dataframe.columns:
+        annual_dataframe["street"] = annual_dataframe["street"].astype(str).str.strip()
+
+    if "city" in annual_dataframe.columns:
+        annual_dataframe["city"] = annual_dataframe["city"].fillna("Foz do Iguaçu").astype(str).str.strip()
+
+    has_valid_coordinate_columns = (
+        "latitude" in annual_dataframe.columns and
+        "longitude" in annual_dataframe.columns
+    )
+
+    if has_valid_coordinate_columns:
         annual_dataframe["latitude"] = pd.to_numeric(annual_dataframe["latitude"], errors="coerce")
         annual_dataframe["longitude"] = pd.to_numeric(annual_dataframe["longitude"], errors="coerce")
-        annual_dataframe = annual_dataframe.dropna(subset=coordinate_columns).copy()
 
     street_geometry_registry = {}
     map_bounds = []
@@ -2169,7 +2270,7 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
             tiles="OpenStreetMap"
         )
     else:
-        if len(coordinate_columns) < 2 or annual_dataframe.empty:
+        if not has_valid_coordinate_columns:
             return None, top_streets_dataframe
 
         fallback_dataframe = annual_dataframe.dropna(subset=["latitude", "longitude"]).copy()
@@ -2200,7 +2301,7 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
             )
         ).add_to(street_group)
 
-        if len(coordinate_columns) == 2:
+        if has_valid_coordinate_columns:
             street_points_dataframe = annual_dataframe[
                 (annual_dataframe["street"] == street_name) &
                 (annual_dataframe["city"] == city_name)
@@ -2237,13 +2338,14 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if map_bounds:
         annual_map.fit_bounds(map_bounds)
     else:
-        if len(coordinate_columns) == 2 and not annual_dataframe.empty:
+        if has_valid_coordinate_columns and not annual_dataframe.empty:
             valid_points = annual_dataframe.dropna(subset=["latitude", "longitude"]).copy()
             if not valid_points.empty:
                 annual_map.fit_bounds(valid_points[["latitude", "longitude"]].values.tolist())
 
     folium.LayerControl(collapsed=False).add_to(annual_map)
     return annual_map, top_streets_dataframe
+
 
 # =========================================================
 # BLOCO 6 — VISUALIZAÇÕES PRINCIPAIS
