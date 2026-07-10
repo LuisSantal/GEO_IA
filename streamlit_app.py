@@ -1082,40 +1082,71 @@ def generate_heatmap(dataframe_json: str) -> folium.Map | None:
 # BLOCO EXTRA — PIPELINE CIENTÍFICO
 # =========================================================
 
-def build_daily_series(alerts_dataframe: pd.DataFrame, jams_dataframe: pd.DataFrame, selected_category: str = "TODOS") -> pd.Series:
+def build_daily_series(
+    alerts_dataframe: pd.DataFrame,
+    jams_dataframe: pd.DataFrame,
+    selected_category: str = "TODOS",
+    categoria: str | None = None
+) -> pd.Series:
+    if categoria is not None:
+        selected_category = categoria
+
     source_frames = []
 
     if alerts_dataframe is not None and not alerts_dataframe.empty:
         alerts_series_dataframe = alerts_dataframe.copy()
         alerts_series_dataframe["origem"] = "ALERTA"
-        alerts_series_dataframe["categoria_artigo"] = alerts_series_dataframe["type"] if "type" in alerts_series_dataframe.columns else "ALERTA"
-        source_frames.append(alerts_series_dataframe[["timestamp", "categoria_artigo", "origem"]])
+        alerts_series_dataframe["categoria_artigo"] = (
+            alerts_series_dataframe["type"]
+            if "type" in alerts_series_dataframe.columns
+            else "ALERTA"
+        )
+        source_frames.append(
+            alerts_series_dataframe[["timestamp", "categoria_artigo", "origem"]]
+        )
 
     if jams_dataframe is not None and not jams_dataframe.empty:
         jams_series_dataframe = jams_dataframe.copy()
         jams_series_dataframe["origem"] = "JAM"
         jams_series_dataframe["categoria_artigo"] = "CONGESTIONAMENTO"
-        source_frames.append(jams_series_dataframe[["timestamp", "categoria_artigo", "origem"]])
+        source_frames.append(
+            jams_series_dataframe[["timestamp", "categoria_artigo", "origem"]]
+        )
 
     if not source_frames:
         return pd.Series(dtype=float)
 
     combined_series_base = pd.concat(source_frames, ignore_index=True)
-    combined_series_base["timestamp"] = pd.to_datetime(combined_series_base["timestamp"], errors="coerce")
+    combined_series_base["timestamp"] = pd.to_datetime(
+        combined_series_base["timestamp"],
+        errors="coerce"
+    )
     combined_series_base = combined_series_base.dropna(subset=["timestamp"]).copy()
     combined_series_base["date"] = combined_series_base["timestamp"].dt.floor("D")
 
     if selected_category != "TODOS":
-        combined_series_base = combined_series_base[combined_series_base["categoria_artigo"] == selected_category]
+        combined_series_base = combined_series_base[
+            combined_series_base["categoria_artigo"] == selected_category
+        ]
 
     daily_occurrence_series = combined_series_base.groupby("date").size().sort_index()
+
     if daily_occurrence_series.empty:
         return pd.Series(dtype=float)
 
-    full_date_index = pd.date_range(daily_occurrence_series.index.min(), daily_occurrence_series.index.max(), freq="D")
-    daily_occurrence_series = daily_occurrence_series.reindex(full_date_index, fill_value=0)
+    full_date_index = pd.date_range(
+        daily_occurrence_series.index.min(),
+        daily_occurrence_series.index.max(),
+        freq="D"
+    )
+
+    daily_occurrence_series = daily_occurrence_series.reindex(
+        full_date_index,
+        fill_value=0
+    )
     daily_occurrence_series.index.name = "date"
     daily_occurrence_series.name = "ocorrencias"
+
     return daily_occurrence_series
 
 
@@ -2596,7 +2627,11 @@ with tab_pipeline:
     with col_p3:
         penalidade_pelt = st.slider("Penalidade PELT", min_value=1.0, max_value=20.0, value=5.0, step=0.5, key="pipe_pelt_pen")
 
-    serie = build_daily_series(df_alerts_raw, df_jams_raw, categoria=categoria_artigo)
+    serie = build_daily_series(
+    df_alerts_raw,
+    df_jams_raw,
+    selected_category=categoria_artigo
+)
 
     if serie.empty:
         st.info("Sem dados suficientes para montar a série temporal.")
