@@ -1935,12 +1935,34 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if top_streets_dataframe.empty:
         return None, top_streets_dataframe
 
+    if dataframe is None or dataframe.empty:
+        return None, top_streets_dataframe
+
+    required_columns = {"year", "subtype"}
+    if not required_columns.issubset(dataframe.columns):
+        return None, top_streets_dataframe
+
     annual_dataframe = dataframe[
         (dataframe["year"] == year_value) &
         (dataframe["subtype"].astype(str).str.upper().isin(POTHOLE_SUBTYPE_VALUES))
     ].copy()
 
-    annual_dataframe = annual_dataframe.dropna(subset=["latitude", "longitude"], errors="ignore")
+    if annual_dataframe.empty:
+        return None, top_streets_dataframe
+
+    if "city" not in annual_dataframe.columns:
+        annual_dataframe["city"] = "Foz do Iguaçu"
+
+    coordinate_columns = [
+        column_name
+        for column_name in ["latitude", "longitude"]
+        if column_name in annual_dataframe.columns
+    ]
+
+    if len(coordinate_columns) == 2:
+        annual_dataframe["latitude"] = pd.to_numeric(annual_dataframe["latitude"], errors="coerce")
+        annual_dataframe["longitude"] = pd.to_numeric(annual_dataframe["longitude"], errors="coerce")
+        annual_dataframe = annual_dataframe.dropna(subset=coordinate_columns).copy()
 
     street_geometry_registry = {}
     map_bounds = []
@@ -1961,11 +1983,19 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if street_geometry_registry:
         initial_key = list(street_geometry_registry.keys())[0]
         initial_point = street_geometry_registry[initial_key]["geometry"][0]
-        annual_map = folium.Map(location=[initial_point[0], initial_point[1]], zoom_start=13, tiles="OpenStreetMap")
+        annual_map = folium.Map(
+            location=[initial_point[0], initial_point[1]],
+            zoom_start=13,
+            tiles="OpenStreetMap"
+        )
     else:
-        fallback_dataframe = annual_dataframe.dropna(subset=["latitude", "longitude"])
+        if len(coordinate_columns) < 2 or annual_dataframe.empty:
+            return None, top_streets_dataframe
+
+        fallback_dataframe = annual_dataframe.dropna(subset=["latitude", "longitude"]).copy()
         if fallback_dataframe.empty:
             return None, top_streets_dataframe
+
         annual_map = folium.Map(
             location=[fallback_dataframe["latitude"].mean(), fallback_dataframe["longitude"].mean()],
             zoom_start=13,
@@ -1990,10 +2020,13 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
             )
         ).add_to(street_group)
 
-        street_points_dataframe = annual_dataframe[
-            (annual_dataframe["street"] == street_name) &
-            (annual_dataframe["city"] == city_name)
-        ].dropna(subset=["latitude", "longitude"]).copy()
+        if len(coordinate_columns) == 2:
+            street_points_dataframe = annual_dataframe[
+                (annual_dataframe["street"] == street_name) &
+                (annual_dataframe["city"] == city_name)
+            ].dropna(subset=["latitude", "longitude"]).copy()
+        else:
+            street_points_dataframe = pd.DataFrame()
 
         sampled_street_points = sample_street_points(street_points_dataframe, MAX_MARKERS_PER_STREET)
 
@@ -2024,9 +2057,10 @@ def build_annual_pothole_map(dataframe: pd.DataFrame, year_value: int, top_n: in
     if map_bounds:
         annual_map.fit_bounds(map_bounds)
     else:
-        valid_points = annual_dataframe.dropna(subset=["latitude", "longitude"])
-        if not valid_points.empty:
-            annual_map.fit_bounds(valid_points[["latitude", "longitude"]].values.tolist())
+        if len(coordinate_columns) == 2 and not annual_dataframe.empty:
+            valid_points = annual_dataframe.dropna(subset=["latitude", "longitude"]).copy()
+            if not valid_points.empty:
+                annual_map.fit_bounds(valid_points[["latitude", "longitude"]].values.tolist())
 
     folium.LayerControl(collapsed=False).add_to(annual_map)
     return annual_map, top_streets_dataframe
