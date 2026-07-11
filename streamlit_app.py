@@ -2443,7 +2443,7 @@ def build_annual_pothole_map(
 
         annual_map = folium.Map(
             location=[fallback_dataframe["latitude"].mean(), fallback_dataframe["longitude"].mean()],
-            zoom_start=13,
+            zoom_start=100,
             tiles="OpenStreetMap"
         )
 
@@ -2643,7 +2643,7 @@ with tab_calor:
             if not df_heat.empty:
                 m_heat = folium.Map(
                     location=[df_heat["lat"].mean(), df_heat["lon"].mean()],
-                    zoom_start=13,
+                    zoom_start=100,
                     tiles="OpenStreetMap"
                 )
 
